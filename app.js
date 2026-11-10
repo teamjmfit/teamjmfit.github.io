@@ -11,6 +11,28 @@
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nl2br = v => esc(v).replace(/\n/g, '<br>');
   const num = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
+  // Variables de entrenamiento: texto corto "60 kg · RIR 2 · tempo 3-1-1-0" (o el texto libre antiguo)
+  const loadLabel = i => {
+    const p = [];
+    if (i.load_kg != null && i.load_kg !== '') p.push(fmtKg(i.load_kg) + ' kg');
+    if (i.target_rir != null && i.target_rir !== '') p.push('RIR ' + fmtKg(i.target_rir));
+    else if (i.target_rpe != null && i.target_rpe !== '') p.push('RPE ' + fmtKg(i.target_rpe));
+    if (i.tempo) p.push('tempo ' + i.tempo);
+    return p.length ? p.join(' · ') : (i.load || '');
+  };
+  const repsRange = t => { const m = String(t || '').match(/^\s*(\d+)(?:\s*[-–]\s*(\d+))?/); return m ? { reps_min: +m[1], reps_max: +(m[2] || m[1]) } : { reps_min: null, reps_max: null }; };
+  // Pasa el texto libre antiguo ("RIR 2, 60 kg…") a campos; lo que no se reconoce se conserva en indicaciones
+  function legacyLoad(i) {
+    if (!i.load || i.load_kg != null || i.target_rir != null || i.target_rpe != null) return i;
+    let rest = i.load; const o = Object.assign({}, i);
+    const kg = rest.match(/(\d+(?:[.,]\d+)?)\s*kg/i); if (kg) { o.load_kg = Number(kg[1].replace(',', '.')); rest = rest.replace(kg[0], ''); }
+    const rir = rest.match(/RIR\s*(\d+(?:[.,]\d)?)/i); if (rir) { o.target_rir = Number(rir[1].replace(',', '.')); rest = rest.replace(rir[0], ''); }
+    const rpe = rest.match(/RPE\s*(\d+(?:[.,]\d)?)/i); if (rpe) { o.target_rpe = Number(rpe[1].replace(',', '.')); rest = rest.replace(rpe[0], ''); }
+    rest = rest.replace(/^[\s,·;-]+|[\s,·;-]+$/g, '');
+    if (rest && !(o.notes || '').includes(rest)) o.notes = o.notes ? rest + ' · ' + o.notes : rest;
+    return o;
+  }
+  const TRAINING_FIELDS = ['load_kg', 'target_rir', 'target_rpe', 'tempo', 'reps_min', 'reps_max'];
   const fmtKg = v => (v == null ? '–' : (Math.round(v * 10) / 10).toString().replace('.', ','));
   const eur = v => (v === '' || v == null || isNaN(Number(v)) ? (v || '–') : Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }));
   const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
@@ -407,7 +429,7 @@
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
             <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></header>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
-          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${i.load ? ' · ' + esc(i.load) : ''} · ${i.rest_sec}" desc.</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
+          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
         </section>`;
       }).join('') || '<p class="empty">Este cliente aún no tiene rutinas. Crea la primera.</p>'}</div>`;
     box.querySelector('[data-add]').onclick = () => routineEditor(c, null, []);
@@ -419,7 +441,7 @@
   async function copyRoutinesTo(target, routines, allItems) {
     for (const r of routines) {
       const [nr] = await DB.insert('routines', { client_id: target.id, name: r.name, day: r.day, position: r.position, notes: r.notes });
-      const its = allItems.filter(i => i.routine_id === r.id).map(i => ({ routine_id: nr.id, client_id: target.id, exercise_id: i.exercise_id, exercise_name: i.exercise_name, media_url: i.media_url, position: i.position, sets: i.sets, reps: i.reps, load: i.load, rest_sec: i.rest_sec, notes: i.notes }));
+      const its = allItems.filter(i => i.routine_id === r.id).map(i => ({ routine_id: nr.id, client_id: target.id, exercise_id: i.exercise_id, exercise_name: i.exercise_name, media_url: i.media_url, position: i.position, sets: i.sets, reps: i.reps, load: i.load, rest_sec: i.rest_sec, notes: i.notes, ...Object.fromEntries(TRAINING_FIELDS.filter(k => i[k] !== undefined).map(k => [k, i[k]])) }));
       if (its.length) await DB.insert('routine_items', its);
     }
   }
@@ -443,17 +465,22 @@
 
   function routineEditor(c, r, items) {
     const isNew = !r; r = r || { name: '', day: null, notes: '' };
-    const rows = items.map(i => Object.assign({}, i));
+    const rows = items.map(i => legacyLoad(Object.assign({}, i)));
+    const intensOf = i => i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
+    rows.forEach(i => { i.intens = intensOf(i); });
+    const INTENS = [['', '—'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
     const exOpts = S.exercises.map(e => `<option value="${esc(e.name)}">${esc(e.muscle || '')}</option>`).join('');
     const rowHtml = (i, idx) => `<div class="ex-row" data-idx="${idx}">
         <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>
           <button type="button" class="icon-btn" data-up title="Subir">${ic('up')}</button><button type="button" class="icon-btn" data-down title="Bajar">${ic('down')}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${ic('trash')}</button></div>
         <div class="ex-row-fields">
           <label>Series<input name="sets" type="number" min="1" max="20" value="${i.sets || 3}"></label>
-          <label>Reps<input name="reps" value="${esc(i.reps || '10')}" placeholder="8-10"></label>
-          <label>Carga / RIR<input name="load" value="${esc(i.load || '')}" placeholder="RIR 2, 60 kg…"></label>
+          <label>Reps (rango)<input name="reps" value="${esc(i.reps || '10')}" placeholder="8-10"></label>
+          <label>Carga (kg)<input name="kg" type="number" min="0" step="0.25" inputmode="decimal" value="${i.load_kg != null ? esc(i.load_kg) : ''}" placeholder="—"></label>
+          <label>Intensidad<select name="int">${(() => { const cur = i.intens || intensOf(i); const opts = INTENS.some(o => o[0] === cur) ? INTENS : [...INTENS, [cur, cur.replace(':', ' ').toUpperCase()]]; return opts.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join(''); })()}</select></label>
+          <label>Tempo<input name="tempo" value="${esc(i.tempo || '')}" placeholder="3-1-1-0" pattern="[0-9Xx]-[0-9Xx]-[0-9Xx]-[0-9Xx]" title="Excéntrica-pausa-concéntrica-pausa, p. ej. 3-1-1-0 (X = explosivo)"></label>
           <label>Descanso (s)<input name="rest" type="number" min="0" step="15" value="${i.rest_sec != null ? i.rest_sec : 90}"></label>
-          <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, tempo, superserie…"></label>
+          <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, superserie…"></label>
           <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
         </div></div>`;
     const form = modal(isNew ? 'Nueva rutina para ' + c.name : 'Editar rutina', `
@@ -476,13 +503,30 @@
           let rid = r.id;
           if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, head)); rid = nr.id; }
           else await DB.update('routines', rid, head);
-          // reemplaza los ejercicios de la rutina
-          const old = await DB.list('routine_items', { eq: { routine_id: rid } });
-          for (const o of old) await DB.remove('routine_items', o.id);
-          if (valid.length) await DB.insert('routine_items', valid.map((x, i) => {
+          // Actualiza en su sitio los ejercicios que ya existían (así conservan su linaje y su historial de cargas),
+          // crea los nuevos y borra solo los que se han quitado
+          const old = isNew ? [] : await DB.list('routine_items', { eq: { routine_id: rid } });
+          const payload = (x, i) => {
             const e = S.exercises.find(e => e.name.toLowerCase() === x.exercise_name.trim().toLowerCase());
-            return { routine_id: rid, client_id: c.id, exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i, sets: Number(x.sets) || 1, reps: String(x.reps || ''), load: x.load || '', rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '' };
-          }));
+            const [kind, val] = String(x.intens || '').split(':');
+            const tempo = String(x.tempo || '').trim().toUpperCase();
+            const d = {
+              exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i,
+              sets: Number(x.sets) || 1, reps: String(x.reps || '').trim(), rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '',
+              load_kg: num(x.load_kg), target_rir: kind === 'rir' ? Number(val) : null, target_rpe: kind === 'rpe' ? Number(val) : null,
+              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, ...repsRange(x.reps)
+            };
+            d.load = loadLabel(d); // texto resumen para versiones antiguas de la app
+            return d;
+          };
+          const keep = new Set(valid.filter(x => x.id).map(x => x.id));
+          for (const o of old) if (!keep.has(o.id)) await DB.remove('routine_items', o.id);
+          const news = [];
+          for (const [i, x] of valid.entries()) {
+            if (x.id && old.some(o => o.id === x.id)) await DB.update('routine_items', x.id, payload(x, i));
+            else news.push(Object.assign({ routine_id: rid, client_id: c.id }, crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}, payload(x, i)));
+          }
+          if (news.length) await DB.insert('routine_items', news);
         }, 'Rutina guardada');
         render();
       }
@@ -491,7 +535,7 @@
     function sync() {
       box.querySelectorAll('.ex-row').forEach(el => {
         const i = rows[+el.dataset.idx]; const v = n => el.querySelector(`[name=${n}]`).value;
-        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load: v('load'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media') });
+        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media') });
       });
     }
     function draw() {
@@ -504,7 +548,7 @@
         el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
       });
     }
-    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90 }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
+    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
     draw();
   }
 
@@ -575,7 +619,7 @@
         const s = byId(done, li.dataset.s);
         const sets = logs.filter(l => l.session_id === s.id).sort((a, b) => a.set_no - b.set_no);
         const groups = {}; sets.forEach(l => { (groups[l.exercise_name] = groups[l.exercise_name] || []).push(l); });
-        d.innerHTML = Object.entries(groups).map(([n, ls]) => `<div class="sx"><b>${esc(n)}</b><span>${ls.map(l => `${fmtKg(l.weight)}×${l.reps ?? '–'}`).join(' · ')}</span></div>`).join('') + (s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : '') || '<p class="empty">Sin series registradas</p>';
+        d.innerHTML = Object.entries(groups).map(([n, ls]) => `<div class="sx"><b>${esc(n)}</b><span>${ls.map(l => `${fmtKg(l.weight)}×${l.reps ?? '–'}${l.rir != null ? ' @RIR ' + fmtKg(l.rir) : l.rpe != null ? ' @RPE ' + fmtKg(l.rpe) : ''}`).join(' · ')}</span></div>`).join('') + (s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : '') || '<p class="empty">Sin series registradas</p>';
         d.hidden = false;
         if (asCoach && !s.coach_seen) { s.coach_seen = true; li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
       };
@@ -958,15 +1002,18 @@
       // última sesión de cada ejercicio
       const prev = {};
       items.forEach(i => {
-        const ls = prevLogs.filter(l => l.exercise_name === i.exercise_name);
-        if (ls.length) { const sid = ls[0].session_id; prev[i.exercise_name] = ls.filter(l => l.session_id === sid).sort((a, b) => a.set_no - b.set_no); }
+        // por linaje (el mismo ejercicio aunque cambie de nombre o de semana); si no hay, por nombre (registros antiguos)
+        let ls = i.lineage_id ? prevLogs.filter(l => l.lineage_id === i.lineage_id) : [];
+        if (!ls.length) ls = prevLogs.filter(l => l.exercise_name === i.exercise_name);
+        if (ls.length) { const sid = ls[0].session_id; prev[i.id] = ls.filter(l => l.session_id === sid).sort((a, b) => a.set_no - b.set_no); }
       });
       w = {
         routine_id: r.id, routine_name: r.name, notes: r.notes, started_at: new Date().toISOString(),
         ex: items.map(i => ({
-          name: i.exercise_name, media: i.media_url, reps: i.reps, load: i.load, rest: i.rest_sec, notes: i.notes,
-          prev: (prev[i.exercise_name] || []).map(l => ({ w: l.weight, r: l.reps })),
-          sets: Array.from({ length: i.sets }, (_, k) => { const p = (prev[i.exercise_name] || [])[k]; return { w: p && p.weight != null ? p.weight : '', r: '', done: false }; })
+          id: i.id, lin: i.lineage_id || null, name: i.exercise_name, media: i.media_url, reps: i.reps, load: loadLabel(i), rest: i.rest_sec, notes: i.notes,
+          it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe,
+          prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.rir != null ? l.rir : l.rpe })),
+          sets: Array.from({ length: i.sets }, (_, k) => { const p = (prev[i.id] || [])[k]; return { w: i.load_kg != null ? i.load_kg : (p && p.weight != null ? p.weight : ''), r: '', x: '', done: false }; })
         }))
       };
       saveWorkout(w);
@@ -987,11 +1034,12 @@
           <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small></div>
             ${e.media ? `<a class="icon-btn" href="${esc(e.media)}" target="_blank" rel="noopener" title="Ver técnica">${ic('video')}</a>` : ''}</header>
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
-          <div class="sets"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span><span></span></div>
+          <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
           ${e.sets.map((s, si) => `<div class="set ${s.done ? 'done' : ''}" data-si="${si}"><span class="sn">${si + 1}</span>
-            <span class="prev">${e.prev[si] ? `${fmtKg(e.prev[si].w)}×${e.prev[si].r ?? '–'}` : '–'}</span>
+            <span class="prev">${e.prev[si] ? `${fmtKg(e.prev[si].w)}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? ' @' + fmtKg(e.prev[si].x) : ''}` : '–'}</span>
             <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="kg" aria-label="Kilos serie ${si + 1}">
             <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="${esc(String(e.reps).split(/[-–]/).pop())}" aria-label="Repeticiones serie ${si + 1}">
+            ${e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>`).join('')}</div>
           <div class="row gap"><button class="btn ghost small" data-addset>${ic('plus')} Serie</button>${e.sets.length > 1 ? '<button class="btn ghost small" data-delset>Quitar serie</button>' : ''}</div>
         </section>`).join('')}</div>
@@ -1068,7 +1116,13 @@
       onSubmit: async (f, fd) => {
         const c = S.client;
         const logs = []; let vol = 0;
-        w.ex.forEach(e => { let n = 0; e.sets.forEach(s => { if (!s.done) return; n++; const kg = num(s.w), r = parseInt(s.r, 10); logs.push({ exercise_name: e.name, set_no: n, weight: kg, reps: isNaN(r) ? null : r }); if (kg && !isNaN(r)) vol += kg * r; }); });
+        const inRange = (v, a, b) => (v != null && v >= a && v <= b ? Math.round(v * 2) / 2 : null);
+        w.ex.forEach(e => { let n = 0; e.sets.forEach(s => {
+          if (!s.done) return; n++; const kg = num(s.w), r = parseInt(s.r, 10), x = num(s.x);
+          const l = { exercise_name: e.name, set_no: n, weight: kg, reps: isNaN(r) ? null : r };
+          if (e.id) l.routine_item_id = e.id; if (e.lin) l.lineage_id = e.lin;
+          if (e.it === 'rir') l.rir = inRange(x, 0, 10); if (e.it === 'rpe') l.rpe = inRange(x, 1, 10);
+          logs.push(l); if (kg && !isNaN(r)) vol += kg * r; }); });
         await safe(async () => {
           const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: new Date().toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
           if (logs.length) await DB.insert('set_logs', logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l)));
