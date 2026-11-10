@@ -308,3 +308,11 @@ a.kpi { color: inherit; text-decoration: none; }
 .sets.with-x .set input { padding: 10px 2px; }
 .sets.with-x .prev { font-size: 12px; }
 .ex-row-fields select { padding: 8px 9px; font-size: 14px; }
+/* Vídeo de técnica dentro de la app */
+.vmedia { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r-sm); overflow: hidden; background: #000; margin: 8px 0 10px; }
+.vmedia iframe, .vmedia video, .vmedia img { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: contain; }
+.vmedia.link { aspect-ratio: auto; background: none; }
+.vplay { position: absolute; inset: 0; width: 100%; border: 0; cursor: pointer; background: #111 center / cover no-repeat; display: grid; place-items: center; }
+.vplay .ic { width: 58px; height: 58px; padding: 16px 14px 16px 18px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 92%, transparent); color: #fff; fill: #fff; }
+.wk-ex .icon-btn.on { color: var(--accent); }
+.wk-ex .last { margin: -2px 0 6px; }
