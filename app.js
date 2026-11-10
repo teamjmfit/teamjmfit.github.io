@@ -33,6 +33,32 @@
     return o;
   }
   const TRAINING_FIELDS = ['load_kg', 'target_rir', 'target_rpe', 'tempo', 'reps_min', 'reps_max'];
+  // Vídeo de técnica: YouTube (sin cookies), Vimeo, Google Drive, imagen o enlace externo
+  function mediaInfo(url) {
+    const u = String(url || '').trim(); if (!/^https?:\/\//i.test(u)) return null;
+    let m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/i);
+    if (m) { const t = (u.match(/[?&]t=(\d+)/) || [])[1]; return { kind: 'yt', id: m[1], src: `https://www.youtube-nocookie.com/embed/${m[1]}?autoplay=1&playsinline=1&rel=0&modestbranding=1${t ? '&start=' + t : ''}`, thumb: `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` }; }
+    m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/i); if (m) return { kind: 'vimeo', src: `https://player.vimeo.com/video/${m[1]}?autoplay=1&playsinline=1` };
+    m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([\w-]+)/i); if (m) return { kind: 'drive', src: `https://drive.google.com/file/d/${m[1]}/preview` };
+    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(u)) return { kind: 'img', src: u };
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(u)) return { kind: 'file', src: u };
+    return { kind: 'link', src: u };
+  }
+  // Fachada: no carga nada de terceros hasta que se pulsa "play"
+  function mediaFacade(url) {
+    const v = mediaInfo(url); if (!v) return '';
+    if (v.kind === 'img') return `<div class="vmedia"><img src="${esc(v.src)}" alt="Técnica" loading="lazy"></div>`;
+    if (v.kind === 'link') return `<div class="vmedia link"><a class="btn small" href="${esc(v.src)}" target="_blank" rel="noopener">${ic('video')} Abrir vídeo de la técnica</a></div>`;
+    return `<div class="vmedia" data-vsrc="${esc(v.src)}" data-vkind="${v.kind}"><button type="button" class="vplay" aria-label="Reproducir vídeo"${v.thumb ? ` style="background-image:url('${esc(v.thumb)}')"` : ''}>${ic('play')}</button></div>`;
+  }
+  function bindMedia(root) {
+    root.querySelectorAll('[data-vsrc] .vplay').forEach(b => b.onclick = () => {
+      const box = b.parentNode, src = box.dataset.vsrc;
+      box.innerHTML = box.dataset.vkind === 'file'
+        ? `<video src="${esc(src)}" controls autoplay playsinline></video>`
+        : `<iframe src="${esc(src)}" title="Vídeo de la técnica" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    });
+  }
   const fmtKg = v => (v == null ? '–' : (Math.round(v * 10) / 10).toString().replace('.', ','));
   const eur = v => (v === '' || v == null || isNaN(Number(v)) ? (v || '–') : Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }));
   const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
@@ -851,12 +877,13 @@
   }
   function exerciseForm(e) {
     const isNew = !e; e = e || {};
-    modal(isNew ? 'Nuevo ejercicio' : 'Editar ejercicio', `<div class="form-grid">
+    const mf = modal(isNew ? 'Nuevo ejercicio' : 'Editar ejercicio', `<div class="form-grid">
       <label class="full">Nombre<input name="name" required value="${esc(e.name)}"></label>
       <label>Grupo muscular<input name="muscle" value="${esc(e.muscle)}" list="muscles"></label>
       <datalist id="muscles">${[...new Set(S.exercises.map(x => x.muscle).filter(Boolean))].map(m => `<option value="${esc(m)}">`).join('')}</datalist>
       <label>Material<input name="equipment" value="${esc(e.equipment)}"></label>
-      <label class="full">Vídeo o foto de la técnica (enlace)<input name="media_url" value="${esc(e.media_url)}" placeholder="YouTube, Instagram, Drive…"></label>
+      <label class="full">Vídeo o foto de la técnica (enlace)<input name="media_url" value="${esc(e.media_url)}" placeholder="YouTube, Vimeo, Drive…"></label>
+      <div class="full" data-mprev>${mediaFacade(e.media_url)}</div>
       <label class="full">Indicaciones técnicas<textarea name="notes" rows="3">${esc(e.notes)}</textarea></label></div>`, {
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox('¿Eliminar "' + e.name + '" del catálogo? Las rutinas que ya lo usan no cambian.')) { await safe(() => DB.remove('exercises', e.id), 'Eliminado'); render(); } } },
       onSubmit: async (f, fd) => {
@@ -865,6 +892,8 @@
         render();
       }
     });
+    const pv = mf.querySelector('[data-mprev]'), mi = mf.querySelector('[name=media_url]');
+    let shown = mi.value; bindMedia(pv); mi.addEventListener('change', () => { if (mi.value === shown) return; shown = mi.value; pv.innerHTML = mediaFacade(mi.value); bindMedia(pv); });
   }
 
   // ================================================================ CLIENTE
@@ -996,23 +1025,27 @@
       const [r, items, prevLogs] = await Promise.all([
         DB.get('routines', routineId),
         DB.list('routine_items', { eq: { routine_id: routineId }, order: ['position', 'asc'] }),
-        DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 400 })
+        DB.mode === 'demo'
+          ? DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 400 })
+          : DB.list('last_performance', { eq: { client_id: c.id } }).catch(() => DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 400 }))
       ]);
       if (!r) { toast('Rutina no encontrada', 'err'); return go('#/'); }
+      const when = l => l.started_at || l.created_at || '';
+      prevLogs.sort((a, b) => (when(a) < when(b) ? 1 : when(a) > when(b) ? -1 : 0));
       // última sesión de cada ejercicio
       const prev = {};
       items.forEach(i => {
         // por linaje (el mismo ejercicio aunque cambie de nombre o de semana); si no hay, por nombre (registros antiguos)
         let ls = i.lineage_id ? prevLogs.filter(l => l.lineage_id === i.lineage_id) : [];
         if (!ls.length) ls = prevLogs.filter(l => l.exercise_name === i.exercise_name);
-        if (ls.length) { const sid = ls[0].session_id; prev[i.id] = ls.filter(l => l.session_id === sid).sort((a, b) => a.set_no - b.set_no); }
+        if (ls.length) { const key = l => l.session_id || l.started_at; const k = key(ls[0]); prev[i.id] = ls.filter(l => key(l) === k).sort((a, b) => a.set_no - b.set_no); prev[i.id].at = when(ls[0]); }
       });
       w = {
         routine_id: r.id, routine_name: r.name, notes: r.notes, started_at: new Date().toISOString(),
         ex: items.map(i => ({
           id: i.id, lin: i.lineage_id || null, name: i.exercise_name, media: i.media_url, reps: i.reps, load: loadLabel(i), rest: i.rest_sec, notes: i.notes,
           it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe,
-          prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.rir != null ? l.rir : l.rpe })),
+          prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.rir != null ? l.rir : l.rpe })), prevAt: prev[i.id] ? prev[i.id].at : null,
           sets: Array.from({ length: i.sets }, (_, k) => { const p = (prev[i.id] || [])[k]; return { w: i.load_kg != null ? i.load_kg : (p && p.weight != null ? p.weight : ''), r: '', x: '', done: false }; })
         }))
       };
@@ -1022,6 +1055,7 @@
   }
 
   let restTimer = null;
+  const openMedia = new Set(); // vídeos desplegados en el entreno actual
   function drawWorkout(w) {
     const total = w.ex.reduce((s, e) => s + e.sets.length, 0);
     const done = w.ex.reduce((s, e) => s + e.sets.filter(x => x.done).length, 0);
@@ -1032,7 +1066,9 @@
       <div class="wk-list">${w.ex.map((e, ei) => `
         <section class="card wk-ex ${e.sets.every(s => s.done) ? 'complete' : ''}" data-ei="${ei}">
           <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small></div>
-            ${e.media ? `<a class="icon-btn" href="${esc(e.media)}" target="_blank" rel="noopener" title="Ver técnica">${ic('video')}</a>` : ''}</header>
+            ${mediaInfo(e.media) ? `<button type="button" class="icon-btn ${openMedia.has(ei) ? 'on' : ''}" data-media title="Ver técnica" aria-label="Ver técnica">${ic('video')}</button>` : ''}</header>
+          ${openMedia.has(ei) ? mediaFacade(e.media) : ''}
+          ${e.prevAt ? `<p class="muted small last">Última vez ${esc(ago(e.prevAt))}: ${e.prev.map(p => `${fmtKg(p.w)}×${p.r ?? '–'}`).join(' · ')}</p>` : ''}
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
           ${e.sets.map((s, si) => `<div class="set ${s.done ? 'done' : ''}" data-si="${si}"><span class="sn">${si + 1}</span>
@@ -1050,8 +1086,15 @@
     tick(); intervals.push(setInterval(tick, 20000));
     requestWakeLock();
 
+    bindMedia($app);
     $app.querySelectorAll('.wk-ex').forEach(sec => {
       const ei = +sec.dataset.ei, e = w.ex[ei];
+      const mb = sec.querySelector('[data-media]');
+      if (mb) mb.onclick = () => {
+        if (openMedia.has(ei)) { openMedia.delete(ei); sec.querySelector('.vmedia')?.remove(); mb.classList.remove('on'); return; }
+        openMedia.add(ei); mb.classList.add('on'); sec.querySelector('header').insertAdjacentHTML('afterend', mediaFacade(e.media)); bindMedia(sec);
+        const pb = sec.querySelector('.vmedia .vplay'); if (pb) pb.click();
+      };
       sec.querySelectorAll('.set').forEach(row => {
         const si = +row.dataset.si, s = e.sets[si];
         row.querySelectorAll('input').forEach(inp => inp.oninput = () => { s[inp.dataset.f] = inp.value.replace(',', '.'); saveWorkout(w); });
@@ -1071,7 +1114,7 @@
       const ds = sec.querySelector('[data-delset]'); if (ds) ds.onclick = () => { e.sets.pop(); saveWorkout(w); drawWorkout(w); };
     });
     $app.querySelector('[data-exit]').onclick = async () => {
-      if (done === 0 || await confirmBox('Tu progreso se queda guardado en este móvil y podrás seguir luego. ¿Salir?', 'Salir')) { if (done === 0) clearWorkout(); stopRest(); go('#/'); }
+      if (done === 0 || await confirmBox('Tu progreso se queda guardado en este móvil y podrás seguir luego. ¿Salir?', 'Salir')) { if (done === 0) clearWorkout(); stopRest(); openMedia.clear(); go('#/'); }
     };
     $app.querySelector('[data-finish]').onclick = () => finishWorkout(w, done);
     if (restTimer) bindRest();
@@ -1127,7 +1170,7 @@
           const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: new Date().toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
           if (logs.length) await DB.insert('set_logs', logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l)));
         }, 'Entreno guardado 💪');
-        clearWorkout(); stopRest(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        clearWorkout(); stopRest(); openMedia.clear(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
         location.hash = '#/progreso';
       }
     });
