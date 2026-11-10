@@ -14,6 +14,7 @@
   if (urlCode) { try { sessionStorage.setItem(KEY, urlCode); } catch (e) {} history.replaceState(null, '', base + location.hash); }
   function getCode() { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } }
 
+  // Registro con el código de invitación
   function patchSignUp() {
     if (!window.DB || window.DB.__invite) return;
     var orig = window.DB.signUp.bind(window.DB);
@@ -35,6 +36,7 @@
     setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2600);
   }
 
+  // Panel de invitaciones del entrenador
   async function openInvites() {
     var back = document.createElement('div'); back.className = 'modal-back';
     back.innerHTML = '<div class="modal wide"><header><h2>Enlaces de invitación</h2><button type="button" class="icon-btn" data-x aria-label="Cerrar">✕</button></header><div class="modal-body" data-b><div class="loading"><span></span><span></span><span></span></div></div></div>';
@@ -82,6 +84,7 @@
     load();
   }
 
+  // Enganches en la interfaz
   var switched = false;
   function enhance() {
     patchSignUp();

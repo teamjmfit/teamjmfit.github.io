@@ -1,247 +1,1030 @@
-window.JMFIT_EXERCISES=[["Sentadilla trasera","Piernas","Barra"],["Sentadilla goblet","Piernas","Mancuerna"],["Prensa de piernas","Piernas","Máquina"],["Zancadas","Piernas","Mancuernas"],["Sentadilla búlgara","Piernas","Mancuernas"],["Extensión de cuádriceps","Piernas","Máquina"],["Curl femoral tumbado","Piernas","Máquina"],["Peso muerto rumano","Isquios / Glúteo","Barra"],["Peso muerto convencional","Espalda / Piernas","Barra"],["Hip thrust","Glúteo","Barra"],["Patada de glúteo en polea","Glúteo","Polea"],["Abducción de cadera","Glúteo","Máquina"],["Elevación de gemelos de pie","Gemelos","Máquina"],["Press de banca","Pecho","Barra"],["Press inclinado con mancuernas","Pecho","Mancuernas"],["Aperturas en polea","Pecho","Polea"],["Fondos en paralelas","Pecho / Tríceps","Peso corporal"],["Flexiones","Pecho","Peso corporal"],["Dominadas","Espalda","Peso corporal"],["Jalón al pecho","Espalda","Polea"],["Remo con barra","Espalda","Barra"],["Remo con mancuerna","Espalda","Mancuerna"],["Remo en polea baja","Espalda","Polea"],["Pullover en polea","Espalda","Polea"],["Press militar","Hombro","Barra"],["Press de hombro con mancuernas","Hombro","Mancuernas"],["Elevaciones laterales","Hombro","Mancuernas"],["Face pull","Hombro posterior","Polea"],["Pájaros","Hombro posterior","Mancuernas"],["Curl de bíceps con barra","Bíceps","Barra"],["Curl martillo","Bíceps","Mancuernas"],["Curl en banco inclinado","Bíceps","Mancuernas"],["Extensión de tríceps en polea","Tríceps","Polea"],["Press francés","Tríceps","Barra Z"],["Plancha","Core","Peso corporal"],["Rueda abdominal","Core","Rueda"],["Elevación de piernas colgado","Core","Peso corporal"],["Pallof press","Core","Polea"],["Cinta (caminar inclinado)","Cardio","Cinta"],["Bicicleta estática","Cardio","Bicicleta"]],function(){const K=window.JMFIT_CONFIG||{},E=!!(K.SUPABASE_URL&&K.SUPABASE_ANON_KEY&&window.supabase),O=()=>crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,D=>{const v=Math.random()*16|0;return(D==="x"?v:v&3|8).toString(16)});function ce(){const D=window.supabase.createClient(K.SUPABASE_URL,K.SUPABASE_ANON_KEY),v=({data:f,error:h})=>{if(h)throw new Error(h.message);return f},N=(f,h={})=>(Object.entries(h.eq||{}).forEach(([y,j])=>{f=j===null?f.is(y,null):f.eq(y,j)}),Object.entries(h.in||{}).forEach(([y,j])=>{f=f.in(y,j)}),Object.entries(h.gte||{}).forEach(([y,j])=>{f=f.gte(y,j)}),h.order&&(f=f.order(h.order[0],{ascending:h.order[1]!=="desc"})),h.limit&&(f=f.limit(h.limit)),f);return{mode:"live",async session(){const{data:f}=await D.auth.getSession();return f.session},onAuth(f){D.auth.onAuthStateChange((h,y)=>f(y))},async signIn(f,h){v(await D.auth.signInWithPassword({email:f,password:h}))},async signUp(f,h,y){return{needsConfirm:!v(await D.auth.signUp({email:f,password:h,options:{data:{name:y},emailRedirectTo:location.origin+location.pathname}})).session}},async resetPassword(f){v(await D.auth.resetPasswordForEmail(f,{redirectTo:location.origin+location.pathname}))},async updatePassword(f){v(await D.auth.updateUser({password:f}))},async signOut(){await D.auth.signOut()},async profile(){const f=await this.session();return f?v(await D.from("profiles").select("*").eq("id",f.user.id))[0]||{id:f.user.id,email:f.user.email,role:"client"}:null},async myClient(){const f=await this.session();return f&&v(await D.from("clients").select("*").eq("user_id",f.user.id))[0]||null},async list(f,h){return v(await N(D.from(f).select("*"),h))},async get(f,h,y="id"){return v(await D.from(f).select("*").eq(y,h))[0]||null},async insert(f,h){return v(await D.from(f).insert(h).select())},async update(f,h,y,j="id"){return v(await D.from(f).update(y).eq(j,h).select())},async upsert(f,h,y="id"){return v(await D.from(f).upsert(h,{onConflict:y}).select())},async remove(f,h,y="id"){v(await D.from(f).delete().eq(y,h))},async uploadPhoto(f,h){const y=`${f}/${Date.now()}.jpg`;return v(await D.storage.from("checkins").upload(y,h,{contentType:"image/jpeg"})),y},async photoUrl(f){return v(await D.storage.from("checkins").createSignedUrl(f,3600)).signedUrl},async getSetting(f){const h=await this.get("settings",f,"key");return h?h.value:""},async setSetting(f,h){await this.upsert("settings",{key:f,value:h},"key")}}}function M(){const D="jmfit-demo-v1";let v;const N=()=>localStorage.setItem(D,JSON.stringify(v)),f=()=>{try{v=JSON.parse(localStorage.getItem(D))}catch{v=null}(!v||!v.tables)&&(v={tables:{},who:null},z(),N())},h=b=>v.tables[b]=v.tables[b]||[],y=b=>({settings:"key",nutrition_plans:"client_id"})[b]||"id",j=()=>new Date().toISOString(),A=[];function z(){const b=window.JMFIT_EXERCISES.map(([q,U,V])=>({id:O(),name:q,muscle:U,equipment:V,media_url:"",notes:""}));v.tables.exercises=b;const _=q=>b.find(U=>U.name===q),k={id:O(),user_id:"demo-client",name:"Laura Martín",email:"laura@ejemplo.com",phone:"34600000000",goal:"Ganar fuerza y masa muscular",service:"Mixto",sheet_name:"Laura Martín",notes:"Rodilla derecha sensible en sentadilla profunda",active:!0,created_at:j()},x={id:O(),user_id:null,name:"Carlos Ruiz",email:"carlos@ejemplo.com",phone:"",goal:"Perder grasa",service:"Entreno",sheet_name:"",notes:"",active:!0,created_at:j()};v.tables.clients=[k,x];const P=(q,U,V,Q)=>{const X={id:O(),client_id:q.id,name:U,day:V,position:V||0,notes:"",created_at:j()};return h("routines").push(X),Q.forEach(([ne,G,I,W,he],Z)=>{const ie=_(ne);h("routine_items").push({id:O(),routine_id:X.id,client_id:q.id,exercise_id:ie&&ie.id,exercise_name:ne,media_url:"",position:Z,sets:G,reps:I,load:he||"",rest_sec:W,notes:""})}),X},Y=P(k,"Pierna y glúteo",1,[["Sentadilla trasera",4,"6-8",150,"RIR 2"],["Hip thrust",4,"8-10",120],["Peso muerto rumano",3,"10",120],["Abducción de cadera",3,"15",60]]);P(k,"Torso",3,[["Press de banca",4,"6-8",150],["Jalón al pecho",4,"10",90],["Press de hombro con mancuernas",3,"10",90],["Remo en polea baja",3,"12",90],["Elevaciones laterales",3,"15",60]]),P(k,"Full body",4,[["Sentadilla goblet",3,"12",90],["Remo con mancuerna",3,"10",90],["Flexiones",3,"al fallo",60],["Plancha",3,"40 s",45]]),P(x,"Full body A",1,[["Prensa de piernas",3,"12",90],["Press de banca",3,"10",90],["Remo con barra",3,"10",90]]),v.tables.nutrition_plans=[{client_id:k.id,kcal:2400,protein:140,carbs:290,fat:75,water:"2,5–3 L",meals:`Desayuno: avena 80 g + leche + plátano + 2 huevos
-Comida: arroz 100 g (crudo) + pollo 180 g + verduras + AOVE
-Merienda: yogur proteico + fruta + 30 g frutos secos
-Cena: patata 250 g + pescado blanco 200 g + ensalada`,notes:"Prioriza llegar a la proteína. Fin de semana: 1 comida libre.",updated_at:j()}];for(let q=3;q>=1;q--){const U=new Date(Date.now()-q*7*864e5),V={id:O(),client_id:k.id,routine_id:Y.id,routine_name:"Pierna y glúteo",started_at:U.toISOString(),finished_at:new Date(U.getTime()+70*6e4).toISOString(),rpe:8,notes:"",volume:0,coach_seen:q>1};h("sessions").push(V);const Q=60+(3-q)*2.5;let X=0;[["Sentadilla trasera",Q,8],["Hip thrust",Q+20,10],["Peso muerto rumano",Q-10,10]].forEach(([ne,G,I])=>{for(let W=1;W<=3;W++)h("set_logs").push({id:O(),session_id:V.id,client_id:k.id,exercise_name:ne,set_no:W,weight:G,reps:I,created_at:V.started_at}),X+=G*I}),V.volume=X,h("checkins").push({id:O(),client_id:k.id,date:U.toISOString().slice(0,10),weight:58+(3-q)*.4,waist:68,hip:96,chest:88,arm:27,thigh:55,energy:4,sleep:3+q%2,adherence:4,notes:q===1?"Muy bien la semana, algo cansada el jueves":"",photo_path:"",coach_reply:q>1?"¡Genial, sigue así!":"",coach_seen:q>1,created_at:U.toISOString()})}v.tables.messages=[{id:O(),client_id:k.id,author:"coach",body:"¡Bienvenida a TEAM JMFIT! Aquí tienes tu plan. Cualquier duda me escribes por aquí 💪",created_at:new Date(Date.now()-20*864e5).toISOString()},{id:O(),client_id:k.id,author:"client",body:"¡Gracias! ¿El hip thrust lo hago con banda?",created_at:new Date(Date.now()-2*864e5).toISOString()}],v.tables.settings=[]}function oe(b,_={}){for(const[k,x]of Object.entries(_.eq||{}))if((b[k]??null)!==x)return!1;for(const[k,x]of Object.entries(_.in||{}))if(!x.includes(b[k]))return!1;for(const[k,x]of Object.entries(_.gte||{}))if(!(b[k]>=x))return!1;return!0}const S=b=>JSON.parse(JSON.stringify(b)),F={clients:()=>({active:!0,created_at:j()}),routines:()=>({position:0,created_at:j()}),sessions:()=>({started_at:j(),coach_seen:!1,volume:0}),set_logs:()=>({created_at:j()}),checkins:()=>({date:j().slice(0,10),coach_seen:!1,created_at:j()}),messages:()=>({created_at:j()}),exercises:()=>({created_at:j()})};return f(),{mode:"demo",async session(){return v.who?{user:{id:v.who==="coach"?"demo-coach":"demo-client"}}:null},onAuth(b){A.push(b)},async signIn(b){v.who=b,N(),A.forEach(_=>_({}))},async signUp(){throw new Error("En modo demo no se crean cuentas.")},async resetPassword(){throw new Error("No disponible en modo demo.")},async updatePassword(){},async signOut(){v.who=null,N(),A.forEach(b=>b(null))},async profile(){return v.who?v.who==="coach"?{id:"demo-coach",email:"entrenador@demo",name:"Entrenador",role:"coach"}:{id:"demo-client",email:"laura@ejemplo.com",name:"Laura",role:"client"}:null},async myClient(){return S(h("clients").find(b=>b.user_id==="demo-client")||null)},async list(b,_={}){let k=h(b).filter(x=>oe(x,_));if(_.order){const[x,P]=_.order;k=k.slice().sort((Y,q)=>(Y[x]>q[x]?1:Y[x]<q[x]?-1:0)*(P==="desc"?-1:1))}return _.limit&&(k=k.slice(0,_.limit)),S(k)},async get(b,_,k){return k=k||y(b),S(h(b).find(x=>x[k]===_)||null)},async insert(b,_){const k=(Array.isArray(_)?_:[_]).map(x=>{const P=Object.assign({},(F[b]||(()=>({})))(),x);return y(b)==="id"&&!P.id&&(P.id=O()),P});return h(b).push(...k),N(),S(k)},async update(b,_,k,x){x=x||y(b);const P=[];return h(b).forEach(Y=>{Y[x]===_&&(Object.assign(Y,k),P.push(Y))}),N(),S(P)},async upsert(b,_,k){k=k||y(b);const x=h(b).find(P=>P[k]===_[k]);return x?Object.assign(x,_):h(b).push(Object.assign({},_)),N(),[S(x||_)]},async remove(b,_,k){k=k||y(b),v.tables[b]=h(b).filter(x=>x[k]!==_),b==="routines"&&(v.tables.routine_items=h("routine_items").filter(x=>x.routine_id!==_)),b==="sessions"&&(v.tables.set_logs=h("set_logs").filter(x=>x.session_id!==_)),b==="clients"&&["routines","routine_items","sessions","set_logs","checkins","messages","nutrition_plans"].forEach(x=>{v.tables[x]=h(x).filter(P=>P.client_id!==_)}),N()},async uploadPhoto(b,_){return await new Promise((k,x)=>{const P=new FileReader;P.onload=()=>k(P.result),P.onerror=x,P.readAsDataURL(_)})},async photoUrl(b){return b},async getSetting(b){const _=h("settings").find(k=>k.key===b);return _?_.value:""},async setSetting(b,_){await this.upsert("settings",{key:b,value:_},"key")},resetDemo(){localStorage.removeItem(D),f()}}}const l=E?ce():M();l.sheets=async function(D,v){const N=await l.getSetting("sheets_url"),f=await l.getSetting("sheets_token");if(!N){if(l.mode==="demo")return te(D,v);throw new Error("NO_SHEET")}const y=await(await fetch(N,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({action:D,token:f},v||{}))})).json();if(!y.ok)throw new Error(y.error||"Error en la hoja");return y.data};let R=null;function te(D,v){const N=y=>y.toISOString().slice(0,10),f=[{plan:"Mensual Entreno",servicio:"Entreno",precio:70,meses:1},{plan:"Mensual Nutrición",servicio:"Nutrición",precio:50,meses:1},{plan:"Mensual Mixto",servicio:"Mixto",precio:110,meses:1},{plan:"Trimestral Mixto",servicio:"Mixto",precio:291,meses:3}];if(R=R||[{id:"PAG-0002",fecha:N(new Date(Date.now()-12*864e5)),cliente:"Laura Martín",servicio:"Mixto",plan:"Mensual Mixto",importe:110,metodo:"Bizum",vence:N(new Date(Date.now()+18*864e5)),notas:""},{id:"PAG-0001",fecha:N(new Date(Date.now()-40*864e5)),cliente:"Carlos Ruiz",servicio:"Entreno",plan:"Mensual Entreno",importe:70,metodo:"Efectivo",vence:N(new Date(Date.now()-10*864e5)),notas:""}],D==="registrarPago"){const y=v.pago,j=f.find(z=>z.plan===y.plan)||{meses:1,servicio:""},A=new Date(y.fecha);return A.setMonth(A.getMonth()+j.meses),R.unshift({id:"PAG-"+String(R.length+1).padStart(4,"0"),fecha:y.fecha,cliente:y.cliente,servicio:j.servicio,plan:y.plan,importe:Number(y.importe),metodo:y.metodo,vence:N(A),notas:y.notas||""}),Promise.resolve({fila:0,id:R[0].id})}const h=["Laura Martín","Carlos Ruiz"].map((y,j)=>{const A=R.find(oe=>oe.cliente===y),z=A?Math.round((new Date(A.vence)-Date.now())/864e5):-1;return{id:"CLI-00"+(j+1),nombre:y,servicio:A?A.servicio:"",plan:A?A.plan:"",cuota:A?A.importe:0,vence:A?A.vence:"",dias:z,estado:z<0?"VENCIDO":"AL DÍA",pagadoMes:z<0?"✘ No":"✔ Sí",pendiente:"",notas:""}});return Promise.resolve({clientes:h,tarifas:f,pagos:R,actualizado:new Date().toISOString(),demo:!0})}window.DB=l}(),function(){"use strict";const K=window.JMFIT_CONFIG&&window.JMFIT_CONFIG.BRAND||"TEAM JMFIT",E=document.getElementById("app"),O=["","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"],ce=["","L","M","X","J","V","S","D"],M={profile:null,client:null,route:[],clients:[],exercises:[],sheet:null},l=e=>String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t]),R=e=>l(e).replace(/\n/g,"<br>"),te=e=>e===""||e==null||isNaN(Number(e))?null:Number(e),D=e=>e==null?"–":(Math.round(e*10)/10).toString().replace(".",","),v=e=>e===""||e==null||isNaN(Number(e))?e||"–":Number(e).toLocaleString("es-ES",{style:"currency",currency:"EUR"}),N=()=>{const e=new Date;return new Date(e.getTime()-e.getTimezoneOffset()*6e4).toISOString().slice(0,10)},f=()=>{const e=new Date().getDay();return e===0?7:e},h=(e,t)=>{if(!e)return"–";const a=new Date(e.length===10?e+"T12:00:00":e);return isNaN(a)?e:a.toLocaleDateString("es-ES",t||{day:"numeric",month:"short"})},y=e=>{const t=Math.round((Date.now()-new Date(e))/6e4);if(t<1)return"ahora";if(t<60)return`hace ${t} min`;const a=Math.round(t/60);if(a<24)return`hace ${a} h`;const i=Math.round(a/24);return i===1?"ayer":`hace ${i} días`},j=e=>(e||"?").split(/\s+/).map(t=>t[0]).slice(0,2).join("").toUpperCase(),A=e=>{location.hash===e?q():location.hash=e},z=(e,t)=>e.find(a=>a.id===t),oe={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',users:'<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',dumbbell:'<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>',euro:'<path d="M17 5.5A7 7 0 1 0 17 18.5"/><path d="M4 10h10M4 14h10"/>',cog:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',apple:'<path d="M12 7c-2-2-6-1.5-6.5 2.5S7 19 9.5 19.5c1 .2 1.7-.5 2.5-.5s1.5.7 2.5.5C17 19 18.5 13 18 9.5S14 5 12 7z"/><path d="M12 7c0-2 1-3.5 3-4"/>',chart:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/>',plus:'<path d="M12 5v14M5 12h14"/>',back:'<path d="M15 18l-6-6 6-6"/>',play:'<path d="M7 4l13 8-13 8z"/>',check:'<path d="M5 12l5 5 9-10"/>',trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',up:'<path d="M6 15l6-6 6 6"/>',down:'<path d="M6 9l6 6 6-6"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',out:'<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',send:'<path d="M4 12l16-8-6 16-2-7z"/>',camera:'<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',video:'<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',refresh:'<path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4"/>',wa:'<path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1c-1-.5-2-1.5-2.5-2.5l1-1-1-2z"/>'},S=(e,t="")=>`<svg class="ic ${t}" viewBox="0 0 24 24" aria-hidden="true">${oe[e]||""}</svg>`;function F(e,t=""){const a=document.createElement("div");a.className="toast "+t,a.textContent=e,document.body.appendChild(a),setTimeout(()=>a.classList.add("show"),10),setTimeout(()=>{a.classList.remove("show"),setTimeout(()=>a.remove(),300)},2600)}async function b(e,t){try{const a=await e();return t&&F(t,"ok"),a}catch(a){throw console.error(a),F(a.message==="NO_SHEET"?"Conecta primero tu hoja de cobros":"Error: "+a.message,"err"),a}}function _(e,t,{onSubmit:a,submitLabel:i="Guardar",wide:s=!1,danger:n}={}){k();const r=document.createElement("div");r.className="modal-back",r.innerHTML=`<form class="modal ${s?"wide":""}" novalidate>
-      <header><h2>${l(e)}</h2><button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button></header>
-      <div class="modal-body">${t}</div>
-      ${a?`<footer>${n?`<button type="button" class="btn ghost danger" data-danger>${l(n.label)}</button>`:""}<span class="grow"></span><button type="button" class="btn ghost" data-close>Cancelar</button><button class="btn primary" type="submit">${l(i)}</button></footer>`:""}
-    </form>`,document.body.appendChild(r),document.body.classList.add("noscroll");const o=r.querySelector("form");r.addEventListener("click",d=>{(d.target===r||d.target.closest("[data-close]"))&&k()}),n&&(r.querySelector("[data-danger]").onclick=async()=>{await n.run()}),a&&o.addEventListener("submit",async d=>{d.preventDefault();const $=o.querySelector("[type=submit]");$.disabled=!0;try{await a(o,new FormData(o))!==!1&&k()}catch{}finally{$.disabled=!1}});const c=o.querySelector("input,select,textarea");return c&&window.innerWidth>700&&c.focus(),o}function k(){document.querySelectorAll(".modal-back").forEach(e=>e.remove()),document.body.classList.remove("noscroll")}function x(e,t="Eliminar"){return new Promise(a=>{_("¿Seguro?",`<p>${l(e)}</p>`,{submitLabel:t,onSubmit:()=>{a(!0)}}),document.querySelector(".modal-back").addEventListener("click",i=>{(i.target.closest("[data-close]")||i.target.classList.contains("modal-back"))&&a(!1)})})}async function P(){try{M.profile=await DB.profile(),M.client=M.profile&&M.profile.role==="client"?await DB.myClient():null}catch(e){console.error(e),M.profile=null}q()}DB.onAuth(()=>P()),window.addEventListener("hashchange",q);function Y(){return(location.hash.replace(/^#\/?/,"")||"").split("/").filter(Boolean).map(decodeURIComponent)}async function q(){return V(),M.route=Y(),location.hash.includes("type=recovery")?ne():M.profile?M.profile.role==="coach"?he():ze():Q()}let U=[];const V=()=>{U.forEach(clearInterval),U=[]};function Q(e="in"){document.body.dataset.role="guest";const t=DB.mode==="demo";E.innerHTML=`<main class="login">
+/* TEAM JMFIT · interfaz de la app (entrenador + clientes) */
+(function () {
+  'use strict';
+  const BRAND = (window.JMFIT_CONFIG && window.JMFIT_CONFIG.BRAND) || 'TEAM JMFIT';
+  const $app = document.getElementById('app');
+  const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const DIAS_C = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const S = { profile: null, client: null, route: [], clients: [], exercises: [], sheet: null };
+
+  // ------------------------------------------------------------ utilidades
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const nl2br = v => esc(v).replace(/\n/g, '<br>');
+  const num = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
+  const fmtKg = v => (v == null ? '–' : (Math.round(v * 10) / 10).toString().replace('.', ','));
+  const eur = v => (v === '' || v == null || isNaN(Number(v)) ? (v || '–') : Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }));
+  const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const isoDay = () => { const d = new Date().getDay(); return d === 0 ? 7 : d; };
+  const fmtDate = (s, opts) => { if (!s) return '–'; const d = new Date(s.length === 10 ? s + 'T12:00:00' : s); return isNaN(d) ? s : d.toLocaleDateString('es-ES', opts || { day: 'numeric', month: 'short' }); };
+  const ago = s => {
+    const m = Math.round((Date.now() - new Date(s)) / 6e4);
+    if (m < 1) return 'ahora'; if (m < 60) return `hace ${m} min`;
+    const h = Math.round(m / 60); if (h < 24) return `hace ${h} h`;
+    const d = Math.round(h / 24); return d === 1 ? 'ayer' : `hace ${d} días`;
+  };
+  const initials = n => (n || '?').split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  const go = h => { if (location.hash === h) render(); else location.hash = h; };
+  const byId = (arr, id) => arr.find(x => x.id === id);
+
+  const ICON = {
+    home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
+    dumbbell: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>',
+    euro: '<path d="M17 5.5A7 7 0 1 0 17 18.5"/><path d="M4 10h10M4 14h10"/>',
+    cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    apple: '<path d="M12 7c-2-2-6-1.5-6.5 2.5S7 19 9.5 19.5c1 .2 1.7-.5 2.5-.5s1.5.7 2.5.5C17 19 18.5 13 18 9.5S14 5 12 7z"/><path d="M12 7c0-2 1-3.5 3-4"/>',
+    chart: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    back: '<path d="M15 18l-6-6 6-6"/>',
+    play: '<path d="M7 4l13 8-13 8z"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    up: '<path d="M6 15l6-6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+    out: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    send: '<path d="M4 12l16-8-6 16-2-7z"/>',
+    camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
+    refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4"/>',
+    wa: '<path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1c-1-.5-2-1.5-2.5-2.5l1-1-1-2z"/>'
+  };
+  const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n] || ''}</svg>`;
+
+  function toast(msg, kind = '') {
+    const t = document.createElement('div');
+    t.className = 'toast ' + kind; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add('show'), 10);
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
+  }
+  async function safe(fn, okMsg) {
+    try { const r = await fn(); if (okMsg) toast(okMsg, 'ok'); return r; }
+    catch (e) { console.error(e); toast(e.message === 'NO_SHEET' ? 'Conecta primero tu hoja de cobros' : ('Error: ' + e.message), 'err'); throw e; }
+  }
+
+  // ------------------------------------------------------------ modal
+  function modal(title, body, { onSubmit, submitLabel = 'Guardar', wide = false, danger } = {}) {
+    closeModal();
+    const m = document.createElement('div');
+    m.className = 'modal-back';
+    m.innerHTML = `<form class="modal ${wide ? 'wide' : ''}" novalidate>
+      <header><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button></header>
+      <div class="modal-body">${body}</div>
+      ${onSubmit ? `<footer>${danger ? `<button type="button" class="btn ghost danger" data-danger>${esc(danger.label)}</button>` : ''}<span class="grow"></span><button type="button" class="btn ghost" data-close>Cancelar</button><button class="btn primary" type="submit">${esc(submitLabel)}</button></footer>` : ''}
+    </form>`;
+    document.body.appendChild(m);
+    document.body.classList.add('noscroll');
+    const form = m.querySelector('form');
+    m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModal(); });
+    if (danger) m.querySelector('[data-danger]').onclick = async () => { await danger.run(); };
+    if (onSubmit) form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+      try { const r = await onSubmit(form, new FormData(form)); if (r !== false) closeModal(); }
+      catch (err) { /* el toast ya informa */ }
+      finally { btn.disabled = false; }
+    });
+    const first = form.querySelector('input,select,textarea'); if (first && window.innerWidth > 700) first.focus();
+    return form;
+  }
+  function closeModal() { document.querySelectorAll('.modal-back').forEach(m => m.remove()); document.body.classList.remove('noscroll'); }
+  function confirmBox(text, label = 'Eliminar') {
+    return new Promise(res => {
+      modal('¿Seguro?', `<p>${esc(text)}</p>`, { submitLabel: label, onSubmit: () => { res(true); } });
+      document.querySelector('.modal-back').addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target.classList.contains('modal-back')) res(false); });
+    });
+  }
+
+  // ------------------------------------------------------------ arranque
+  async function boot() {
+    try {
+      S.profile = await DB.profile();
+      S.client = S.profile && S.profile.role === 'client' ? await DB.myClient() : null;
+    } catch (e) { console.error(e); S.profile = null; }
+    render();
+  }
+  DB.onAuth(() => boot());
+  window.addEventListener('hashchange', render);
+
+  function parseRoute() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
+
+  async function render() {
+    stopIntervals();
+    S.route = parseRoute();
+    if (location.hash.includes('type=recovery')) return renderNewPassword();
+    if (!S.profile) return renderLogin();
+    if (S.profile.role === 'coach') return renderCoach();
+    return renderClient();
+  }
+
+  let intervals = [];
+  const stopIntervals = () => { intervals.forEach(clearInterval); intervals = []; };
+
+  // ------------------------------------------------------------ login
+  function renderLogin(mode = 'in') {
+    document.body.dataset.role = 'guest';
+    const demo = DB.mode === 'demo';
+    $app.innerHTML = `<main class="login">
       <div class="login-card">
-        <div class="brand big"><span class="brand-mark">JM</span><div><b>${l(K)}</b><small>Entrenamiento y nutrición</small></div></div>
-        ${t?`
+        <div class="brand big"><span class="brand-mark">JM</span><div><b>${esc(BRAND)}</b><small>Entrenamiento y nutrición</small></div></div>
+        ${demo ? `
           <p class="muted">Modo demo: la app aún no está conectada a Supabase. Prueba los dos lados con datos de ejemplo (se guardan solo en este navegador).</p>
-          <button class="btn primary block" data-demo="coach">${S("users")} Entrar como entrenador</button>
-          <button class="btn block" data-demo="client">${S("dumbbell")} Entrar como cliente (Laura)</button>
+          <button class="btn primary block" data-demo="coach">${ic('users')} Entrar como entrenador</button>
+          <button class="btn block" data-demo="client">${ic('dumbbell')} Entrar como cliente (Laura)</button>
           <button class="btn ghost block small" data-reset>Reiniciar datos de ejemplo</button>
-        `:`
-          <div class="seg"><button class="${e==="in"?"on":""}" data-mode="in">Entrar</button><button class="${e==="up"?"on":""}" data-mode="up">Crear cuenta</button></div>
+        ` : `
+          <div class="seg"><button class="${mode === 'in' ? 'on' : ''}" data-mode="in">Entrar</button><button class="${mode === 'up' ? 'on' : ''}" data-mode="up">Crear cuenta</button></div>
           <form id="auth" class="stack">
-            ${e==="up"?'<label>Nombre<input name="name" required autocomplete="name"></label>':""}
+            ${mode === 'up' ? '<label>Nombre<input name="name" required autocomplete="name"></label>' : ''}
             <label>Correo<input name="email" type="email" required autocomplete="email"></label>
-            ${e!=="reset"?`<label>Contraseña<input name="password" type="password" minlength="6" required autocomplete="${e==="up"?"new-password":"current-password"}"></label>`:""}
-            <button class="btn primary block" type="submit">${e==="up"?"Crear cuenta":e==="reset"?"Enviar enlace":"Entrar"}</button>
-            ${e==="up"?'<p class="muted small">Usa el mismo correo que diste a tu entrenador.</p>':""}
-            ${e==="in"?'<button type="button" class="link" data-mode="reset">¿Olvidaste la contraseña?</button>':""}
-            ${e==="reset"?'<button type="button" class="link" data-mode="in">Volver</button>':""}
+            ${mode !== 'reset' ? `<label>Contraseña<input name="password" type="password" minlength="6" required autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}"></label>` : ''}
+            <button class="btn primary block" type="submit">${mode === 'up' ? 'Crear cuenta' : mode === 'reset' ? 'Enviar enlace' : 'Entrar'}</button>
+            ${mode === 'up' ? '<p class="muted small">Usa el mismo correo que diste a tu entrenador.</p>' : ''}
+            ${mode === 'in' ? '<button type="button" class="link" data-mode="reset">¿Olvidaste la contraseña?</button>' : ''}
+            ${mode === 'reset' ? '<button type="button" class="link" data-mode="in">Volver</button>' : ''}
           </form>`}
-      </div></main>`,E.querySelectorAll("[data-demo]").forEach(s=>s.onclick=()=>DB.signIn(s.dataset.demo));const a=E.querySelector("[data-reset]");a&&(a.onclick=()=>{DB.resetDemo(),F("Datos de ejemplo reiniciados","ok")}),E.querySelectorAll("[data-mode]").forEach(s=>s.onclick=()=>Q(s.dataset.mode));const i=E.querySelector("#auth");i&&(i.onsubmit=async s=>{s.preventDefault();const n=Object.fromEntries(new FormData(i)),r=i.querySelector("[type=submit]");r.disabled=!0;try{e==="in"?await DB.signIn(n.email.trim(),n.password):e==="up"?(await DB.signUp(n.email.trim(),n.password,n.name.trim())).needsConfirm&&(F("Revisa tu correo para confirmar la cuenta","ok"),Q("in")):(await DB.resetPassword(n.email.trim()),F("Te hemos enviado un enlace","ok"),Q("in"))}catch(o){F(X(o.message),"err")}finally{r.disabled=!1}})}function X(e){return/Invalid login/i.test(e)?"Correo o contraseña incorrectos":/not confirmed/i.test(e)?"Confirma tu correo antes de entrar":/already registered/i.test(e)?"Ese correo ya tiene cuenta: entra con tu contraseña":e}function ne(){E.innerHTML=`<main class="login"><div class="login-card"><h2>Nueva contraseña</h2>
-      <form id="np" class="stack"><label>Contraseña nueva<input name="p" type="password" minlength="6" required></label><button class="btn primary block">Guardar</button></form></div></main>`,E.querySelector("#np").onsubmit=async e=>{e.preventDefault(),await b(()=>DB.updatePassword(new FormData(e.target).get("p")),"Contraseña actualizada"),location.hash="",P()}}function G(e,t,a,{title:i,back:s,actions:n=""}={}){const r=e.map(o=>`<a href="#/${o.href}" class="${o.key===t?"on":""}">${S(o.icon)}<span>${o.label}</span>${o.badge?`<i class="badge">${o.badge}</i>`:""}</a>`).join("");E.innerHTML=`
-      <aside class="side"><div class="brand"><span class="brand-mark">JM</span><div><b>${l(K)}</b><small>${M.profile.role==="coach"?"Panel de entrenador":l(M.client?M.client.name:"")}</small></div></div>
-        <nav>${r}</nav>
-        <button class="side-out" data-logout>${S("out")} Salir</button>
-        ${DB.mode==="demo"?'<div class="demo-tag">MODO DEMO</div>':""}
+      </div></main>`;
+    $app.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => DB.signIn(b.dataset.demo));
+    const r = $app.querySelector('[data-reset]'); if (r) r.onclick = () => { DB.resetDemo(); toast('Datos de ejemplo reiniciados', 'ok'); };
+    $app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => renderLogin(b.dataset.mode));
+    const f = $app.querySelector('#auth');
+    if (f) f.onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(f));
+      const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+      try {
+        if (mode === 'in') await DB.signIn(d.email.trim(), d.password);
+        else if (mode === 'up') { const r = await DB.signUp(d.email.trim(), d.password, d.name.trim()); if (r.needsConfirm) { toast('Revisa tu correo para confirmar la cuenta', 'ok'); renderLogin('in'); } }
+        else { await DB.resetPassword(d.email.trim()); toast('Te hemos enviado un enlace', 'ok'); renderLogin('in'); }
+      } catch (err) { toast(traducirError(err.message), 'err'); }
+      finally { btn.disabled = false; }
+    };
+  }
+  function traducirError(m) {
+    if (/NOT_INVITED|saving new user/i.test(m)) return 'Este correo no está autorizado. Pide a tu entrenador que te dé de alta con este correo.';
+    if (/Invalid login/i.test(m)) return 'Correo o contraseña incorrectos';
+    if (/not confirmed/i.test(m)) return 'Confirma tu correo antes de entrar';
+    if (/already registered/i.test(m)) return 'Ese correo ya tiene cuenta: entra con tu contraseña';
+    return m;
+  }
+  function renderNewPassword() {
+    $app.innerHTML = `<main class="login"><div class="login-card"><h2>Nueva contraseña</h2>
+      <form id="np" class="stack"><label>Contraseña nueva<input name="p" type="password" minlength="6" required></label><button class="btn primary block">Guardar</button></form></div></main>`;
+    $app.querySelector('#np').onsubmit = async e => {
+      e.preventDefault();
+      await safe(() => DB.updatePassword(new FormData(e.target).get('p')), 'Contraseña actualizada');
+      location.hash = ''; boot();
+    };
+  }
+
+  // ------------------------------------------------------------ layout
+  function shell(navItems, activeKey, content, { title, back, actions = '' } = {}) {
+    const nav = navItems.map(n => `<a href="#/${n.href}" class="${n.key === activeKey ? 'on' : ''}">${ic(n.icon)}<span>${n.label}</span>${n.badge ? `<i class="badge">${n.badge}</i>` : ''}</a>`).join('');
+    $app.innerHTML = `
+      <aside class="side"><div class="brand"><span class="brand-mark">JM</span><div><b>${esc(BRAND)}</b><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
+        <nav>${nav}</nav>
+        <button class="side-out" data-logout>${ic('out')} Salir</button>
+        ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
       </aside>
       <div class="main">
-        <header class="top">${s?`<a class="icon-btn" href="#/${s}" aria-label="Volver">${S("back")}</a>`:'<span class="brand-mark sm only-mobile">JM</span>'}
-          <h1>${l(i||"")}</h1><span class="grow"></span>${n}
-          <button class="icon-btn only-mobile" data-logout aria-label="Salir">${S("out")}</button></header>
-        <div class="content">${a}</div>
+        <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : '<span class="brand-mark sm only-mobile">JM</span>'}
+          <h1>${esc(title || '')}</h1><span class="grow"></span>${actions}
+          <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
+        <div class="content">${content}</div>
       </div>
-      <nav class="tabbar">${r}</nav>`,E.querySelectorAll("[data-logout]").forEach(o=>o.onclick=async()=>{await x("¿Cerrar sesión?","Salir")&&(await DB.signOut(),M.profile=null,location.hash="",q())})}const I=()=>'<div class="loading"><span></span><span></span><span></span></div>',W=[{key:"inicio",href:"",icon:"home",label:"Inicio"},{key:"clientes",href:"clientes",icon:"users",label:"Clientes"},{key:"ejercicios",href:"ejercicios",icon:"dumbbell",label:"Ejercicios"},{key:"cobros",href:"cobros",icon:"euro",label:"Cobros"}];async function he(){document.body.dataset.role="coach";const[e,t,a]=M.route;if(!e)return je();if(e==="clientes")return Pe();if(e==="cliente"&&t)return Ae(t,a||"rutinas");if(e==="ejercicios")return Ue();if(e==="cobros")return Fe();A("#/")}async function Z(){return M.clients=await DB.list("clients",{order:["name","asc"]}),M.clients}async function ie(){return M.exercises=await DB.list("exercises",{order:["name","asc"]}),M.exercises}async function je(){G(W,"inicio",I(),{title:"Hola 👋"});const e=new Date(Date.now()-7*864e5).toISOString(),[t,a,i,s]=await Promise.all([Z(),DB.list("sessions",{order:["started_at","desc"],limit:60}),DB.list("checkins",{order:["created_at","desc"],limit:60}),DB.list("messages",{order:["created_at","desc"],limit:60})]),n=u=>(z(t,u)||{}).name||"Cliente",r=t.filter(u=>u.active),o=a.filter(u=>u.started_at>=e&&u.finished_at),c=i.filter(u=>!u.coach_seen),d={};s.forEach(u=>{d[u.client_id]||(d[u.client_id]=u)});const $=Object.values(d).filter(u=>u.author==="client"),p=new Set(o.map(u=>u.client_id)),w=r.filter(u=>!p.has(u.id)),g=[...a.slice(0,15).filter(u=>u.finished_at).map(u=>({t:u.finished_at,html:`<b>${l(n(u.client_id))}</b> completó <i>${l(u.routine_name||"entreno")}</i>${u.rpe?` · RPE ${u.rpe}`:""}`,href:`cliente/${u.client_id}/progreso`,icon:"dumbbell",unseen:!u.coach_seen})),...i.slice(0,15).map(u=>({t:u.created_at,html:`<b>${l(n(u.client_id))}</b> envió su check-in${u.weight?` · ${D(u.weight)} kg`:""}`,href:`cliente/${u.client_id}/progreso`,icon:"chart",unseen:!u.coach_seen})),...$.map(u=>({t:u.created_at,html:`<b>${l(n(u.client_id))}</b>: ${l(u.body.slice(0,80))}`,href:`cliente/${u.client_id}/mensajes`,icon:"chat",unseen:!0}))].sort((u,C)=>u.t<C.t?1:-1).slice(0,14),T=`
+      <nav class="tabbar">${nav}</nav>`;
+    $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; render(); } });
+  }
+  const loading = () => '<div class="loading"><span></span><span></span><span></span></div>';
+
+  // ================================================================ ENTRENADOR
+  const COACH_NAV = [
+    { key: 'inicio', href: '', icon: 'home', label: 'Inicio' },
+    { key: 'clientes', href: 'clientes', icon: 'users', label: 'Clientes' },
+    { key: 'ejercicios', href: 'ejercicios', icon: 'dumbbell', label: 'Ejercicios' },
+    { key: 'cobros', href: 'cobros', icon: 'euro', label: 'Cobros' }
+  ];
+
+  async function renderCoach() {
+    document.body.dataset.role = 'coach';
+    const [r0, r1, r2] = S.route;
+    if (!r0) return coachHome();
+    if (r0 === 'clientes') return coachClients();
+    if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
+    if (r0 === 'ejercicios') return coachExercises();
+    if (r0 === 'cobros') return coachPayments();
+    go('#/');
+  }
+
+  async function loadClients() { S.clients = await DB.list('clients', { order: ['name', 'asc'] }); return S.clients; }
+  async function loadExercises() { S.exercises = await DB.list('exercises', { order: ['name', 'asc'] }); return S.exercises; }
+
+  // ---------- Inicio
+  async function coachHome() {
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋' });
+    const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+    const [clients, sessions, checkins, msgs] = await Promise.all([
+      loadClients(),
+      DB.list('sessions', { order: ['started_at', 'desc'], limit: 60 }),
+      DB.list('checkins', { order: ['created_at', 'desc'], limit: 60 }),
+      DB.list('messages', { order: ['created_at', 'desc'], limit: 60 })
+    ]);
+    const name = id => (byId(clients, id) || {}).name || 'Cliente';
+    const active = clients.filter(c => c.active);
+    const week = sessions.filter(s => s.started_at >= weekAgo && s.finished_at);
+    const unseenCk = checkins.filter(c => !c.coach_seen);
+    // último mensaje por cliente; si es del cliente, está pendiente de respuesta
+    const lastByClient = {};
+    msgs.forEach(m => { if (!lastByClient[m.client_id]) lastByClient[m.client_id] = m; });
+    const pendingMsgs = Object.values(lastByClient).filter(m => m.author === 'client');
+    const trainedIds = new Set(week.map(s => s.client_id));
+    const idle = active.filter(c => !trainedIds.has(c.id));
+
+    const feed = [
+      ...sessions.slice(0, 15).filter(s => s.finished_at).map(s => ({ t: s.finished_at, html: `<b>${esc(name(s.client_id))}</b> completó <i>${esc(s.routine_name || 'entreno')}</i>${s.rpe ? ` · RPE ${s.rpe}` : ''}`, href: `cliente/${s.client_id}/progreso`, icon: 'dumbbell', unseen: !s.coach_seen })),
+      ...checkins.slice(0, 15).map(c => ({ t: c.created_at, html: `<b>${esc(name(c.client_id))}</b> envió su check-in${c.weight ? ` · ${fmtKg(c.weight)} kg` : ''}`, href: `cliente/${c.client_id}/progreso`, icon: 'chart', unseen: !c.coach_seen })),
+      ...pendingMsgs.map(m => ({ t: m.created_at, html: `<b>${esc(name(m.client_id))}</b>: ${esc(m.body.slice(0, 80))}`, href: `cliente/${m.client_id}/mensajes`, icon: 'chat', unseen: true }))
+    ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14);
+
+    const html = `
       <div class="kpis">
-        <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${r.length}</b><span>${t.length-r.length} en pausa</span></a>
-        <div class="kpi"><small>Entrenos esta semana</small><b>${o.length}</b><span>${p.size} clientes han entrenado</span></div>
-        <div class="kpi ${c.length?"warn":""}"><small>Check-ins sin revisar</small><b>${c.length}</b><span>pendientes de respuesta</span></div>
-        <div class="kpi ${$.length?"warn":""}"><small>Mensajes por contestar</small><b>${$.length}</b><span>de tus clientes</span></div>
+        <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${active.length}</b><span>${clients.length - active.length} en pausa</span></a>
+        <div class="kpi"><small>Entrenos esta semana</small><b>${week.length}</b><span>${trainedIds.size} clientes han entrenado</span></div>
+        <div class="kpi ${unseenCk.length ? 'warn' : ''}"><small>Check-ins sin revisar</small><b>${unseenCk.length}</b><span>pendientes de respuesta</span></div>
+        <div class="kpi ${pendingMsgs.length ? 'warn' : ''}"><small>Mensajes por contestar</small><b>${pendingMsgs.length}</b><span>de tus clientes</span></div>
       </div>
       <div class="grid2">
         <section class="card"><h3>Actividad reciente</h3>
-          ${g.length?`<ul class="feed">${g.map(u=>`<li><a href="#/${u.href}">${S(u.icon)}<div>${u.html}<small>${y(u.t)}</small></div>${u.unseen?'<i class="dot"></i>':""}</a></li>`).join("")}</ul>`:'<p class="empty">Aún no hay actividad. Cuando tus clientes entrenen o envíen su check-in, aparecerá aquí.</p>'}
+          ${feed.length ? `<ul class="feed">${feed.map(f => `<li><a href="#/${f.href}">${ic(f.icon)}<div>${f.html}<small>${ago(f.t)}</small></div>${f.unseen ? '<i class="dot"></i>' : ''}</a></li>`).join('')}</ul>` : '<p class="empty">Aún no hay actividad. Cuando tus clientes entrenen o envíen su check-in, aparecerá aquí.</p>'}
         </section>
         <div class="stack">
-          <section class="card" id="venc"><h3>Próximos cobros</h3>${I()}</section>
+          <section class="card" id="venc"><h3>Próximos cobros</h3>${loading()}</section>
           <section class="card"><h3>Sin entrenar en 7 días</h3>
-            ${w.length?`<ul class="list">${w.map(u=>`<li><a href="#/cliente/${u.id}/mensajes"><span class="av">${j(u.name)}</span><span class="grow">${l(u.name)}</span><small>Escribir</small></a></li>`).join("")}</ul>`:'<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}
+            ${idle.length ? `<ul class="list">${idle.map(c => `<li><a href="#/cliente/${c.id}/mensajes"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>Escribir</small></a></li>`).join('')}</ul>` : '<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}
           </section>
         </div>
-      </div>`;E.querySelector(".content").innerHTML=T;const m=E.querySelector("#venc");try{const C=(await de()).clientes.filter(B=>B.vence&&B.estado!=="BAJA / PAUSA").map(B=>Object.assign({},B,{d:parseInt(B.dias,10)})).filter(B=>!isNaN(B.d)&&B.d<=30).sort((B,J)=>B.d-J.d);m.innerHTML='<h3>Próximos cobros <a class="link small" href="#/cobros">Ver todo</a></h3>'+(C.length?`<ul class="list">${C.map(B=>`<li><span class="pill ${B.d<0?"red":B.d<=7?"amber":"green"}">${B.d<0?`vencido ${-B.d} d`:B.d===0?"hoy":`${B.d} d`}</span><span class="grow">${l(B.nombre)}<small>${l(B.plan)}</small></span><b>${v(B.cuota)}</b></li>`).join("")}</ul>`:'<p class="empty">Nada vence en los próximos 30 días.</p>')}catch(u){m.innerHTML=`<h3>Próximos cobros</h3><p class="empty">${u.message==="NO_SHEET"?"Conecta tu hoja de cobros para ver aquí los vencimientos.":"No se pudo leer la hoja: "+l(u.message)}</p><a class="btn small" href="#/cobros">${S("euro")} Ir a Cobros</a>`}}async function de(e){if(M.sheet&&!e&&Date.now()-M.sheet.at<12e4)return M.sheet.data;const t=await DB.sheets("resumen");return M.sheet={at:Date.now(),data:t},t}async function Pe(){G(W,"clientes",I(),{title:"Clientes",actions:`<button class="btn primary" data-new>${S("plus")}<span>Nuevo cliente</span></button>`}),E.querySelector("[data-new]").onclick=()=>be();const[e,t]=await Promise.all([Z(),DB.list("sessions",{order:["started_at","desc"],limit:200})]),a={};t.forEach(c=>{c.finished_at&&!a[c.client_id]&&(a[c.client_id]=c.finished_at)});const i=c=>`<li><a href="#/cliente/${c.id}"><span class="av">${j(c.name)}</span>
-        <span class="grow"><b>${l(c.name)}</b><small>${l(c.service||"Sin servicio")}${c.goal?" · "+l(c.goal):""}</small></span>
-        <span class="right"><small>${a[c.id]?"Entrenó "+y(a[c.id]):"Sin entrenos"}</small>${c.user_id?'<span class="pill green">con acceso</span>':'<span class="pill amber">invitación pendiente</span>'}</span></a></li>`,s=e.filter(c=>c.active),n=e.filter(c=>!c.active);E.querySelector(".content").innerHTML=e.length?`
+      </div>`;
+    $app.querySelector('.content').innerHTML = html;
+    // cobros (no bloquea)
+    const box = $app.querySelector('#venc');
+    try {
+      const data = await getSheet();
+      const rows = data.clientes.filter(c => c.vence && c.estado !== 'BAJA / PAUSA')
+        .map(c => Object.assign({}, c, { d: parseInt(c.dias, 10) })).filter(c => !isNaN(c.d) && c.d <= 30).sort((a, b) => a.d - b.d);
+      box.innerHTML = `<h3>Próximos cobros <a class="link small" href="#/cobros">Ver todo</a></h3>` + (rows.length
+        ? `<ul class="list">${rows.map(c => `<li><span class="pill ${c.d < 0 ? 'red' : c.d <= 7 ? 'amber' : 'green'}">${c.d < 0 ? `vencido ${-c.d} d` : c.d === 0 ? 'hoy' : `${c.d} d`}</span><span class="grow">${esc(c.nombre)}<small>${esc(c.plan)}</small></span><b>${eur(c.cuota)}</b></li>`).join('')}</ul>`
+        : '<p class="empty">Nada vence en los próximos 30 días.</p>');
+    } catch (e) {
+      box.innerHTML = `<h3>Próximos cobros</h3><p class="empty">${e.message === 'NO_SHEET' ? 'Conecta tu hoja de cobros para ver aquí los vencimientos.' : 'No se pudo leer la hoja: ' + esc(e.message)}</p><a class="btn small" href="#/cobros">${ic('euro')} Ir a Cobros</a>`;
+    }
+  }
+
+  async function getSheet(force) {
+    if (S.sheet && !force && Date.now() - S.sheet.at < 120000) return S.sheet.data;
+    const data = await DB.sheets('resumen');
+    S.sheet = { at: Date.now(), data };
+    return data;
+  }
+
+  // ---------- Lista de clientes
+  async function coachClients() {
+    shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
+    $app.querySelector('[data-new]').onclick = () => clientForm();
+    const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { order: ['started_at', 'desc'], limit: 200 })]);
+    const last = {}; sessions.forEach(s => { if (s.finished_at && !last[s.client_id]) last[s.client_id] = s.finished_at; });
+    const row = c => `<li><a href="#/cliente/${c.id}"><span class="av">${initials(c.name)}</span>
+        <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small></span>
+        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos'}</small>${c.user_id ? '<span class="pill green">con acceso</span>' : '<span class="pill amber">invitación pendiente</span>'}</span></a></li>`;
+    const act = clients.filter(c => c.active), off = clients.filter(c => !c.active);
+    $app.querySelector('.content').innerHTML = clients.length ? `
       <input class="search" placeholder="Buscar cliente…" data-q>
-      <section class="card flush"><ul class="list big" data-list>${s.map(i).join("")}</ul></section>
-      ${n.length?`<h3 class="sub">En pausa</h3><section class="card flush"><ul class="list big">${n.map(i).join("")}</ul></section>`:""}`:`<div class="hero-empty">${S("users","xl")}<h2>Da de alta a tu primer cliente</h2><p>Pon su nombre y su correo. Después le mandas el enlace de la app para que cree su cuenta con ese mismo correo.</p><button class="btn primary" data-new2>${S("plus")} Nuevo cliente</button></div>`;const r=E.querySelector("[data-new2]");r&&(r.onclick=()=>be());const o=E.querySelector("[data-q]");o&&(o.oninput=()=>{const c=o.value.toLowerCase();E.querySelectorAll(".list.big li").forEach(d=>{d.hidden=!d.textContent.toLowerCase().includes(c)})})}function be(e){const t=!e;e=e||{active:!0},_(t?"Nuevo cliente":"Editar cliente",`
+      <section class="card flush"><ul class="list big" data-list>${act.map(row).join('')}</ul></section>
+      ${off.length ? `<h3 class="sub">En pausa</h3><section class="card flush"><ul class="list big">${off.map(row).join('')}</ul></section>` : ''}`
+      : `<div class="hero-empty">${ic('users', 'xl')}<h2>Da de alta a tu primer cliente</h2><p>Pon su nombre y su correo. Después le mandas el enlace de la app para que cree su cuenta con ese mismo correo.</p><button class="btn primary" data-new2>${ic('plus')} Nuevo cliente</button></div>`;
+    const n2 = $app.querySelector('[data-new2]'); if (n2) n2.onclick = () => clientForm();
+    const q = $app.querySelector('[data-q]');
+    if (q) q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('.list.big li').forEach(li => { li.hidden = !li.textContent.toLowerCase().includes(v); }); };
+  }
+
+  function clientForm(c) {
+    const isNew = !c; c = c || { active: true };
+    modal(isNew ? 'Nuevo cliente' : 'Editar cliente', `
       <div class="form-grid">
-        <label class="full">Nombre y apellidos<input name="name" required value="${l(e.name)}"></label>
-        <label>Correo (con el que entrará)<input name="email" type="email" required value="${l(e.email)}"></label>
-        <label>Teléfono (con 34)<input name="phone" inputmode="tel" value="${l(e.phone)}" placeholder="346…"></label>
-        <label>Servicio<select name="service">${["","Entreno","Nutrición","Mixto"].map(a=>`<option ${e.service===a?"selected":""} value="${a}">${a||"—"}</option>`).join("")}</select></label>
-        <label>Nombre en la hoja de cobros<input name="sheet_name" value="${l(e.sheet_name||e.name||"")}" placeholder="Igual que en tu Excel"></label>
-        <label class="full">Objetivo<input name="goal" value="${l(e.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
-        <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${l(e.notes)}</textarea></label>
-        <label class="check full"><input type="checkbox" name="active" ${e.active?"checked":""}> Cliente activo</label>
-      </div>`,{submitLabel:t?"Crear cliente":"Guardar",danger:t?null:{label:"Eliminar",run:async()=>{await x(`Se borrarán ${e.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)&&(await b(()=>DB.remove("clients",e.id),"Cliente eliminado"),A("#/clientes"))}},onSubmit:async(a,i)=>{const s=Object.fromEntries(i);if(s.active=!!i.get("active"),s.email=s.email.trim().toLowerCase(),!s.name.trim()||!s.email)return F("Nombre y correo son obligatorios","err"),!1;if(t){const n=await b(()=>DB.insert("clients",s),"Cliente creado");return $e(n[0]),!1}await b(()=>DB.update("clients",e.id,s),"Guardado"),q()}})}function Be(){return location.origin+location.pathname}function $e(e){const t=`¡Hola ${e.name.split(" ")[0]}! Ya tienes tu app de ${K} 💪
+        <label class="full">Nombre y apellidos<input name="name" required value="${esc(c.name)}"></label>
+        <label>Correo (con el que entrará)<input name="email" type="email" required value="${esc(c.email)}"></label>
+        <label>Teléfono (con 34)<input name="phone" inputmode="tel" value="${esc(c.phone)}" placeholder="346…"></label>
+        <label>Servicio<select name="service">${['', 'Entreno', 'Nutrición', 'Mixto'].map(s => `<option ${c.service === s ? 'selected' : ''} value="${s}">${s || '—'}</option>`).join('')}</select></label>
+        <label>Nombre en la hoja de cobros<input name="sheet_name" value="${esc(c.sheet_name || c.name || '')}" placeholder="Igual que en tu Excel"></label>
+        <label class="full">Objetivo<input name="goal" value="${esc(c.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
+        <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
+        <label class="check full"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Cliente activo</label>
+      </div>`, {
+      submitLabel: isNew ? 'Crear cliente' : 'Guardar',
+      danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se borrarán ${c.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)) { await safe(() => DB.remove('clients', c.id), 'Cliente eliminado'); go('#/clientes'); } } },
+      onSubmit: async (f, fd) => {
+        const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
+        if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
+        if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
+        await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
+      }
+    });
+  }
 
-1. Entra aquí: ${Be()}
-2. Pulsa "Crear cuenta" y usa este correo: ${e.email}
-3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).
-
-Ahí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;_("Invita a "+e.name,`
-      <p>Envíale este mensaje para que cree su cuenta con <b>${l(e.email)}</b>. En cuanto se registre, verá su plan.</p>
-      <textarea class="mono" rows="8" readonly>${l(t)}</textarea>
+  function appUrl() { return location.origin + location.pathname; }
+  function invite(c) {
+    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Crear cuenta" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
+    modal('Invita a ' + c.name, `
+      <p>Envíale este mensaje para que cree su cuenta con <b>${esc(c.email)}</b>. En cuanto se registre, verá su plan.</p>
+      <textarea class="mono" rows="8" readonly>${esc(msg)}</textarea>
       <div class="row gap">
-        <button type="button" class="btn" data-copy>${S("copy")} Copiar</button>
-        ${e.phone?`<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${l(String(e.phone).replace(/\D/g,""))}?text=${encodeURIComponent(t)}">${S("wa")} Enviar por WhatsApp</a>`:""}
-        <a class="btn ghost" href="#/cliente/${e.id}" data-close>Ir a su ficha</a>
-      </div>`),document.querySelector("[data-copy]").onclick=()=>navigator.clipboard.writeText(t).then(()=>F("Copiado","ok"))}const Le=[["rutinas","Rutinas"],["nutricion","Nutrición"],["progreso","Progreso"],["mensajes","Mensajes"],["cobros","Cobros"]];async function Ae(e,t){G(W,"clientes",I(),{title:"",back:"clientes"});const a=await DB.get("clients",e);if(!a)return F("Cliente no encontrado","err"),A("#/clientes");E.querySelector(".top h1").textContent=a.name;const i=document.createElement("div");i.className="row gap",i.innerHTML=`<button class="btn ghost small" data-inv>${a.user_id?"":"Invitar"}</button><button class="btn small" data-edit>${S("edit")}<span>Editar</span></button>`,E.querySelector(".top .grow").after(i);const s=i.querySelector("[data-inv]");a.user_id?s.remove():s.onclick=()=>$e(a),i.querySelector("[data-edit]").onclick=()=>be(a);const n=E.querySelector(".content");n.innerHTML=`
-      <div class="client-head"><span class="av lg">${j(a.name)}</span><div><b>${l(a.name)}</b><small>${l(a.email)}${a.service?" · "+l(a.service):""}</small>${a.goal?`<p>🎯 ${l(a.goal)}</p>`:""}${a.notes?`<p class="note">📝 ${l(a.notes)}</p>`:""}</div></div>
-      <div class="tabs">${Le.map(([o,c])=>`<a href="#/cliente/${e}/${o}" class="${o===t?"on":""}">${c}</a>`).join("")}</div>
-      <div data-tab>${I()}</div>`;const r=n.querySelector("[data-tab]");if(t==="rutinas")return Ne(a,r);if(t==="nutricion")return Oe(a,r);if(t==="progreso")return _e(a,r,!0);if(t==="mensajes")return Se(a,r,"coach");if(t==="cobros")return Re(a,r)}async function Ne(e,t){const[a,i]=await Promise.all([DB.list("routines",{eq:{client_id:e.id},order:["position","asc"]}),DB.list("routine_items",{eq:{client_id:e.id},order:["position","asc"]})]);M.exercises.length||await ie(),a.sort((n,r)=>(n.day||9)-(r.day||9)||n.position-r.position);const s=[1,2,3,4,5,6,7].map(n=>{const r=a.filter(o=>o.day===n);return`<div class="wday ${r.length?"has":""}"><small>${ce[n]}</small>${r.map(o=>`<span>${l(o.name)}</span>`).join("")||"<em>—</em>"}</div>`}).join("");t.innerHTML=`
-      <div class="week">${s}</div>
-      <div class="row gap wrap"><button class="btn primary" data-add>${S("plus")} Nueva rutina</button><button class="btn ghost" data-copyall>${S("copy")} Copiar plan desde otro cliente</button></div>
-      <div class="routines">${a.map(n=>{const r=i.filter(o=>o.routine_id===n.id);return`<section class="card routine">
-          <header><div><b>${l(n.name)}</b><small>${n.day?O[n.day]:"Día libre"} · ${r.length} ejercicios</small></div><span class="grow"></span>
-            <button class="icon-btn" data-dup="${n.id}" title="Duplicar en otro cliente">${S("copy")}</button>
-            <button class="btn small" data-edit="${n.id}">${S("edit")}<span>Editar</span></button></header>
-          ${n.notes?`<p class="note">${R(n.notes)}</p>`:""}
-          <ol class="ex-list">${r.map(o=>`<li><b>${l(o.exercise_name)}</b><span>${o.sets} × ${l(o.reps)}${o.load?" · "+l(o.load):""} · ${o.rest_sec}" desc.</span>${o.notes?`<small>${l(o.notes)}</small>`:""}</li>`).join("")||'<li class="empty">Sin ejercicios todavía</li>'}</ol>
-        </section>`}).join("")||'<p class="empty">Este cliente aún no tiene rutinas. Crea la primera.</p>'}</div>`,t.querySelector("[data-add]").onclick=()=>we(e,null,[]),t.querySelectorAll("[data-edit]").forEach(n=>n.onclick=()=>{const r=z(a,n.dataset.edit);we(e,r,i.filter(o=>o.routine_id===r.id))}),t.querySelectorAll("[data-dup]").forEach(n=>n.onclick=()=>Te(e,[z(a,n.dataset.dup)],i)),t.querySelector("[data-copyall]").onclick=()=>Ie(e)}async function ye(e,t,a){for(const i of t){const[s]=await DB.insert("routines",{client_id:e.id,name:i.name,day:i.day,position:i.position,notes:i.notes}),n=a.filter(r=>r.routine_id===i.id).map(r=>({routine_id:s.id,client_id:e.id,exercise_id:r.exercise_id,exercise_name:r.exercise_name,media_url:r.media_url,position:r.position,sets:r.sets,reps:r.reps,load:r.load,rest_sec:r.rest_sec,notes:r.notes}));n.length&&await DB.insert("routine_items",n)}}async function Te(e,t,a){const i=(await Z()).filter(s=>s.id!==e.id);_('Duplicar "'+t[0].name+'"',`<label>¿En qué cliente?<select name="to">${i.map(s=>`<option value="${s.id}">${l(s.name)}</option>`).join("")}</select></label>`,{submitLabel:"Duplicar",onSubmit:async(s,n)=>{const r=z(i,n.get("to"));await b(()=>ye(r,t,a),"Rutina copiada a "+r.name)}})}async function Ie(e){const t=(await Z()).filter(a=>a.id!==e.id);if(!t.length)return F("No hay otros clientes de los que copiar","err");_("Copiar plan desde otro cliente",`<p class="muted">Se añadirán todas sus rutinas a ${l(e.name)}. Las que ya tenga se mantienen.</p><label>Cliente de origen<select name="from">${t.map(a=>`<option value="${a.id}">${l(a.name)}</option>`).join("")}</select></label>`,{submitLabel:"Copiar",onSubmit:async(a,i)=>{const s=i.get("from"),[n,r]=await Promise.all([DB.list("routines",{eq:{client_id:s}}),DB.list("routine_items",{eq:{client_id:s}})]);await b(()=>ye(e,n,r),`${n.length} rutinas copiadas`),q()}})}function we(e,t,a){const i=!t;t=t||{name:"",day:null,notes:""};const s=a.map(p=>Object.assign({},p)),n=M.exercises.map(p=>`<option value="${l(p.name)}">${l(p.muscle||"")}</option>`).join(""),r=(p,w)=>`<div class="ex-row" data-idx="${w}">
-        <div class="ex-row-top"><span class="num">${w+1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${l(p.exercise_name||"")}" required>
-          <button type="button" class="icon-btn" data-up title="Subir">${S("up")}</button><button type="button" class="icon-btn" data-down title="Bajar">${S("down")}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${S("trash")}</button></div>
+        <button type="button" class="btn" data-copy>${ic('copy')} Copiar</button>
+        ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}?text=${encodeURIComponent(msg)}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
+        <a class="btn ghost" href="#/cliente/${c.id}" data-close>Ir a su ficha</a>
+      </div>`);
+    document.querySelector('[data-copy]').onclick = () => navigator.clipboard.writeText(msg).then(() => toast('Copiado', 'ok'));
+  }
+
+  // ---------- Ficha de cliente
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
+  async function coachClient(id, tab) {
+    shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
+    const c = await DB.get('clients', id);
+    if (!c) { toast('Cliente no encontrado', 'err'); return go('#/clientes'); }
+    $app.querySelector('.top h1').textContent = c.name;
+    const actions = document.createElement('div'); actions.className = 'row gap';
+    actions.innerHTML = `<button class="btn ghost small" data-inv>${c.user_id ? '' : 'Invitar'}</button><button class="btn small" data-edit>${ic('edit')}<span>Editar</span></button>`;
+    $app.querySelector('.top .grow').after(actions);
+    const inv = actions.querySelector('[data-inv]'); if (c.user_id) inv.remove(); else inv.onclick = () => invite(c);
+    actions.querySelector('[data-edit]').onclick = () => clientForm(c);
+    const content = $app.querySelector('.content');
+    content.innerHTML = `
+      <div class="client-head"><span class="av lg">${initials(c.name)}</span><div><b>${esc(c.name)}</b><small>${esc(c.email)}${c.service ? ' · ' + esc(c.service) : ''}</small>${c.goal ? `<p>🎯 ${esc(c.goal)}</p>` : ''}${c.notes ? `<p class="note">📝 ${esc(c.notes)}</p>` : ''}</div></div>
+      <div class="tabs">${CLIENT_TABS.map(([k, l]) => `<a href="#/cliente/${id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</div>
+      <div data-tab>${loading()}</div>`;
+    const box = content.querySelector('[data-tab]');
+    if (tab === 'rutinas') return tabRoutines(c, box);
+    if (tab === 'nutricion') return tabNutrition(c, box);
+    if (tab === 'progreso') return tabProgress(c, box, true);
+    if (tab === 'mensajes') return tabMessages(c, box, 'coach');
+    if (tab === 'cobros') return tabClientPayments(c, box);
+  }
+
+  // ----- Rutinas (entrenador)
+  async function tabRoutines(c, box) {
+    const [routines, items] = await Promise.all([
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] })
+    ]);
+    if (!S.exercises.length) await loadExercises();
+    routines.sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
+    const week = [1, 2, 3, 4, 5, 6, 7].map(d => { const r = routines.filter(x => x.day === d); return `<div class="wday ${r.length ? 'has' : ''}"><small>${DIAS_C[d]}</small>${r.map(x => `<span>${esc(x.name)}</span>`).join('') || '<em>—</em>'}</div>`; }).join('');
+    box.innerHTML = `
+      <div class="week">${week}</div>
+      <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button><button class="btn ghost" data-copyall>${ic('copy')} Copiar plan desde otro cliente</button></div>
+      <div class="routines">${routines.map(r => {
+        const its = items.filter(i => i.routine_id === r.id);
+        return `<section class="card routine">
+          <header><div><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios</small></div><span class="grow"></span>
+            <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
+            <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></header>
+          ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
+          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${i.load ? ' · ' + esc(i.load) : ''} · ${i.rest_sec}" desc.</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
+        </section>`;
+      }).join('') || '<p class="empty">Este cliente aún no tiene rutinas. Crea la primera.</p>'}</div>`;
+    box.querySelector('[data-add]').onclick = () => routineEditor(c, null, []);
+    box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = byId(routines, b.dataset.edit); routineEditor(c, r, items.filter(i => i.routine_id === r.id)); });
+    box.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => duplicateRoutines(c, [byId(routines, b.dataset.dup)], items));
+    box.querySelector('[data-copyall]').onclick = () => copyPlanFrom(c);
+  }
+
+  async function copyRoutinesTo(target, routines, allItems) {
+    for (const r of routines) {
+      const [nr] = await DB.insert('routines', { client_id: target.id, name: r.name, day: r.day, position: r.position, notes: r.notes });
+      const its = allItems.filter(i => i.routine_id === r.id).map(i => ({ routine_id: nr.id, client_id: target.id, exercise_id: i.exercise_id, exercise_name: i.exercise_name, media_url: i.media_url, position: i.position, sets: i.sets, reps: i.reps, load: i.load, rest_sec: i.rest_sec, notes: i.notes }));
+      if (its.length) await DB.insert('routine_items', its);
+    }
+  }
+  async function duplicateRoutines(from, routines, items) {
+    const clients = (await loadClients()).filter(x => x.id !== from.id);
+    modal('Duplicar "' + routines[0].name + '"', `<label>¿En qué cliente?<select name="to">${clients.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`, {
+      submitLabel: 'Duplicar', onSubmit: async (f, fd) => { const t = byId(clients, fd.get('to')); await safe(() => copyRoutinesTo(t, routines, items), 'Rutina copiada a ' + t.name); }
+    });
+  }
+  async function copyPlanFrom(target) {
+    const clients = (await loadClients()).filter(x => x.id !== target.id);
+    if (!clients.length) return toast('No hay otros clientes de los que copiar', 'err');
+    modal('Copiar plan desde otro cliente', `<p class="muted">Se añadirán todas sus rutinas a ${esc(target.name)}. Las que ya tenga se mantienen.</p><label>Cliente de origen<select name="from">${clients.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`, {
+      submitLabel: 'Copiar', onSubmit: async (f, fd) => {
+        const fromId = fd.get('from');
+        const [rs, its] = await Promise.all([DB.list('routines', { eq: { client_id: fromId } }), DB.list('routine_items', { eq: { client_id: fromId } })]);
+        await safe(() => copyRoutinesTo(target, rs, its), `${rs.length} rutinas copiadas`); render();
+      }
+    });
+  }
+
+  function routineEditor(c, r, items) {
+    const isNew = !r; r = r || { name: '', day: null, notes: '' };
+    const rows = items.map(i => Object.assign({}, i));
+    const exOpts = S.exercises.map(e => `<option value="${esc(e.name)}">${esc(e.muscle || '')}</option>`).join('');
+    const rowHtml = (i, idx) => `<div class="ex-row" data-idx="${idx}">
+        <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>
+          <button type="button" class="icon-btn" data-up title="Subir">${ic('up')}</button><button type="button" class="icon-btn" data-down title="Bajar">${ic('down')}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${ic('trash')}</button></div>
         <div class="ex-row-fields">
-          <label>Series<input name="sets" type="number" min="1" max="20" value="${p.sets||3}"></label>
-          <label>Reps<input name="reps" value="${l(p.reps||"10")}" placeholder="8-10"></label>
-          <label>Carga / RIR<input name="load" value="${l(p.load||"")}" placeholder="RIR 2, 60 kg…"></label>
-          <label>Descanso (s)<input name="rest" type="number" min="0" step="15" value="${p.rest_sec!=null?p.rest_sec:90}"></label>
-          <label class="wide">Indicaciones<input name="notes" value="${l(p.notes||"")}" placeholder="Técnica, tempo, superserie…"></label>
-          <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${l(p.media_url||"")}" placeholder="https://youtube.com/…"></label>
-        </div></div>`,o=_(i?"Nueva rutina para "+e.name:"Editar rutina",`
-      <datalist id="exlist">${n}</datalist>
+          <label>Series<input name="sets" type="number" min="1" max="20" value="${i.sets || 3}"></label>
+          <label>Reps<input name="reps" value="${esc(i.reps || '10')}" placeholder="8-10"></label>
+          <label>Carga / RIR<input name="load" value="${esc(i.load || '')}" placeholder="RIR 2, 60 kg…"></label>
+          <label>Descanso (s)<input name="rest" type="number" min="0" step="15" value="${i.rest_sec != null ? i.rest_sec : 90}"></label>
+          <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, tempo, superserie…"></label>
+          <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
+        </div></div>`;
+    const form = modal(isNew ? 'Nueva rutina para ' + c.name : 'Editar rutina', `
+      <datalist id="exlist">${exOpts}</datalist>
       <div class="form-grid">
-        <label>Nombre<input name="name" required value="${l(t.name)}" placeholder="Ej: Pierna y glúteo"></label>
-        <label>Día<select name="day"><option value="">Libre (sin día fijo)</option>${[1,2,3,4,5,6,7].map(p=>`<option value="${p}" ${t.day===p?"selected":""}>${O[p]}</option>`).join("")}</select></label>
-        <label class="full">Notas de la sesión<textarea name="rnotes" rows="2" placeholder="Calentamiento, objetivo del día…">${l(t.notes)}</textarea></label>
+        <label>Nombre<input name="name" required value="${esc(r.name)}" placeholder="Ej: Pierna y glúteo"></label>
+        <label>Día<select name="day"><option value="">Libre (sin día fijo)</option>${[1, 2, 3, 4, 5, 6, 7].map(d => `<option value="${d}" ${r.day === d ? 'selected' : ''}>${DIAS[d]}</option>`).join('')}</select></label>
+        <label class="full">Notas de la sesión<textarea name="rnotes" rows="2" placeholder="Calentamiento, objetivo del día…">${esc(r.notes)}</textarea></label>
       </div>
       <h4>Ejercicios</h4>
       <div data-rows></div>
-      <button type="button" class="btn block ghost dashed" data-addex>${S("plus")} Añadir ejercicio</button>`,{wide:!0,submitLabel:"Guardar rutina",danger:i?null:{label:"Eliminar rutina",run:async()=>{await x('Se eliminará la rutina "'+t.name+'".')&&(await b(()=>DB.remove("routines",t.id),"Rutina eliminada"),q())}},onSubmit:async(p,w)=>{d();const g=s.filter(m=>(m.exercise_name||"").trim()),T={name:w.get("name").trim()||"Rutina",day:w.get("day")?Number(w.get("day")):null,notes:w.get("rnotes")};await b(async()=>{let m=t.id;if(i){const[C]=await DB.insert("routines",Object.assign({client_id:e.id,position:Date.now()%1e5},T));m=C.id}else await DB.update("routines",m,T);const u=await DB.list("routine_items",{eq:{routine_id:m}});for(const C of u)await DB.remove("routine_items",C.id);g.length&&await DB.insert("routine_items",g.map((C,B)=>{const J=M.exercises.find(L=>L.name.toLowerCase()===C.exercise_name.trim().toLowerCase());return{routine_id:m,client_id:e.id,exercise_id:J?J.id:null,exercise_name:C.exercise_name.trim(),media_url:C.media_url||J&&J.media_url||"",position:B,sets:Number(C.sets)||1,reps:String(C.reps||""),load:C.load||"",rest_sec:Number(C.rest_sec)||0,notes:C.notes||""}}))},"Rutina guardada"),q()}}),c=o.querySelector("[data-rows]");function d(){c.querySelectorAll(".ex-row").forEach(p=>{const w=s[+p.dataset.idx],g=T=>p.querySelector(`[name=${T}]`).value;Object.assign(w,{exercise_name:g("ex"),sets:g("sets"),reps:g("reps"),load:g("load"),rest_sec:g("rest"),notes:g("notes"),media_url:g("media")})})}function $(){c.innerHTML=s.map(r).join("")||'<p class="empty">Añade el primer ejercicio. Escribe para buscar en tu catálogo (o escribe uno nuevo).</p>',c.querySelectorAll(".ex-row").forEach(p=>{const w=+p.dataset.idx;p.querySelector("[data-del]").onclick=()=>{d(),s.splice(w,1),$()},p.querySelector("[data-up]").onclick=()=>{d(),w>0&&([s[w-1],s[w]]=[s[w],s[w-1]],$())},p.querySelector("[data-down]").onclick=()=>{d(),w<s.length-1&&([s[w+1],s[w]]=[s[w],s[w+1]],$())},p.querySelector("[name=ex]").onchange=g=>{const T=M.exercises.find(u=>u.name===g.target.value),m=p.querySelector("[name=media]");T&&T.media_url&&!m.value&&(m.value=T.media_url)}})}o.querySelector("[data-addex]").onclick=()=>{d();const p=s[s.length-1];s.push({sets:p?p.sets:3,reps:p?p.reps:"10",rest_sec:p?p.rest_sec:90}),$();const w=c.querySelectorAll("[name=ex]");w[w.length-1].focus()},$()}async function Oe(e,t){const a=await DB.get("nutrition_plans",e.id,"client_id")||{};t.innerHTML=`<form class="card stack" data-nf>
+      <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>`, {
+      wide: true, submitLabel: 'Guardar rutina',
+      danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
+      onSubmit: async (f, fd) => {
+        sync();
+        const valid = rows.filter(x => (x.exercise_name || '').trim());
+        const head = { name: fd.get('name').trim() || 'Rutina', day: fd.get('day') ? Number(fd.get('day')) : null, notes: fd.get('rnotes') };
+        await safe(async () => {
+          let rid = r.id;
+          if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, head)); rid = nr.id; }
+          else await DB.update('routines', rid, head);
+          // reemplaza los ejercicios de la rutina
+          const old = await DB.list('routine_items', { eq: { routine_id: rid } });
+          for (const o of old) await DB.remove('routine_items', o.id);
+          if (valid.length) await DB.insert('routine_items', valid.map((x, i) => {
+            const e = S.exercises.find(e => e.name.toLowerCase() === x.exercise_name.trim().toLowerCase());
+            return { routine_id: rid, client_id: c.id, exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i, sets: Number(x.sets) || 1, reps: String(x.reps || ''), load: x.load || '', rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '' };
+          }));
+        }, 'Rutina guardada');
+        render();
+      }
+    });
+    const box = form.querySelector('[data-rows]');
+    function sync() {
+      box.querySelectorAll('.ex-row').forEach(el => {
+        const i = rows[+el.dataset.idx]; const v = n => el.querySelector(`[name=${n}]`).value;
+        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load: v('load'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media') });
+      });
+    }
+    function draw() {
+      box.innerHTML = rows.map(rowHtml).join('') || '<p class="empty">Añade el primer ejercicio. Escribe para buscar en tu catálogo (o escribe uno nuevo).</p>';
+      box.querySelectorAll('.ex-row').forEach(el => {
+        const idx = +el.dataset.idx;
+        el.querySelector('[data-del]').onclick = () => { sync(); rows.splice(idx, 1); draw(); };
+        el.querySelector('[data-up]').onclick = () => { sync(); if (idx > 0) { [rows[idx - 1], rows[idx]] = [rows[idx], rows[idx - 1]]; draw(); } };
+        el.querySelector('[data-down]').onclick = () => { sync(); if (idx < rows.length - 1) { [rows[idx + 1], rows[idx]] = [rows[idx], rows[idx + 1]]; draw(); } };
+        el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
+      });
+    }
+    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90 }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
+    draw();
+  }
+
+  // ----- Nutrición (entrenador)
+  async function tabNutrition(c, box) {
+    const p = (await DB.get('nutrition_plans', c.id, 'client_id')) || {};
+    box.innerHTML = `<form class="card stack" data-nf>
       <div class="macros-edit">
-        <label>Kcal / día<input name="kcal" type="number" value="${l(a.kcal)}"></label>
-        <label>Proteína (g)<input name="protein" type="number" value="${l(a.protein)}"></label>
-        <label>Carbohidratos (g)<input name="carbs" type="number" value="${l(a.carbs)}"></label>
-        <label>Grasas (g)<input name="fat" type="number" value="${l(a.fat)}"></label>
-        <label>Agua<input name="water" value="${l(a.water)}" placeholder="2,5 L"></label>
+        <label>Kcal / día<input name="kcal" type="number" value="${esc(p.kcal)}"></label>
+        <label>Proteína (g)<input name="protein" type="number" value="${esc(p.protein)}"></label>
+        <label>Carbohidratos (g)<input name="carbs" type="number" value="${esc(p.carbs)}"></label>
+        <label>Grasas (g)<input name="fat" type="number" value="${esc(p.fat)}"></label>
+        <label>Agua<input name="water" value="${esc(p.water)}" placeholder="2,5 L"></label>
       </div>
       <p class="muted small" data-calc></p>
-      <label>Menú / distribución de comidas<textarea name="meals" rows="10" placeholder="Desayuno: …&#10;Comida: …&#10;Cena: …">${l(a.meals)}</textarea></label>
-      <label>Recomendaciones<textarea name="notes" rows="4" placeholder="Suplementación, comidas libres, intercambios…">${l(a.notes)}</textarea></label>
-      <div class="row"><small class="muted">${a.updated_at?"Actualizado "+y(a.updated_at):"Sin plan todavía"}</small><span class="grow"></span><button class="btn primary">Guardar plan</button></div>
-    </form>`;const i=t.querySelector("[data-nf]"),s=()=>{const n=o=>Number(i[o].value)||0,r=n("protein")*4+n("carbs")*4+n("fat")*9;i.querySelector("[data-calc]").textContent=r?`Los macros suman ${r} kcal${n("kcal")?` (objetivo ${n("kcal")} kcal)`:""}.`:""};i.oninput=s,s(),i.onsubmit=async n=>{n.preventDefault();const r=Object.fromEntries(new FormData(i));["kcal","protein","carbs","fat"].forEach(o=>{r[o]=te(r[o])}),await b(()=>DB.upsert("nutrition_plans",Object.assign({client_id:e.id,updated_at:new Date().toISOString()},r),"client_id"),"Plan de nutrición guardado")}}async function _e(e,t,a){const[i,s,n]=await Promise.all([DB.list("checkins",{eq:{client_id:e.id},order:["date","desc"]}),DB.list("sessions",{eq:{client_id:e.id},order:["started_at","desc"],limit:60}),DB.list("set_logs",{eq:{client_id:e.id},order:["created_at","desc"],limit:1500})]),r=s.filter(m=>m.finished_at),o=i.filter(m=>m.weight).slice().reverse(),c={};n.forEach(m=>{if(m.weight&&m.reps){const u=m.weight*(1+m.reps/30);(!c[m.exercise_name]||u>c[m.exercise_name].e1)&&(c[m.exercise_name]={e1:u,w:m.weight,r:m.reps})}});const d=Object.entries(c).sort((m,u)=>u[1].e1-m[1].e1).slice(0,8),$=o[0],p=o[o.length-1],w=$&&p&&$!==p?p.weight-$.weight:null;t.innerHTML=`
-      ${a?"":`<button class="btn primary block big" data-ck>${S("camera")} Enviar check-in semanal</button>`}
+      <label>Menú / distribución de comidas<textarea name="meals" rows="10" placeholder="Desayuno: …&#10;Comida: …&#10;Cena: …">${esc(p.meals)}</textarea></label>
+      <label>Recomendaciones<textarea name="notes" rows="4" placeholder="Suplementación, comidas libres, intercambios…">${esc(p.notes)}</textarea></label>
+      <div class="row"><small class="muted">${p.updated_at ? 'Actualizado ' + ago(p.updated_at) : 'Sin plan todavía'}</small><span class="grow"></span><button class="btn primary">Guardar plan</button></div>
+    </form>`;
+    const f = box.querySelector('[data-nf]');
+    const calc = () => { const g = n => Number(f[n].value) || 0; const k = g('protein') * 4 + g('carbs') * 4 + g('fat') * 9; f.querySelector('[data-calc]').textContent = k ? `Los macros suman ${k} kcal${g('kcal') ? ` (objetivo ${g('kcal')} kcal)` : ''}.` : ''; };
+    f.oninput = calc; calc();
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(f));
+      ['kcal', 'protein', 'carbs', 'fat'].forEach(k => { d[k] = num(d[k]); });
+      await safe(() => DB.upsert('nutrition_plans', Object.assign({ client_id: c.id, updated_at: new Date().toISOString() }, d), 'client_id'), 'Plan de nutrición guardado');
+    };
+  }
+
+  // ----- Progreso (compartido)
+  async function tabProgress(c, box, asCoach) {
+    const [checkins, sessions, logs] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 60 }),
+      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1500 })
+    ]);
+    const done = sessions.filter(s => s.finished_at);
+    const weights = checkins.filter(x => x.weight).slice().reverse();
+    const best = {};
+    logs.forEach(l => { if (l.weight && l.reps) { const e1 = l.weight * (1 + l.reps / 30); if (!best[l.exercise_name] || e1 > best[l.exercise_name].e1) best[l.exercise_name] = { e1, w: l.weight, r: l.reps }; } });
+    const prs = Object.entries(best).sort((a, b) => b[1].e1 - a[1].e1).slice(0, 8);
+    const first = weights[0], lastW = weights[weights.length - 1];
+    const diff = first && lastW && first !== lastW ? lastW.weight - first.weight : null;
+
+    box.innerHTML = `
+      ${!asCoach ? `<button class="btn primary block big" data-ck>${ic('camera')} Enviar check-in semanal</button>` : ''}
       <div class="kpis small">
-        <div class="kpi"><small>Peso actual</small><b>${p?D(p.weight)+" kg":"–"}</b><span>${w!=null?(w>0?"+":"")+D(w)+" kg desde el inicio":"Registra tu peso en el check-in"}</span></div>
-        <div class="kpi"><small>Entrenos completados</small><b>${r.length}</b><span>${r[0]?"Último "+y(r[0].finished_at):"—"}</span></div>
-        <div class="kpi"><small>Check-ins</small><b>${i.length}</b><span>${i[0]?"Último "+h(i[0].date):"—"}</span></div>
+        <div class="kpi"><small>Peso actual</small><b>${lastW ? fmtKg(lastW.weight) + ' kg' : '–'}</b><span>${diff != null ? (diff > 0 ? '+' : '') + fmtKg(diff) + ' kg desde el inicio' : 'Registra tu peso en el check-in'}</span></div>
+        <div class="kpi"><small>Entrenos completados</small><b>${done.length}</b><span>${done[0] ? 'Último ' + ago(done[0].finished_at) : '—'}</span></div>
+        <div class="kpi"><small>Check-ins</small><b>${checkins.length}</b><span>${checkins[0] ? 'Último ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
-      ${o.length>1?`<section class="card"><h3>Evolución del peso</h3>${He(o.map(m=>({x:m.date,y:Number(m.weight)})))}</section>`:""}
-      ${d.length?`<section class="card"><h3>Mejores marcas</h3><ul class="prs">${d.map(([m,u])=>`<li><span>${l(m)}</span><b>${D(u.w)} kg × ${u.r}</b><small>1RM est. ${Math.round(u.e1)} kg</small></li>`).join("")}</ul></section>`:""}
+      ${weights.length > 1 ? `<section class="card"><h3>Evolución del peso</h3>${lineChart(weights.map(w => ({ x: w.date, y: Number(w.weight) })))}</section>` : ''}
+      ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="grid2">
-        <section class="card"><h3>Check-ins</h3><div data-cks>${i.length?"":'<p class="empty">Aún no hay check-ins.</p>'}</div></section>
-        <section class="card"><h3>Entrenos</h3>${r.length?`<ul class="sessions">${r.map(m=>`<li data-s="${m.id}" class="${a&&!m.coach_seen?"unseen":""}"><button type="button" class="srow"><b>${l(m.routine_name||"Entreno")}</b><small>${h(m.started_at,{weekday:"short",day:"numeric",month:"short"})} · ${Math.max(1,Math.round((new Date(m.finished_at)-new Date(m.started_at))/6e4))} min${m.volume?" · "+Math.round(m.volume).toLocaleString("es-ES")+" kg vol.":""}${m.rpe?" · RPE "+m.rpe:""}</small></button><div class="sdetail" hidden></div></li>`).join("")}</ul>`:'<p class="empty">Aún no hay entrenos registrados.</p>'}</section>
-      </div>`;const g=t.querySelector("[data-ck]");g&&(g.onclick=()=>Ve(e));const T=t.querySelector("[data-cks]");for(const m of i){const u=document.createElement("article");u.className="checkin"+(a&&!m.coach_seen?" unseen":"");const C=[["Cintura",m.waist],["Cadera",m.hip],["Pecho",m.chest],["Brazo",m.arm],["Muslo",m.thigh]].filter(L=>L[1]),B=[["Energía",m.energy],["Sueño",m.sleep],["Adherencia",m.adherence]].filter(L=>L[1]);u.innerHTML=`<header><b>${h(m.date,{weekday:"long",day:"numeric",month:"long"})}</b>${m.weight?`<span class="pill">${D(m.weight)} kg</span>`:""}</header>
-        ${C.length?`<p class="small">${C.map(L=>`${L[0]} ${D(L[1])} cm`).join(" · ")}</p>`:""}
-        ${B.length?`<div class="scores">${B.map(L=>`<span>${L[0]} <b>${"●".repeat(L[1])}${"○".repeat(5-L[1])}</b></span>`).join("")}</div>`:""}
-        ${m.notes?`<p>“${R(m.notes)}”</p>`:""}
-        ${m.photo_path?'<div class="photo" data-photo></div>':""}
-        ${m.coach_reply?`<p class="reply"><b>Respuesta:</b> ${R(m.coach_reply)}</p>`:""}
-        ${a?`<form class="row gap" data-reply><input name="r" placeholder="${m.coach_reply?"Cambiar respuesta…":"Responder al check-in…"}"><button class="btn small">${m.coach_seen?"Responder":"Revisado"}</button></form>`:""}`,T.appendChild(u),m.photo_path&&DB.photoUrl(m.photo_path).then(L=>{u.querySelector("[data-photo]").innerHTML=`<a href="${l(L)}" target="_blank" rel="noopener"><img src="${l(L)}" alt="Foto de progreso" loading="lazy"></a>`}).catch(()=>{});const J=u.querySelector("[data-reply]");J&&(J.onsubmit=async L=>{L.preventDefault();const se=J.r.value.trim(),le={coach_seen:!0};se&&(le.coach_reply=se),await b(()=>DB.update("checkins",m.id,le),"Check-in revisado"),q()})}t.querySelectorAll(".sessions li").forEach(m=>{m.querySelector(".srow").onclick=async()=>{const u=m.querySelector(".sdetail");if(!u.hidden){u.hidden=!0;return}const C=z(r,m.dataset.s),B=n.filter(L=>L.session_id===C.id).sort((L,se)=>L.set_no-se.set_no),J={};B.forEach(L=>{(J[L.exercise_name]=J[L.exercise_name]||[]).push(L)}),u.innerHTML=Object.entries(J).map(([L,se])=>`<div class="sx"><b>${l(L)}</b><span>${se.map(le=>`${D(le.weight)}×${le.reps??"–"}`).join(" · ")}</span></div>`).join("")+(C.notes?`<p class="note">${R(C.notes)}</p>`:"")||'<p class="empty">Sin series registradas</p>',u.hidden=!1,a&&!C.coach_seen&&(C.coach_seen=!0,m.classList.remove("unseen"),DB.update("sessions",C.id,{coach_seen:!0}).catch(()=>{}))}})}function He(e){const s=e.map(p=>p.y);let n=Math.min(...s),r=Math.max(...s);r-n<1&&(n-=.5,r+=.5);const o=p=>46+p*(600-46*2)/Math.max(1,e.length-1),c=p=>154-(p-n)*(200-46*2)/(r-n),d=e.map((p,w)=>`${w?"L":"M"}${o(w).toFixed(1)},${c(p.y).toFixed(1)}`).join(" "),$=`${d} L${o(e.length-1)},154 L${o(0)},154 Z`;return`<svg class="chart" viewBox="0 0 600 200" role="img" aria-label="Evolución del peso">
-      <line x1="46" x2="554" y1="${c(r)}" y2="${c(r)}" class="grid"/><line x1="46" x2="554" y1="${c(n)}" y2="${c(n)}" class="grid"/>
-      <text x="558" y="${c(r)+4}" class="lbl">${D(r)}</text><text x="558" y="${c(n)+4}" class="lbl">${D(n)}</text>
-      <path d="${$}" class="area"/><path d="${d}" class="line"/>
-      ${e.map((p,w)=>`<circle cx="${o(w)}" cy="${c(p.y)}" r="3.5" class="pt"><title>${h(p.x)}: ${D(p.y)} kg</title></circle>`).join("")}
-      <text x="46" y="194" class="lbl">${h(e[0].x)}</text><text x="554" y="194" class="lbl" text-anchor="end">${h(e[e.length-1].x)}</text>
-    </svg>`}async function Se(e,t,a){t.innerHTML=`<section class="card chat"><div class="msgs" data-msgs>${I()}</div>
-      <form class="composer" data-send><textarea name="b" rows="1" placeholder="Escribe un mensaje…" required></textarea><button class="icon-btn primary" aria-label="Enviar">${S("send")}</button></form></section>`;const i=t.querySelector("[data-msgs]");let s=-1;async function n(){const c=await DB.list("messages",{eq:{client_id:e.id},order:["created_at","asc"]});c.length!==s&&(s=c.length,i.innerHTML=c.length?c.map(d=>`<div class="msg ${d.author===a?"mine":""}"><p>${R(d.body)}</p><small>${h(d.created_at,{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</small></div>`).join(""):`<p class="empty">${a==="coach"?"Empieza la conversación con "+l(e.name.split(" ")[0])+".":"Escribe a tu entrenador cualquier duda."}</p>`,i.scrollTop=i.scrollHeight)}await n(),U.push(setInterval(()=>{document.visibilityState==="visible"&&n().catch(()=>{})},15e3));const r=t.querySelector("[data-send]"),o=r.b;o.addEventListener("keydown",c=>{c.key==="Enter"&&!c.shiftKey&&window.innerWidth>700&&(c.preventDefault(),r.requestSubmit())}),o.addEventListener("input",()=>{o.style.height="auto",o.style.height=Math.min(140,o.scrollHeight)+"px"}),r.onsubmit=async c=>{c.preventDefault();const d=o.value.trim();d&&(o.value="",o.style.height="auto",await b(()=>DB.insert("messages",{client_id:e.id,author:a,body:d})),s=-1,n())}}async function Re(e,t){try{const a=await de(),i=(e.sheet_name||e.name).trim().toLowerCase(),s=a.clientes.find(r=>String(r.nombre).trim().toLowerCase()===i),n=a.pagos.filter(r=>String(r.cliente).trim().toLowerCase()===i);t.innerHTML=`${a.demo?ke():""}
-        ${s?`<div class="kpis small">
-          <div class="kpi"><small>Plan actual</small><b class="txt">${l(s.plan||"—")}</b><span>${v(s.cuota)}</span></div>
-          <div class="kpi ${String(s.estado).includes("VENC")?"warn":""}"><small>Próximo vencimiento</small><b class="txt">${h(s.vence,{day:"numeric",month:"short",year:"numeric"})}</b><span>${l(s.estado)} · ${l(s.dias)}</span></div>
-          <div class="kpi"><small>Pagado este mes</small><b class="txt">${l(s.pagadoMes||"—")}</b><span>${s.pendiente?"Pendiente fraccionado "+v(s.pendiente):""}</span></div>
-        </div>`:`<p class="note">No encuentro a "${l(e.sheet_name||e.name)}" en tu hoja. Edita el cliente y pon en "Nombre en la hoja de cobros" el nombre exacto de tu Excel.</p>`}
-        <button class="btn primary" data-pay>${S("plus")} Registrar pago</button>
-        <section class="card"><h3>Pagos</h3>${Ee(n)}</section>`,t.querySelector("[data-pay]").onclick=()=>fe(a,s?s.nombre:e.sheet_name||e.name,()=>q())}catch(a){t.innerHTML=xe(a)}}const ke=()=>'<p class="note small">Modo demo: estos cobros son inventados. Al conectar tu hoja real verás tus clientes y pagos.</p>',xe=e=>`<div class="hero-empty">${S("euro","xl")}<h2>${e.message==="NO_SHEET"?"Conecta tu hoja de cobros":"No se pudo leer la hoja"}</h2><p>${e.message==="NO_SHEET"?"Ve a Cobros y pega la dirección de tu hoja (te explico cómo en la guía).":l(e.message)}</p><a class="btn primary" href="#/cobros">Ir a Cobros</a></div>`,Ee=e=>e.length?`<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Plan</th><th class="r">Importe</th><th>Método</th><th>Cubre hasta</th></tr></thead>
-      <tbody>${e.map(t=>`<tr><td>${h(t.fecha,{day:"numeric",month:"short",year:"2-digit"})}</td><td>${l(t.cliente)}</td><td>${l(t.plan)}</td><td class="r">${v(t.importe)}</td><td>${l(t.metodo)}</td><td>${h(t.vence,{day:"numeric",month:"short",year:"2-digit"})}</td></tr>`).join("")}</tbody></table></div>`:'<p class="empty">Sin pagos registrados.</p>';function fe(e,t,a){const i=[...new Set(e.clientes.map(c=>c.nombre))];t&&!i.includes(t)&&i.unshift(t);const s=c=>e.tarifas.find(d=>d.plan===c),n=e.clientes.find(c=>c.nombre===t),r=_("Registrar pago",`
+        <section class="card"><h3>Check-ins</h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
+        <section class="card"><h3>Entrenos</h3>${done.length ? `<ul class="sessions">${done.map(s => `<li data-s="${s.id}" class="${asCoach && !s.coach_seen ? 'unseen' : ''}"><button type="button" class="srow"><b>${esc(s.routine_name || 'Entreno')}</b><small>${fmtDate(s.started_at, { weekday: 'short', day: 'numeric', month: 'short' })} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</small></button><div class="sdetail" hidden></div></li>`).join('')}</ul>` : '<p class="empty">Aún no hay entrenos registrados.</p>'}</section>
+      </div>`;
+    const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
+    // check-ins con fotos
+    const ckBox = box.querySelector('[data-cks]');
+    for (const k of checkins) {
+      const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
+      const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh]].filter(m => m[1]);
+      const sc = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
+      el.innerHTML = `<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg</span>` : ''}</header>
+        ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])} cm`).join(' · ')}</p>` : ''}
+        ${sc.length ? `<div class="scores">${sc.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(5 - m[1])}</b></span>`).join('')}</div>` : ''}
+        ${k.notes ? `<p>“${nl2br(k.notes)}”</p>` : ''}
+        ${k.photo_path ? '<div class="photo" data-photo></div>' : ''}
+        ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
+        ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
+      ckBox.appendChild(el);
+      if (k.photo_path) DB.photoUrl(k.photo_path).then(u => { el.querySelector('[data-photo]').innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto de progreso" loading="lazy"></a>`; }).catch(() => {});
+      const rf = el.querySelector('[data-reply]');
+      if (rf) rf.onsubmit = async e => { e.preventDefault(); const v = rf.r.value.trim(); const patch = { coach_seen: true }; if (v) patch.coach_reply = v; await safe(() => DB.update('checkins', k.id, patch), 'Check-in revisado'); render(); };
+    }
+    // detalle de sesiones
+    box.querySelectorAll('.sessions li').forEach(li => {
+      li.querySelector('.srow').onclick = async () => {
+        const d = li.querySelector('.sdetail');
+        if (!d.hidden) { d.hidden = true; return; }
+        const s = byId(done, li.dataset.s);
+        const sets = logs.filter(l => l.session_id === s.id).sort((a, b) => a.set_no - b.set_no);
+        const groups = {}; sets.forEach(l => { (groups[l.exercise_name] = groups[l.exercise_name] || []).push(l); });
+        d.innerHTML = Object.entries(groups).map(([n, ls]) => `<div class="sx"><b>${esc(n)}</b><span>${ls.map(l => `${fmtKg(l.weight)}×${l.reps ?? '–'}`).join(' · ')}</span></div>`).join('') + (s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : '') || '<p class="empty">Sin series registradas</p>';
+        d.hidden = false;
+        if (asCoach && !s.coach_seen) { s.coach_seen = true; li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
+      };
+    });
+  }
+
+  function lineChart(pts) {
+    const W = 600, H = 200, P = 46;
+    const ys = pts.map(p => p.y); let min = Math.min(...ys), max = Math.max(...ys);
+    if (max - min < 1) { min -= 0.5; max += 0.5; }
+    const x = i => P + (i * (W - P * 2)) / Math.max(1, pts.length - 1);
+    const y = v => H - P - ((v - min) * (H - P * 2)) / (max - min);
+    const path = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.y).toFixed(1)}`).join(' ');
+    const area = `${path} L${x(pts.length - 1)},${H - P} L${x(0)},${H - P} Z`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del peso">
+      <line x1="${P}" x2="${W - P}" y1="${y(max)}" y2="${y(max)}" class="grid"/><line x1="${P}" x2="${W - P}" y1="${y(min)}" y2="${y(min)}" class="grid"/>
+      <text x="${W - P + 4}" y="${y(max) + 4}" class="lbl">${fmtKg(max)}</text><text x="${W - P + 4}" y="${y(min) + 4}" class="lbl">${fmtKg(min)}</text>
+      <path d="${area}" class="area"/><path d="${path}" class="line"/>
+      ${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.y)}" r="3.5" class="pt"><title>${fmtDate(p.x)}: ${fmtKg(p.y)} kg</title></circle>`).join('')}
+      <text x="${P}" y="${H - 6}" class="lbl">${fmtDate(pts[0].x)}</text><text x="${W - P}" y="${H - 6}" class="lbl" text-anchor="end">${fmtDate(pts[pts.length - 1].x)}</text>
+    </svg>`;
+  }
+
+  // ----- Mensajes (compartido)
+  async function tabMessages(c, box, me) {
+    box.innerHTML = `<section class="card chat"><div class="msgs" data-msgs>${loading()}</div>
+      <form class="composer" data-send><textarea name="b" rows="1" placeholder="Escribe un mensaje…" required></textarea><button class="icon-btn primary" aria-label="Enviar">${ic('send')}</button></form></section>`;
+    const list = box.querySelector('[data-msgs]');
+    let lastCount = -1;
+    async function load() {
+      const msgs = await DB.list('messages', { eq: { client_id: c.id }, order: ['created_at', 'asc'] });
+      if (msgs.length === lastCount) return; lastCount = msgs.length;
+      list.innerHTML = msgs.length ? msgs.map(m => `<div class="msg ${m.author === me ? 'mine' : ''}"><p>${nl2br(m.body)}</p><small>${fmtDate(m.created_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('')
+        : `<p class="empty">${me === 'coach' ? 'Empieza la conversación con ' + esc(c.name.split(' ')[0]) + '.' : 'Escribe a tu entrenador cualquier duda.'}</p>`;
+      list.scrollTop = list.scrollHeight;
+    }
+    await load();
+    intervals.push(setInterval(() => { if (document.visibilityState === 'visible') load().catch(() => {}); }, 15000));
+    const f = box.querySelector('[data-send]');
+    const ta = f.b;
+    ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) { e.preventDefault(); f.requestSubmit(); } });
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; });
+    f.onsubmit = async e => {
+      e.preventDefault(); const body = ta.value.trim(); if (!body) return;
+      ta.value = ''; ta.style.height = 'auto';
+      await safe(() => DB.insert('messages', { client_id: c.id, author: me, body }));
+      lastCount = -1; load();
+    };
+  }
+
+  // ----- Cobros del cliente
+  async function tabClientPayments(c, box) {
+    try {
+      const data = await getSheet();
+      const key = (c.sheet_name || c.name).trim().toLowerCase();
+      const row = data.clientes.find(x => String(x.nombre).trim().toLowerCase() === key);
+      const pagos = data.pagos.filter(p => String(p.cliente).trim().toLowerCase() === key);
+      box.innerHTML = `${data.demo ? demoSheetNote() : ''}
+        ${row ? `<div class="kpis small">
+          <div class="kpi"><small>Plan actual</small><b class="txt">${esc(row.plan || '—')}</b><span>${eur(row.cuota)}</span></div>
+          <div class="kpi ${String(row.estado).includes('VENC') ? 'warn' : ''}"><small>Próximo vencimiento</small><b class="txt">${fmtDate(row.vence, { day: 'numeric', month: 'short', year: 'numeric' })}</b><span>${esc(row.estado)} · ${esc(row.dias)}</span></div>
+          <div class="kpi"><small>Pagado este mes</small><b class="txt">${esc(row.pagadoMes || '—')}</b><span>${row.pendiente ? 'Pendiente fraccionado ' + eur(row.pendiente) : ''}</span></div>
+        </div>` : `<p class="note">No encuentro a "${esc(c.sheet_name || c.name)}" en tu hoja. Edita el cliente y pon en "Nombre en la hoja de cobros" el nombre exacto de tu Excel.</p>`}
+        <button class="btn primary" data-pay>${ic('plus')} Registrar pago</button>
+        <section class="card"><h3>Pagos</h3>${pagosTable(pagos)}</section>`;
+      box.querySelector('[data-pay]').onclick = () => paymentForm(data, row ? row.nombre : (c.sheet_name || c.name), () => render());
+    } catch (e) { box.innerHTML = sheetError(e); }
+  }
+  const demoSheetNote = () => '<p class="note small">Modo demo: estos cobros son inventados. Al conectar tu hoja real verás tus clientes y pagos.</p>';
+  const sheetError = e => `<div class="hero-empty">${ic('euro', 'xl')}<h2>${e.message === 'NO_SHEET' ? 'Conecta tu hoja de cobros' : 'No se pudo leer la hoja'}</h2><p>${e.message === 'NO_SHEET' ? 'Ve a Cobros y pega la dirección de tu hoja (te explico cómo en la guía).' : esc(e.message)}</p><a class="btn primary" href="#/cobros">Ir a Cobros</a></div>`;
+  const pagosTable = pagos => pagos.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Plan</th><th class="r">Importe</th><th>Método</th><th>Cubre hasta</th></tr></thead>
+      <tbody>${pagos.map(p => `<tr><td>${fmtDate(p.fecha, { day: 'numeric', month: 'short', year: '2-digit' })}</td><td>${esc(p.cliente)}</td><td>${esc(p.plan)}</td><td class="r">${eur(p.importe)}</td><td>${esc(p.metodo)}</td><td>${fmtDate(p.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="empty">Sin pagos registrados.</p>';
+
+  function paymentForm(data, clientName, after) {
+    const names = [...new Set(data.clientes.map(x => x.nombre))];
+    if (clientName && !names.includes(clientName)) names.unshift(clientName);
+    const tarifa = p => data.tarifas.find(t => t.plan === p);
+    const cur = data.clientes.find(x => x.nombre === clientName);
+    const f = modal('Registrar pago', `
       <div class="form-grid">
-        <label>Cliente<select name="cliente" required>${i.map(c=>`<option ${c===t?"selected":""}>${l(c)}</option>`).join("")}</select></label>
-        <label>Fecha del pago<input name="fecha" type="date" required value="${N()}"></label>
-        <label>Plan<select name="plan" required>${e.tarifas.map(c=>`<option ${n&&n.plan===c.plan?"selected":""}>${l(c.plan)}</option>`).join("")}</select></label>
+        <label>Cliente<select name="cliente" required>${names.map(n => `<option ${n === clientName ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        <label>Fecha del pago<input name="fecha" type="date" required value="${today()}"></label>
+        <label>Plan<select name="plan" required>${data.tarifas.map(t => `<option ${cur && cur.plan === t.plan ? 'selected' : ''}>${esc(t.plan)}</option>`).join('')}</select></label>
         <label>Importe (€)<input name="importe" type="number" step="0.01" min="0" required></label>
-        <label>Método<select name="metodo">${["Bizum","Efectivo","Transferencia","Tarjeta"].map(c=>`<option ${n&&n.metodo===c?"selected":""}>${c}</option>`).join("")}</select></label>
+        <label>Método<select name="metodo">${['Bizum', 'Efectivo', 'Transferencia', 'Tarjeta'].map(m => `<option ${cur && cur.metodo === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label class="full">Notas<input name="notas" placeholder="Ej: pago 1 de 2, cambio de plan…"></label>
       </div>
-      <p class="muted small">Se añade una fila en "Registro de Pagos" de tu hoja; el servicio y el vencimiento los calculan tus fórmulas.</p>`,{submitLabel:"Registrar en la hoja",onSubmit:async(c,d)=>{const $=Object.fromEntries(d),p=await b(()=>DB.sheets("registrarPago",{pago:$}),"Pago registrado");M.sheet=null,a&&a(p)}}),o=()=>{const c=s(r.plan.value),d=e.clientes.find($=>$.nombre===r.cliente.value);r.importe.value=d&&d.plan===r.plan.value&&d.cuota?d.cuota:c?c.precio:""};r.plan.onchange=o,r.cliente.onchange=()=>{const c=e.clientes.find(d=>d.nombre===r.cliente.value);c&&c.plan&&(r.plan.value=c.plan),o()},o()}async function Fe(){G(W,"cobros",I(),{title:"Cobros",actions:`<button class="icon-btn" data-refresh title="Actualizar">${S("refresh")}</button><button class="btn small ghost" data-conf>${S("cog")}<span>Conectar hoja</span></button>`}),E.querySelector("[data-conf]").onclick=Me,E.querySelector("[data-refresh]").onclick=()=>{M.sheet=null,q()};const e=E.querySelector(".content");let t;try{t=await de()}catch(d){e.innerHTML=d.message==="NO_SHEET"?`<div class="hero-empty">${S("euro","xl")}<h2>Conecta tu hoja de cobros</h2><p>Así podrás ver vencimientos y registrar pagos desde la app, y todo queda apuntado en tu Excel de Google.</p><button class="btn primary" data-conf2>Conectar hoja</button></div>`:xe(d);const $=e.querySelector("[data-conf2]");$&&($.onclick=Me);return}const a=t.clientes.filter(d=>d.estado&&d.estado!=="BAJA / PAUSA"),i=d=>parseInt(d.dias,10),s=a.filter(d=>i(d)<0),n=a.filter(d=>i(d)>=0&&i(d)<=7),r=N().slice(0,7),o=t.pagos.filter(d=>String(d.fecha).slice(0,7)===r).reduce((d,$)=>d+(Number($.importe)||0),0),c=d=>{const $=M.clients.find(p=>(p.sheet_name||p.name).toLowerCase()===String(d.nombre).toLowerCase());return $&&$.phone?`https://wa.me/${String($.phone).replace(/\D/g,"")}?text=${encodeURIComponent(`¡Hola ${String(d.nombre).split(" ")[0]}! Te recuerdo que tu plan ${d.plan} de ${K} ${i(d)<0?"venció":"vence"} el ${h(d.vence,{day:"numeric",month:"long"})} (${v(d.cuota)}). ¡Gracias! 💪`)}`:""};M.clients.length||await Z().catch(()=>{}),e.innerHTML=`${t.demo?ke():""}
+      <p class="muted small">Se añade una fila en "Registro de Pagos" de tu hoja; el servicio y el vencimiento los calculan tus fórmulas.</p>`, {
+      submitLabel: 'Registrar en la hoja',
+      onSubmit: async (form, fd) => {
+        const pago = Object.fromEntries(fd);
+        const r = await safe(() => DB.sheets('registrarPago', { pago }), 'Pago registrado');
+        S.sheet = null; if (after) after(r);
+      }
+    });
+    const fill = () => {
+      const t = tarifa(f.plan.value);
+      const c2 = data.clientes.find(x => x.nombre === f.cliente.value);
+      f.importe.value = c2 && c2.plan === f.plan.value && c2.cuota ? c2.cuota : (t ? t.precio : '');
+    };
+    f.plan.onchange = fill; f.cliente.onchange = () => { const c2 = data.clientes.find(x => x.nombre === f.cliente.value); if (c2 && c2.plan) f.plan.value = c2.plan; fill(); };
+    fill();
+  }
+
+  // ---------- Cobros (vista general)
+  async function coachPayments() {
+    shell(COACH_NAV, 'cobros', loading(), { title: 'Cobros', actions: `<button class="icon-btn" data-refresh title="Actualizar">${ic('refresh')}</button><button class="btn small ghost" data-conf>${ic('cog')}<span>Conectar hoja</span></button>` });
+    $app.querySelector('[data-conf]').onclick = sheetSettings;
+    $app.querySelector('[data-refresh]').onclick = () => { S.sheet = null; render(); };
+    const box = $app.querySelector('.content');
+    let data;
+    try { data = await getSheet(); } catch (e) { box.innerHTML = e.message === 'NO_SHEET' ? `<div class="hero-empty">${ic('euro', 'xl')}<h2>Conecta tu hoja de cobros</h2><p>Así podrás ver vencimientos y registrar pagos desde la app, y todo queda apuntado en tu Excel de Google.</p><button class="btn primary" data-conf2>Conectar hoja</button></div>` : sheetError(e); const b = box.querySelector('[data-conf2]'); if (b) b.onclick = sheetSettings; return; }
+    const act = data.clientes.filter(c => c.estado && c.estado !== 'BAJA / PAUSA');
+    const dd = c => parseInt(c.dias, 10);
+    const venc = act.filter(c => dd(c) < 0), prox = act.filter(c => dd(c) >= 0 && dd(c) <= 7);
+    const ym = today().slice(0, 7);
+    const mes = data.pagos.filter(p => String(p.fecha).slice(0, 7) === ym).reduce((s, p) => s + (Number(p.importe) || 0), 0);
+    const waLink = c => { const cl = S.clients.find(x => (x.sheet_name || x.name).toLowerCase() === String(c.nombre).toLowerCase()); return cl && cl.phone ? `https://wa.me/${String(cl.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`¡Hola ${String(c.nombre).split(' ')[0]}! Te recuerdo que tu plan ${c.plan} de ${BRAND} ${dd(c) < 0 ? 'venció' : 'vence'} el ${fmtDate(c.vence, { day: 'numeric', month: 'long' })} (${eur(c.cuota)}). ¡Gracias! 💪`)}` : ''; };
+    if (!S.clients.length) await loadClients().catch(() => {});
+    box.innerHTML = `${data.demo ? demoSheetNote() : ''}
       <div class="kpis">
-        <div class="kpi"><small>Cobrado este mes</small><b>${v(o)}</b><span>${t.pagos.filter(d=>String(d.fecha).slice(0,7)===r).length} pagos</span></div>
-        <div class="kpi"><small>Clientes con plan</small><b>${a.length}</b><span>según tu hoja</span></div>
-        <div class="kpi ${s.length?"warn":""}"><small>Vencidos</small><b>${s.length}</b><span>${v(s.reduce((d,$)=>d+(Number($.cuota)||0),0))} por cobrar</span></div>
-        <div class="kpi"><small>Vencen en 7 días</small><b>${n.length}</b><span>${v(n.reduce((d,$)=>d+(Number($.cuota)||0),0))}</span></div>
+        <div class="kpi"><small>Cobrado este mes</small><b>${eur(mes)}</b><span>${data.pagos.filter(p => String(p.fecha).slice(0, 7) === ym).length} pagos</span></div>
+        <div class="kpi"><small>Clientes con plan</small><b>${act.length}</b><span>según tu hoja</span></div>
+        <div class="kpi ${venc.length ? 'warn' : ''}"><small>Vencidos</small><b>${venc.length}</b><span>${eur(venc.reduce((s, c) => s + (Number(c.cuota) || 0), 0))} por cobrar</span></div>
+        <div class="kpi"><small>Vencen en 7 días</small><b>${prox.length}</b><span>${eur(prox.reduce((s, c) => s + (Number(c.cuota) || 0), 0))}</span></div>
       </div>
-      <button class="btn primary" data-pay>${S("plus")} Registrar pago</button>
+      <button class="btn primary" data-pay>${ic('plus')} Registrar pago</button>
       <section class="card"><h3>Estado por cliente</h3><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th class="r">Cuota</th><th>Vence</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${a.sort((d,$)=>i(d)-i($)).map(d=>`<tr><td><b>${l(d.nombre)}</b></td><td>${l(d.plan)}</td><td class="r">${v(d.cuota)}</td><td>${h(d.vence,{day:"numeric",month:"short",year:"2-digit"})}</td>
-          <td><span class="pill ${i(d)<0?"red":i(d)<=7?"amber":"green"}">${i(d)<0?"Vencido "+-i(d)+" d":i(d)+" d"}</span></td>
-          <td class="r nowrap">${c(d)?`<a class="icon-btn" target="_blank" rel="noopener" href="${l(c(d))}" title="Recordatorio por WhatsApp">${S("wa")}</a>`:""}<button class="btn small" data-payfor="${l(d.nombre)}">Cobrar</button></td></tr>`).join("")}
+        ${act.sort((a, b) => dd(a) - dd(b)).map(c => `<tr><td><b>${esc(c.nombre)}</b></td><td>${esc(c.plan)}</td><td class="r">${eur(c.cuota)}</td><td>${fmtDate(c.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+          <td><span class="pill ${dd(c) < 0 ? 'red' : dd(c) <= 7 ? 'amber' : 'green'}">${dd(c) < 0 ? 'Vencido ' + -dd(c) + ' d' : dd(c) + ' d'}</span></td>
+          <td class="r nowrap">${waLink(c) ? `<a class="icon-btn" target="_blank" rel="noopener" href="${esc(waLink(c))}" title="Recordatorio por WhatsApp">${ic('wa')}</a>` : ''}<button class="btn small" data-payfor="${esc(c.nombre)}">Cobrar</button></td></tr>`).join('')}
       </tbody></table></div></section>
-      <section class="card"><h3>Últimos pagos</h3>${Ee(t.pagos.slice(0,20))}</section>
-      <p class="muted small">Datos leídos de tu hoja ${y(t.actualizado)}.</p>`,e.querySelector("[data-pay]").onclick=()=>fe(t,"",()=>q()),e.querySelectorAll("[data-payfor]").forEach(d=>d.onclick=()=>fe(t,d.dataset.payfor,()=>q()))}async function Me(){const[e,t]=await Promise.all([DB.getSetting("sheets_url"),DB.getSetting("sheets_token")]);_("Conectar hoja de cobros",`
+      <section class="card"><h3>Últimos pagos</h3>${pagosTable(data.pagos.slice(0, 20))}</section>
+      <p class="muted small">Datos leídos de tu hoja ${ago(data.actualizado)}.</p>`;
+    box.querySelector('[data-pay]').onclick = () => paymentForm(data, '', () => render());
+    box.querySelectorAll('[data-payfor]').forEach(b => b.onclick = () => paymentForm(data, b.dataset.payfor, () => render()));
+  }
+
+  async function sheetSettings() {
+    const [url, token] = await Promise.all([DB.getSetting('sheets_url'), DB.getSetting('sheets_token')]);
+    modal('Conectar hoja de cobros', `
       <ol class="steps small">
         <li>Abre tu hoja → <b>Extensiones → Apps Script</b>.</li>
         <li>Pega el código del archivo <code>apps-script/Codigo.gs</code> y cambia <code>TOKEN</code> por una clave inventada.</li>
         <li><b>Implementar → Nueva implementación → Aplicación web</b> · Ejecutar como: <i>Yo</i> · Acceso: <i>Cualquier usuario</i>.</li>
         <li>Copia la URL que acaba en <code>/exec</code> y pégala aquí con tu clave.</li>
       </ol>
-      <label>URL de la aplicación web<input name="url" value="${l(e)}" placeholder="https://script.google.com/macros/s/…/exec"></label>
-      <label>Clave (TOKEN)<input name="token" type="password" value="${l(t)}"></label>`,{submitLabel:"Guardar y probar",onSubmit:async(a,i)=>{await DB.setSetting("sheets_url",i.get("url").trim()),await DB.setSetting("sheets_token",i.get("token").trim()),M.sheet=null,i.get("url").trim()&&await b(()=>de(!0),"Hoja conectada ✔"),q()}})}async function Ue(){G(W,"ejercicios",I(),{title:"Ejercicios",actions:`<button class="btn primary" data-new>${S("plus")}<span>Nuevo</span></button>`}),E.querySelector("[data-new]").onclick=()=>De();const e=await ie(),t={};e.forEach(i=>{(t[i.muscle||"Otros"]=t[i.muscle||"Otros"]||[]).push(i)}),E.querySelector(".content").innerHTML=`<input class="search" placeholder="Buscar ejercicio…" data-q>
+      <label>URL de la aplicación web<input name="url" value="${esc(url)}" placeholder="https://script.google.com/macros/s/…/exec"></label>
+      <label>Clave (TOKEN)<input name="token" type="password" value="${esc(token)}"></label>`, {
+      submitLabel: 'Guardar y probar',
+      onSubmit: async (f, fd) => {
+        await DB.setSetting('sheets_url', fd.get('url').trim());
+        await DB.setSetting('sheets_token', fd.get('token').trim());
+        S.sheet = null;
+        if (fd.get('url').trim()) { await safe(() => getSheet(true), 'Hoja conectada ✔'); }
+        render();
+      }
+    });
+  }
+
+  // ---------- Catálogo de ejercicios
+  async function coachExercises() {
+    shell(COACH_NAV, 'ejercicios', loading(), { title: 'Ejercicios', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo</span></button>` });
+    $app.querySelector('[data-new]').onclick = () => exerciseForm();
+    const ex = await loadExercises();
+    const groups = {}; ex.forEach(e => { (groups[e.muscle || 'Otros'] = groups[e.muscle || 'Otros'] || []).push(e); });
+    $app.querySelector('.content').innerHTML = `<input class="search" placeholder="Buscar ejercicio…" data-q>
       <p class="muted small">Tu catálogo: aparece como sugerencia al crear rutinas. Añade un enlace a vídeo para que tus clientes vean la técnica.</p>
-      ${Object.keys(t).sort().map(i=>`<section class="card flush" data-g><h3 class="pad">${l(i)}</h3><ul class="list">${t[i].map(s=>`<li><button type="button" class="lrow" data-id="${s.id}"><span class="grow"><b>${l(s.name)}</b><small>${l(s.equipment||"")}</small></span>${s.media_url?S("video"):""}</button></li>`).join("")}</ul></section>`).join("")}`,E.querySelectorAll("[data-id]").forEach(i=>i.onclick=()=>De(z(e,i.dataset.id)));const a=E.querySelector("[data-q]");a.oninput=()=>{const i=a.value.toLowerCase();E.querySelectorAll("[data-g]").forEach(s=>{let n=!1;s.querySelectorAll("li").forEach(r=>{const o=r.textContent.toLowerCase().includes(i);r.hidden=!o,n=n||o}),s.hidden=!n})}}function De(e){const t=!e;e=e||{},_(t?"Nuevo ejercicio":"Editar ejercicio",`<div class="form-grid">
-      <label class="full">Nombre<input name="name" required value="${l(e.name)}"></label>
-      <label>Grupo muscular<input name="muscle" value="${l(e.muscle)}" list="muscles"></label>
-      <datalist id="muscles">${[...new Set(M.exercises.map(a=>a.muscle).filter(Boolean))].map(a=>`<option value="${l(a)}">`).join("")}</datalist>
-      <label>Material<input name="equipment" value="${l(e.equipment)}"></label>
-      <label class="full">Vídeo o foto de la técnica (enlace)<input name="media_url" value="${l(e.media_url)}" placeholder="YouTube, Instagram, Drive…"></label>
-      <label class="full">Indicaciones técnicas<textarea name="notes" rows="3">${l(e.notes)}</textarea></label></div>`,{danger:t?null:{label:"Eliminar",run:async()=>{await x('¿Eliminar "'+e.name+'" del catálogo? Las rutinas que ya lo usan no cambian.')&&(await b(()=>DB.remove("exercises",e.id),"Eliminado"),q())}},onSubmit:async(a,i)=>{const s=Object.fromEntries(i);if(!s.name.trim())return!1;t?await b(()=>DB.insert("exercises",s),"Ejercicio añadido"):await b(()=>DB.update("exercises",e.id,s),"Guardado"),q()}})}const ue=[{key:"hoy",href:"",icon:"dumbbell",label:"Entreno"},{key:"nutricion",href:"nutricion",icon:"apple",label:"Nutrición"},{key:"progreso",href:"progreso",icon:"chart",label:"Progreso"},{key:"mensajes",href:"mensajes",icon:"chat",label:"Mensajes"}];async function ze(){if(document.body.dataset.role="client",!M.client){E.innerHTML=`<main class="login"><div class="login-card"><div class="brand big"><span class="brand-mark">JM</span><div><b>${l(K)}</b></div></div>
-        <h2>¡Ya casi está!</h2><p>Tu cuenta (<b>${l(M.profile.email)}</b>) todavía no está vinculada a un plan. Pide a tu entrenador que te dé de alta con este mismo correo y vuelve a entrar.</p>
-        <button class="btn primary block" data-retry>Comprobar de nuevo</button><button class="btn ghost block" data-out>Salir</button></div></main>`,E.querySelector("[data-retry]").onclick=P,E.querySelector("[data-out]").onclick=()=>DB.signOut();return}const[e,t]=M.route;if(e==="entreno")return Ke(t);if(!e)return Ge();if(e==="nutricion")return Je();if(e==="progreso")return G(ue,"progreso",I(),{title:"Mi progreso"}),_e(M.client,E.querySelector(".content"),!1);if(e==="mensajes")return G(ue,"mensajes",I(),{title:"Mensajes"}),Se(M.client,E.querySelector(".content"),"client");A("#/")}async function Ge(){const e=M.client;G(ue,"hoy",I(),{title:`Hola, ${e.name.split(" ")[0]}`});const[t,a,i]=await Promise.all([DB.list("routines",{eq:{client_id:e.id},order:["position","asc"]}),DB.list("routine_items",{eq:{client_id:e.id},order:["position","asc"]}),DB.list("sessions",{eq:{client_id:e.id},order:["started_at","desc"],limit:30})]);t.sort((g,T)=>(g.day||9)-(T.day||9));const s=f(),n=t.filter(g=>g.day===s),r=new Set(i.filter(g=>g.finished_at&&g.started_at.slice(0,10)===N()).map(g=>g.routine_id)),o=new Date;o.setHours(0,0,0,0),o.setDate(o.getDate()-(s-1));const c=i.filter(g=>g.finished_at&&new Date(g.started_at)>=o),d=t.filter(g=>g.day).length,$=t.filter(g=>g.day&&g.day>s)[0]||t.filter(g=>g.day)[0],p=(g,T)=>{const m=a.filter(u=>u.routine_id===g.id);return`<section class="card routine ${T?"hero":""}"><header><div><small>${g.day?O[g.day]:"Cuando quieras"}</small><b>${l(g.name)}</b><small>${m.length} ejercicios · ~${Math.round(m.reduce((u,C)=>u+C.sets*(45+C.rest_sec),0)/60)} min</small></div><span class="grow"></span>${r.has(g.id)?'<span class="pill green">Hecho hoy ✓</span>':""}</header>
-        ${T?`<ol class="ex-list compact">${m.map(u=>`<li><b>${l(u.exercise_name)}</b><span>${u.sets}×${l(u.reps)}</span></li>`).join("")}</ol>`:""}
-        <a class="btn ${T?"primary big block":"small"}" href="#/entreno/${g.id}">${S("play")} ${T?"Empezar entreno":"Empezar"}</a></section>`},w=qe();E.querySelector(".content").innerHTML=`
-      ${w?`<a class="resume" href="#/entreno/${l(w.routine_id)}">${S("play")}<span class="grow"><b>Tienes un entreno a medias</b><small>${l(w.routine_name)} · empezado ${y(w.started_at)}</small></span><span class="btn small primary">Continuar</span></a>`:""}
-      <div class="weekstrip">${[1,2,3,4,5,6,7].map(g=>{const T=t.some(C=>C.day===g),m=new Date(o.getTime()+(g-1)*864e5),u=c.some(C=>new Date(C.started_at).toDateString()===m.toDateString());return`<div class="${g===s?"today":""} ${T?"has":""} ${u?"did":""}"><small>${ce[g]}</small><b>${m.getDate()}</b><i></i></div>`}).join("")}</div>
-      <p class="muted small center">${c.length} de ${d||"–"} entrenos esta semana</p>
-      ${n.length?n.map(g=>p(g,!0)).join(""):`<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${$?`Tu próximo entreno es <b>${l($.name)}</b> el ${O[$.day].toLowerCase()}.`:"Tu entrenador aún no te ha asignado entrenos con día."}</p></section>`}
-      ${t.filter(g=>g.day!==s).length?`<h3 class="sub">Todas mis rutinas</h3>${t.filter(g=>g.day!==s).map(g=>p(g,!1)).join("")}`:""}
-      ${t.length?"":'<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>'}`}async function Je(){G(ue,"nutricion",I(),{title:"Mi nutrición"});const e=await DB.get("nutrition_plans",M.client.id,"client_id"),t=E.querySelector(".content");if(!e){t.innerHTML=`<div class="hero-empty">${S("apple","xl")}<h2>Aún no tienes plan de nutrición</h2><p>Cuando tu entrenador lo publique, lo verás aquí.</p></div>`;return}const a=(e.protein||0)*4+(e.carbs||0)*4+(e.fat||0)*9,i=s=>a?Math.round(s/a*100):0;t.innerHTML=`
-      ${e.kcal?`<section class="card macros"><div class="kcal"><b>${e.kcal}</b><small>kcal al día</small></div>
-        ${a?`<div class="mbar"><i style="flex:${i(e.protein*4)}" class="p"></i><i style="flex:${i(e.carbs*4)}" class="c"></i><i style="flex:${i(e.fat*9)}" class="f"></i></div>`:""}
-        <div class="mrow"><span class="p">Proteína <b>${e.protein??"–"} g</b></span><span class="c">Carbohidratos <b>${e.carbs??"–"} g</b></span><span class="f">Grasas <b>${e.fat??"–"} g</b></span>${e.water?`<span>Agua <b>${l(e.water)}</b></span>`:""}</div></section>`:""}
-      ${e.meals?`<section class="card"><h3>Mis comidas</h3><div class="meals">${l(e.meals).split(`
-`).filter(Boolean).map(s=>{const n=s.match(/^([^:]{1,30}):(.*)$/);return n?`<div class="meal"><b>${n[1]}</b><p>${n[2]}</p></div>`:`<p>${s}</p>`}).join("")}</div></section>`:""}
-      ${e.notes?`<section class="card"><h3>Recomendaciones</h3><p>${R(e.notes)}</p></section>`:""}
-      <p class="muted small">Actualizado ${y(e.updated_at)}</p>`}function Ve(e){const t=(i,s)=>`<fieldset class="scale"><legend>${s}</legend>${[1,2,3,4,5].map(n=>`<label><input type="radio" name="${i}" value="${n}"><span>${n}</span></label>`).join("")}</fieldset>`,a=_("Check-in semanal",`
+      ${Object.keys(groups).sort().map(g => `<section class="card flush" data-g><h3 class="pad">${esc(g)}</h3><ul class="list">${groups[g].map(e => `<li><button type="button" class="lrow" data-id="${e.id}"><span class="grow"><b>${esc(e.name)}</b><small>${esc(e.equipment || '')}</small></span>${e.media_url ? ic('video') : ''}</button></li>`).join('')}</ul></section>`).join('')}`;
+    $app.querySelectorAll('[data-id]').forEach(b => b.onclick = () => exerciseForm(byId(ex, b.dataset.id)));
+    const q = $app.querySelector('[data-q]');
+    q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('[data-g]').forEach(s => { let any = false; s.querySelectorAll('li').forEach(li => { const m = li.textContent.toLowerCase().includes(v); li.hidden = !m; any = any || m; }); s.hidden = !any; }); };
+  }
+  function exerciseForm(e) {
+    const isNew = !e; e = e || {};
+    modal(isNew ? 'Nuevo ejercicio' : 'Editar ejercicio', `<div class="form-grid">
+      <label class="full">Nombre<input name="name" required value="${esc(e.name)}"></label>
+      <label>Grupo muscular<input name="muscle" value="${esc(e.muscle)}" list="muscles"></label>
+      <datalist id="muscles">${[...new Set(S.exercises.map(x => x.muscle).filter(Boolean))].map(m => `<option value="${esc(m)}">`).join('')}</datalist>
+      <label>Material<input name="equipment" value="${esc(e.equipment)}"></label>
+      <label class="full">Vídeo o foto de la técnica (enlace)<input name="media_url" value="${esc(e.media_url)}" placeholder="YouTube, Instagram, Drive…"></label>
+      <label class="full">Indicaciones técnicas<textarea name="notes" rows="3">${esc(e.notes)}</textarea></label></div>`, {
+      danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox('¿Eliminar "' + e.name + '" del catálogo? Las rutinas que ya lo usan no cambian.')) { await safe(() => DB.remove('exercises', e.id), 'Eliminado'); render(); } } },
+      onSubmit: async (f, fd) => {
+        const d = Object.fromEntries(fd); if (!d.name.trim()) return false;
+        if (isNew) await safe(() => DB.insert('exercises', d), 'Ejercicio añadido'); else await safe(() => DB.update('exercises', e.id, d), 'Guardado');
+        render();
+      }
+    });
+  }
+
+  // ================================================================ CLIENTE
+  const CLIENT_NAV = [
+    { key: 'hoy', href: '', icon: 'dumbbell', label: 'Entreno' },
+    { key: 'nutricion', href: 'nutricion', icon: 'apple', label: 'Nutrición' },
+    { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' },
+    { key: 'mensajes', href: 'mensajes', icon: 'chat', label: 'Mensajes' }
+  ];
+
+  async function renderClient() {
+    document.body.dataset.role = 'client';
+    if (!S.client) {
+      $app.innerHTML = `<main class="login"><div class="login-card"><div class="brand big"><span class="brand-mark">JM</span><div><b>${esc(BRAND)}</b></div></div>
+        <h2>¡Ya casi está!</h2><p>Tu cuenta (<b>${esc(S.profile.email)}</b>) todavía no está vinculada a un plan. Pide a tu entrenador que te dé de alta con este mismo correo y vuelve a entrar.</p>
+        <button class="btn primary block" data-retry>Comprobar de nuevo</button><button class="btn ghost block" data-out>Salir</button></div></main>`;
+      $app.querySelector('[data-retry]').onclick = boot;
+      $app.querySelector('[data-out]').onclick = () => DB.signOut();
+      return;
+    }
+    const [r0, r1] = S.route;
+    if (r0 === 'entreno') return workout(r1);
+    if (!r0) return clientToday();
+    if (r0 === 'nutricion') return clientNutrition();
+    if (r0 === 'progreso') { shell(CLIENT_NAV, 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
+    if (r0 === 'mensajes') { shell(CLIENT_NAV, 'mensajes', loading(), { title: 'Mensajes' }); return tabMessages(S.client, $app.querySelector('.content'), 'client'); }
+    go('#/');
+  }
+
+  async function clientToday() {
+    const c = S.client;
+    shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}` });
+    const [routines, items, sessions] = await Promise.all([
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 30 })
+    ]);
+    routines.sort((a, b) => (a.day || 9) - (b.day || 9));
+    const d = isoDay();
+    const todays = routines.filter(r => r.day === d);
+    const doneToday = new Set(sessions.filter(s => s.finished_at && s.started_at.slice(0, 10) === today()).map(s => s.routine_id));
+    const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(weekStart.getDate() - (d - 1));
+    const doneWeek = sessions.filter(s => s.finished_at && new Date(s.started_at) >= weekStart);
+    const planned = routines.filter(r => r.day).length;
+    const next = routines.filter(r => r.day && r.day > d)[0] || routines.filter(r => r.day)[0];
+    const card = (r, hero) => {
+      const its = items.filter(i => i.routine_id === r.id);
+      return `<section class="card routine ${hero ? 'hero' : ''}"><header><div><small>${r.day ? DIAS[r.day] : 'Cuando quieras'}</small><b>${esc(r.name)}</b><small>${its.length} ejercicios · ~${Math.round(its.reduce((s, i) => s + i.sets * (45 + i.rest_sec), 0) / 60)} min</small></div><span class="grow"></span>${doneToday.has(r.id) ? '<span class="pill green">Hecho hoy ✓</span>' : ''}</header>
+        ${hero ? `<ol class="ex-list compact">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol>` : ''}
+        <a class="btn ${hero ? 'primary big block' : 'small'}" href="#/entreno/${r.id}">${ic('play')} ${hero ? 'Empezar entreno' : 'Empezar'}</a></section>`;
+    };
+    const pending = getActiveWorkout();
+    $app.querySelector('.content').innerHTML = `
+      ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
+      <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()); return `<div class="${n === d ? 'today' : ''} ${has ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
+      <p class="muted small center">${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
+      ${todays.length ? todays.map(r => card(r, true)).join('') : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
+      ${routines.filter(r => r.day !== d).length ? `<h3 class="sub">Todas mis rutinas</h3>${routines.filter(r => r.day !== d).map(r => card(r, false)).join('')}` : ''}
+      ${!routines.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}`;
+  }
+
+  async function clientNutrition() {
+    shell(CLIENT_NAV, 'nutricion', loading(), { title: 'Mi nutrición' });
+    const p = await DB.get('nutrition_plans', S.client.id, 'client_id');
+    const box = $app.querySelector('.content');
+    if (!p) { box.innerHTML = `<div class="hero-empty">${ic('apple', 'xl')}<h2>Aún no tienes plan de nutrición</h2><p>Cuando tu entrenador lo publique, lo verás aquí.</p></div>`; return; }
+    const tot = (p.protein || 0) * 4 + (p.carbs || 0) * 4 + (p.fat || 0) * 9;
+    const pct = v => (tot ? Math.round(v / tot * 100) : 0);
+    box.innerHTML = `
+      ${p.kcal ? `<section class="card macros"><div class="kcal"><b>${p.kcal}</b><small>kcal al día</small></div>
+        ${tot ? `<div class="mbar"><i style="flex:${pct(p.protein * 4)}" class="p"></i><i style="flex:${pct(p.carbs * 4)}" class="c"></i><i style="flex:${pct(p.fat * 9)}" class="f"></i></div>` : ''}
+        <div class="mrow"><span class="p">Proteína <b>${p.protein ?? '–'} g</b></span><span class="c">Carbohidratos <b>${p.carbs ?? '–'} g</b></span><span class="f">Grasas <b>${p.fat ?? '–'} g</b></span>${p.water ? `<span>Agua <b>${esc(p.water)}</b></span>` : ''}</div></section>` : ''}
+      ${p.meals ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
+      ${p.notes ? `<section class="card"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
+      <p class="muted small">Actualizado ${ago(p.updated_at)}</p>`;
+  }
+
+  // ---------- Check-in (cliente)
+  function checkinForm(c) {
+    const scale = (n, l) => `<fieldset class="scale"><legend>${l}</legend>${[1, 2, 3, 4, 5].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
+    const f = modal('Check-in semanal', `
       <div class="form-grid">
         <label>Peso (kg)<input name="weight" type="number" step="0.1" inputmode="decimal"></label>
-        <label>Fecha<input name="date" type="date" value="${N()}"></label>
+        <label>Fecha<input name="date" type="date" value="${today()}"></label>
       </div>
       <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
         <label>Cintura<input name="waist" type="number" step="0.1" inputmode="decimal"></label><label>Cadera<input name="hip" type="number" step="0.1" inputmode="decimal"></label><label>Pecho<input name="chest" type="number" step="0.1" inputmode="decimal"></label><label>Brazo<input name="arm" type="number" step="0.1" inputmode="decimal"></label><label>Muslo<input name="thigh" type="number" step="0.1" inputmode="decimal"></label></div></details>
-      ${t("energy","Energía esta semana")}${t("sleep","Calidad del sueño")}${t("adherence","Cumplimiento del plan")}
+      ${scale('energy', 'Energía esta semana')}${scale('sleep', 'Calidad del sueño')}${scale('adherence', 'Cumplimiento del plan')}
       <label>¿Cómo ha ido la semana?<textarea name="notes" rows="3" placeholder="Molestias, dudas, cómo te has sentido…"></textarea></label>
-      <label class="file">${S("camera")} <span data-fname>Añadir foto de progreso (opcional)</span><input name="photo" type="file" accept="image/*" hidden></label>`,{submitLabel:"Enviar check-in",onSubmit:async(i,s)=>{const n={};["weight","waist","hip","chest","arm","thigh","energy","sleep","adherence"].forEach(o=>{n[o]=te(s.get(o))}),n.notes=s.get("notes"),n.date=s.get("date")||N(),n.client_id=e.id;const r=s.get("photo");await b(async()=>{r&&r.size&&(n.photo_path=await DB.uploadPhoto(e.id,await We(r))),await DB.insert("checkins",n)},"¡Check-in enviado! 💪"),q()}});a.photo.onchange=()=>{a.querySelector("[data-fname]").textContent=a.photo.files[0]?a.photo.files[0].name:"Añadir foto de progreso (opcional)"}}function We(e,t=1280){return new Promise((a,i)=>{const s=new Image,n=URL.createObjectURL(e);s.onload=()=>{const r=Math.min(1,t/Math.max(s.width,s.height)),o=document.createElement("canvas");o.width=Math.round(s.width*r),o.height=Math.round(s.height*r),o.getContext("2d").drawImage(s,0,0,o.width,o.height),o.toBlob(c=>{URL.revokeObjectURL(n),c?a(c):i(new Error("No se pudo procesar la foto"))},"image/jpeg",.82)},s.onerror=()=>i(new Error("Formato de imagen no válido")),s.src=n})}const ge="jmfit-workout",qe=()=>{try{return JSON.parse(localStorage.getItem(ge))}catch{return null}},re=e=>localStorage.setItem(ge,JSON.stringify(e)),ve=()=>localStorage.removeItem(ge);async function Ke(e){const t=M.client;document.body.dataset.role="workout",E.innerHTML=I();let a=qe();if(a&&a.routine_id!==e){if(!await x(`Tienes "${a.routine_name}" a medias. ¿Descartarlo y empezar otro?`,"Descartar"))return A("#/entreno/"+a.routine_id);ve(),a=null}if(!a){const[i,s,n]=await Promise.all([DB.get("routines",e),DB.list("routine_items",{eq:{routine_id:e},order:["position","asc"]}),DB.list("set_logs",{eq:{client_id:t.id},order:["created_at","desc"],limit:400})]);if(!i)return F("Rutina no encontrada","err"),A("#/");const r={};s.forEach(o=>{const c=n.filter(d=>d.exercise_name===o.exercise_name);if(c.length){const d=c[0].session_id;r[o.exercise_name]=c.filter($=>$.session_id===d).sort(($,p)=>$.set_no-p.set_no)}}),a={routine_id:i.id,routine_name:i.name,notes:i.notes,started_at:new Date().toISOString(),ex:s.map(o=>({name:o.exercise_name,media:o.media_url,reps:o.reps,load:o.load,rest:o.rest_sec,notes:o.notes,prev:(r[o.exercise_name]||[]).map(c=>({w:c.weight,r:c.reps})),sets:Array.from({length:o.sets},(c,d)=>{const $=(r[o.exercise_name]||[])[d];return{w:$&&$.weight!=null?$.weight:"",r:"",done:!1}})}))},re(a)}pe(a)}let H=null;function pe(e){const t=e.ex.reduce((n,r)=>n+r.sets.length,0),a=e.ex.reduce((n,r)=>n+r.sets.filter(o=>o.done).length,0);E.innerHTML=`<div class="wk">
-      <header class="wk-top"><button class="icon-btn" data-exit aria-label="Salir">${S("back")}</button><div class="grow"><b>${l(e.routine_name)}</b><small data-elapsed></small></div><button class="btn primary small" data-finish>Terminar</button></header>
-      <div class="wk-progress"><i style="width:${t?a/t*100:0}%"></i></div>
-      ${e.notes?`<p class="note wk-note">${R(e.notes)}</p>`:""}
-      <div class="wk-list">${e.ex.map((n,r)=>`
-        <section class="card wk-ex ${n.sets.every(o=>o.done)?"complete":""}" data-ei="${r}">
-          <header><span class="num">${r+1}</span><div class="grow"><b>${l(n.name)}</b><small>${n.sets.length} × ${l(n.reps)}${n.load?" · "+l(n.load):""} · ${S("clock","xs")} ${n.rest}"</small></div>
-            ${n.media?`<a class="icon-btn" href="${l(n.media)}" target="_blank" rel="noopener" title="Ver técnica">${S("video")}</a>`:""}</header>
-          ${n.notes?`<p class="note">${l(n.notes)}</p>`:""}
+      <label class="file">${ic('camera')} <span data-fname>Añadir foto de progreso (opcional)</span><input name="photo" type="file" accept="image/*" hidden></label>`, {
+      submitLabel: 'Enviar check-in',
+      onSubmit: async (form, fd) => {
+        const d = {}; ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'energy', 'sleep', 'adherence'].forEach(k => { d[k] = num(fd.get(k)); });
+        d.notes = fd.get('notes'); d.date = fd.get('date') || today(); d.client_id = c.id;
+        const file = fd.get('photo');
+        await safe(async () => {
+          if (file && file.size) d.photo_path = await DB.uploadPhoto(c.id, await shrink(file));
+          await DB.insert('checkins', d);
+        }, '¡Check-in enviado! 💪');
+        render();
+      }
+    });
+    f.photo.onchange = () => { f.querySelector('[data-fname]').textContent = f.photo.files[0] ? f.photo.files[0].name : 'Añadir foto de progreso (opcional)'; };
+  }
+  function shrink(file, max = 1280) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)); const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); cv.toBlob(b => { URL.revokeObjectURL(url); b ? res(b) : rej(new Error('No se pudo procesar la foto')); }, 'image/jpeg', 0.82); };
+      img.onerror = () => rej(new Error('Formato de imagen no válido')); img.src = url;
+    });
+  }
+
+  // ---------- Modo entrenamiento
+  const WKEY = 'jmfit-workout';
+  const getActiveWorkout = () => { try { return JSON.parse(localStorage.getItem(WKEY)); } catch (e) { return null; } };
+  const saveWorkout = w => localStorage.setItem(WKEY, JSON.stringify(w));
+  const clearWorkout = () => localStorage.removeItem(WKEY);
+
+  async function workout(routineId) {
+    const c = S.client;
+    document.body.dataset.role = 'workout';
+    $app.innerHTML = loading();
+    let w = getActiveWorkout();
+    if (w && w.routine_id !== routineId) {
+      if (!(await confirmBox(`Tienes "${w.routine_name}" a medias. ¿Descartarlo y empezar otro?`, 'Descartar'))) return go('#/entreno/' + w.routine_id);
+      clearWorkout(); w = null;
+    }
+    if (!w) {
+      const [r, items, prevLogs] = await Promise.all([
+        DB.get('routines', routineId),
+        DB.list('routine_items', { eq: { routine_id: routineId }, order: ['position', 'asc'] }),
+        DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 400 })
+      ]);
+      if (!r) { toast('Rutina no encontrada', 'err'); return go('#/'); }
+      // última sesión de cada ejercicio
+      const prev = {};
+      items.forEach(i => {
+        const ls = prevLogs.filter(l => l.exercise_name === i.exercise_name);
+        if (ls.length) { const sid = ls[0].session_id; prev[i.exercise_name] = ls.filter(l => l.session_id === sid).sort((a, b) => a.set_no - b.set_no); }
+      });
+      w = {
+        routine_id: r.id, routine_name: r.name, notes: r.notes, started_at: new Date().toISOString(),
+        ex: items.map(i => ({
+          name: i.exercise_name, media: i.media_url, reps: i.reps, load: i.load, rest: i.rest_sec, notes: i.notes,
+          prev: (prev[i.exercise_name] || []).map(l => ({ w: l.weight, r: l.reps })),
+          sets: Array.from({ length: i.sets }, (_, k) => { const p = (prev[i.exercise_name] || [])[k]; return { w: p && p.weight != null ? p.weight : '', r: '', done: false }; })
+        }))
+      };
+      saveWorkout(w);
+    }
+    drawWorkout(w);
+  }
+
+  let restTimer = null;
+  function drawWorkout(w) {
+    const total = w.ex.reduce((s, e) => s + e.sets.length, 0);
+    const done = w.ex.reduce((s, e) => s + e.sets.filter(x => x.done).length, 0);
+    $app.innerHTML = `<div class="wk">
+      <header class="wk-top"><button class="icon-btn" data-exit aria-label="Salir">${ic('back')}</button><div class="grow"><b>${esc(w.routine_name)}</b><small data-elapsed></small></div><button class="btn primary small" data-finish>Terminar</button></header>
+      <div class="wk-progress"><i style="width:${total ? (done / total * 100) : 0}%"></i></div>
+      ${w.notes ? `<p class="note wk-note">${nl2br(w.notes)}</p>` : ''}
+      <div class="wk-list">${w.ex.map((e, ei) => `
+        <section class="card wk-ex ${e.sets.every(s => s.done) ? 'complete' : ''}" data-ei="${ei}">
+          <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small></div>
+            ${e.media ? `<a class="icon-btn" href="${esc(e.media)}" target="_blank" rel="noopener" title="Ver técnica">${ic('video')}</a>` : ''}</header>
+          ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span><span></span></div>
-          ${n.sets.map((o,c)=>`<div class="set ${o.done?"done":""}" data-si="${c}"><span class="sn">${c+1}</span>
-            <span class="prev">${n.prev[c]?`${D(n.prev[c].w)}×${n.prev[c].r??"–"}`:"–"}</span>
-            <input inputmode="decimal" data-f="w" value="${l(o.w)}" placeholder="kg" aria-label="Kilos serie ${c+1}">
-            <input inputmode="numeric" data-f="r" value="${l(o.r)}" placeholder="${l(String(n.reps).split(/[-–]/).pop())}" aria-label="Repeticiones serie ${c+1}">
-            <button class="tick" data-tick aria-label="Serie hecha">${S("check")}</button></div>`).join("")}</div>
-          <div class="row gap"><button class="btn ghost small" data-addset>${S("plus")} Serie</button>${n.sets.length>1?'<button class="btn ghost small" data-delset>Quitar serie</button>':""}</div>
-        </section>`).join("")}</div>
+          ${e.sets.map((s, si) => `<div class="set ${s.done ? 'done' : ''}" data-si="${si}"><span class="sn">${si + 1}</span>
+            <span class="prev">${e.prev[si] ? `${fmtKg(e.prev[si].w)}×${e.prev[si].r ?? '–'}` : '–'}</span>
+            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="kg" aria-label="Kilos serie ${si + 1}">
+            <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="${esc(String(e.reps).split(/[-–]/).pop())}" aria-label="Repeticiones serie ${si + 1}">
+            <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>`).join('')}</div>
+          <div class="row gap"><button class="btn ghost small" data-addset>${ic('plus')} Serie</button>${e.sets.length > 1 ? '<button class="btn ghost small" data-delset>Quitar serie</button>' : ''}</div>
+        </section>`).join('')}</div>
       <div class="rest" data-rest hidden><div class="rest-in"><small>Descanso</small><b data-rt>0:00</b><div class="row gap"><button class="btn small" data-rminus>−15 s</button><button class="btn small" data-rplus>+15 s</button><button class="btn small primary" data-rskip>Saltar</button></div></div><i class="rest-bar"></i></div>
-    </div>`;const i=E.querySelector("[data-elapsed]"),s=()=>{const n=Math.floor((Date.now()-new Date(e.started_at))/6e4);i.textContent=`${n} min · ${a}/${t} series`};s(),U.push(setInterval(s,2e4)),Xe(),E.querySelectorAll(".wk-ex").forEach(n=>{const r=+n.dataset.ei,o=e.ex[r];n.querySelectorAll(".set").forEach(d=>{const $=+d.dataset.si,p=o.sets[$];d.querySelectorAll("input").forEach(w=>w.oninput=()=>{p[w.dataset.f]=w.value.replace(",","."),re(e)}),d.querySelector("[data-tick]").onclick=()=>{if(p.done=!p.done,p.done){if(p.r===""||p.r==null){const w=parseInt(String(o.reps).split(/[-–]/).pop(),10);isNaN(w)||(p.r=String(w))}o.sets.slice($+1).forEach(w=>{w.w===""&&p.w!==""&&(w.w=p.w)}),navigator.vibrate&&navigator.vibrate(30),o.rest>0&&Ye(o.rest)}re(e),pe(e)}}),n.querySelector("[data-addset]").onclick=()=>{const d=o.sets[o.sets.length-1];o.sets.push({w:d?d.w:"",r:"",done:!1}),re(e),pe(e)};const c=n.querySelector("[data-delset]");c&&(c.onclick=()=>{o.sets.pop(),re(e),pe(e)})}),E.querySelector("[data-exit]").onclick=async()=>{(a===0||await x("Tu progreso se queda guardado en este móvil y podrás seguir luego. ¿Salir?","Salir"))&&(a===0&&ve(),me(),A("#/"))},E.querySelector("[data-finish]").onclick=()=>Ze(e,a),H&&Ce()}function Ye(e){H={end:Date.now()+e*1e3,total:e},Ce()}function me(){H&&H.iv&&clearInterval(H.iv),H=null;const e=document.querySelector("[data-rest]");e&&(e.hidden=!0)}function Ce(){const e=document.querySelector("[data-rest]");if(!e||!H)return;e.hidden=!1;const t=e.querySelector("[data-rt]"),a=e.querySelector(".rest-bar"),i=()=>{if(!H)return;const s=Math.max(0,Math.round((H.end-Date.now())/1e3));t.textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`,a.style.width=s/H.total*100+"%",s<=0&&(Qe(),navigator.vibrate&&navigator.vibrate([200,100,200]),me(),F("¡A por la siguiente serie!","ok"))};H.iv&&clearInterval(H.iv),H.iv=setInterval(i,250),i(),e.querySelector("[data-rskip]").onclick=me,e.querySelector("[data-rplus]").onclick=()=>{H.end+=15e3,H.total+=15,i()},e.querySelector("[data-rminus]").onclick=()=>{H.end-=15e3,i()}}let ee;function Qe(){try{ee=ee||new(window.AudioContext||window.webkitAudioContext),[0,.25,.5].forEach(e=>{const t=ee.createOscillator(),a=ee.createGain();t.frequency.value=880,a.gain.value=.15,t.connect(a),a.connect(ee.destination),t.start(ee.currentTime+e),t.stop(ee.currentTime+e+.15)})}catch{}}let ae;async function Xe(){try{"wakeLock"in navigator&&!ae&&(ae=await navigator.wakeLock.request("screen"),ae.addEventListener("release",()=>{ae=null}))}catch{}}function Ze(e,t){if(!t)return F("Marca al menos una serie como hecha","err");_("¡Entreno terminado! 🎉",`
-      <p>${t} series completadas en ${Math.max(1,Math.round((Date.now()-new Date(e.started_at))/6e4))} minutos.</p>
-      <fieldset class="scale wide"><legend>¿Qué tan duro fue? (RPE 1–10)</legend>${[5,6,7,8,9,10].map(a=>`<label><input type="radio" name="rpe" value="${a}"><span>${a}</span></label>`).join("")}</fieldset>
-      <label>Comentario para tu entrenador (opcional)<textarea name="notes" rows="3" placeholder="Molestias, sensaciones, cambios…"></textarea></label>`,{submitLabel:"Guardar entreno",onSubmit:async(a,i)=>{const s=M.client,n=[];let r=0;e.ex.forEach(o=>{let c=0;o.sets.forEach(d=>{if(!d.done)return;c++;const $=te(d.w),p=parseInt(d.r,10);n.push({exercise_name:o.name,set_no:c,weight:$,reps:isNaN(p)?null:p}),$&&!isNaN(p)&&(r+=$*p)})}),await b(async()=>{const[o]=await DB.insert("sessions",{client_id:s.id,routine_id:e.routine_id,routine_name:e.routine_name,started_at:e.started_at,finished_at:new Date().toISOString(),rpe:te(i.get("rpe")),notes:i.get("notes"),volume:r});n.length&&await DB.insert("set_logs",n.map(c=>Object.assign({session_id:o.id,client_id:s.id},c)))},"Entreno guardado 💪"),ve(),me(),ae&&(ae.release().catch(()=>{}),ae=null),location.hash="#/progreso"}})}"serviceWorker"in navigator&&location.protocol==="https:"&&navigator.serviceWorker.register("sw.js").catch(()=>{}),P()}();
+    </div>`;
+    const el = $app.querySelector('[data-elapsed]');
+    const tick = () => { const m = Math.floor((Date.now() - new Date(w.started_at)) / 6e4); el.textContent = `${m} min · ${done}/${total} series`; };
+    tick(); intervals.push(setInterval(tick, 20000));
+    requestWakeLock();
+
+    $app.querySelectorAll('.wk-ex').forEach(sec => {
+      const ei = +sec.dataset.ei, e = w.ex[ei];
+      sec.querySelectorAll('.set').forEach(row => {
+        const si = +row.dataset.si, s = e.sets[si];
+        row.querySelectorAll('input').forEach(inp => inp.oninput = () => { s[inp.dataset.f] = inp.value.replace(',', '.'); saveWorkout(w); });
+        row.querySelector('[data-tick]').onclick = () => {
+          s.done = !s.done;
+          if (s.done) {
+            if (s.r === '' || s.r == null) { const def = parseInt(String(e.reps).split(/[-–]/).pop(), 10); if (!isNaN(def)) s.r = String(def); }
+            // propaga el peso a las series siguientes vacías
+            e.sets.slice(si + 1).forEach(n => { if (n.w === '' && s.w !== '') n.w = s.w; });
+            if (navigator.vibrate) navigator.vibrate(30);
+            if (e.rest > 0) startRest(e.rest);
+          }
+          saveWorkout(w); drawWorkout(w);
+        };
+      });
+      sec.querySelector('[data-addset]').onclick = () => { const l = e.sets[e.sets.length - 1]; e.sets.push({ w: l ? l.w : '', r: '', done: false }); saveWorkout(w); drawWorkout(w); };
+      const ds = sec.querySelector('[data-delset]'); if (ds) ds.onclick = () => { e.sets.pop(); saveWorkout(w); drawWorkout(w); };
+    });
+    $app.querySelector('[data-exit]').onclick = async () => {
+      if (done === 0 || await confirmBox('Tu progreso se queda guardado en este móvil y podrás seguir luego. ¿Salir?', 'Salir')) { if (done === 0) clearWorkout(); stopRest(); go('#/'); }
+    };
+    $app.querySelector('[data-finish]').onclick = () => finishWorkout(w, done);
+    if (restTimer) bindRest();
+  }
+
+  function startRest(sec) { restTimer = { end: Date.now() + sec * 1000, total: sec }; bindRest(); }
+  function stopRest() { if (restTimer && restTimer.iv) clearInterval(restTimer.iv); restTimer = null; const r = document.querySelector('[data-rest]'); if (r) r.hidden = true; }
+  function bindRest() {
+    const box = document.querySelector('[data-rest]'); if (!box || !restTimer) return;
+    box.hidden = false;
+    const t = box.querySelector('[data-rt]'), bar = box.querySelector('.rest-bar');
+    const upd = () => {
+      if (!restTimer) return;
+      const left = Math.max(0, Math.round((restTimer.end - Date.now()) / 1000));
+      t.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      bar.style.width = (left / restTimer.total * 100) + '%';
+      if (left <= 0) { beep(); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); stopRest(); toast('¡A por la siguiente serie!', 'ok'); }
+    };
+    if (restTimer.iv) clearInterval(restTimer.iv);
+    restTimer.iv = setInterval(upd, 250); upd();
+    box.querySelector('[data-rskip]').onclick = stopRest;
+    box.querySelector('[data-rplus]').onclick = () => { restTimer.end += 15000; restTimer.total += 15; upd(); };
+    box.querySelector('[data-rminus]').onclick = () => { restTimer.end -= 15000; upd(); };
+  }
+  let audioCtx;
+  function beep() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.25, 0.5].forEach(d => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = 880; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination); o.start(audioCtx.currentTime + d); o.stop(audioCtx.currentTime + d + 0.15); });
+    } catch (e) { /* sin audio */ }
+  }
+  let wakeLock;
+  async function requestWakeLock() { try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) { /* no disponible */ } }
+
+  function finishWorkout(w, done) {
+    if (!done) return toast('Marca al menos una serie como hecha', 'err');
+    modal('¡Entreno terminado! 🎉', `
+      <p>${done} series completadas en ${Math.max(1, Math.round((Date.now() - new Date(w.started_at)) / 6e4))} minutos.</p>
+      <fieldset class="scale wide"><legend>¿Qué tan duro fue? (RPE 1–10)</legend>${[5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="rpe" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
+      <label>Comentario para tu entrenador (opcional)<textarea name="notes" rows="3" placeholder="Molestias, sensaciones, cambios…"></textarea></label>`, {
+      submitLabel: 'Guardar entreno',
+      onSubmit: async (f, fd) => {
+        const c = S.client;
+        const logs = []; let vol = 0;
+        w.ex.forEach(e => { let n = 0; e.sets.forEach(s => { if (!s.done) return; n++; const kg = num(s.w), r = parseInt(s.r, 10); logs.push({ exercise_name: e.name, set_no: n, weight: kg, reps: isNaN(r) ? null : r }); if (kg && !isNaN(r)) vol += kg * r; }); });
+        await safe(async () => {
+          const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: new Date().toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
+          if (logs.length) await DB.insert('set_logs', logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l)));
+        }, 'Entreno guardado 💪');
+        clearWorkout(); stopRest(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        location.hash = '#/progreso';
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ PWA
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  boot();
+})();
