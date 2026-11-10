@@ -49,6 +49,7 @@
     camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
     refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4"/>',
+    inbox: '<path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1 3h6l1-3h5"/>',
     wa: '<path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1c-1-.5-2-1.5-2.5-2.5l1-1-1-2z"/>'
   };
   const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n] || ''}</svg>`;
@@ -204,18 +205,33 @@
   const COACH_NAV = [
     { key: 'inicio', href: '', icon: 'home', label: 'Inicio' },
     { key: 'clientes', href: 'clientes', icon: 'users', label: 'Clientes' },
-    { key: 'ejercicios', href: 'ejercicios', icon: 'dumbbell', label: 'Ejercicios' },
+    { key: 'programas', href: 'programas', icon: 'dumbbell', label: 'Programas' },
+    { key: 'revisiones', href: 'revisiones', icon: 'inbox', label: 'Revisiones' },
     { key: 'cobros', href: 'cobros', icon: 'euro', label: 'Cobros' }
   ];
+  // Aviso en la pestaña Revisiones con los check-ins sin revisar (no bloquea el render)
+  async function refreshReviewBadge() {
+    try {
+      const n = (await DB.list('checkins', { order: ['created_at', 'desc'], limit: 200 })).filter(k => !k.coach_seen).length;
+      document.querySelectorAll('nav a[href="#/revisiones"]').forEach(a => {
+        let b = a.querySelector('.badge');
+        if (!n) { if (b) b.remove(); return; }
+        if (!b) { b = document.createElement('i'); b.className = 'badge'; a.appendChild(b); }
+        b.textContent = n > 99 ? '99+' : n;
+      });
+    } catch (e) { /* el aviso es opcional */ }
+  }
 
   async function renderCoach() {
     document.body.dataset.role = 'coach';
     const [r0, r1, r2] = S.route;
+    if (!r0 || r0 === 'clientes' || r0 === 'cliente') setTimeout(refreshReviewBadge, 0);
     if (!r0) return coachHome();
     if (r0 === 'clientes') return coachClients();
     if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
-    if (r0 === 'ejercicios') return coachExercises();
-    if (r0 === 'cobros') return coachPayments();
+    if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : coachPrograms(); }
+    if (r0 === 'revisiones') return coachReviews(r1);
+    if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     go('#/');
   }
 
@@ -253,7 +269,7 @@
       <div class="kpis">
         <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${active.length}</b><span>${clients.length - active.length} en pausa</span></a>
         <div class="kpi"><small>Entrenos esta semana</small><b>${week.length}</b><span>${trainedIds.size} clientes han entrenado</span></div>
-        <div class="kpi ${unseenCk.length ? 'warn' : ''}"><small>Check-ins sin revisar</small><b>${unseenCk.length}</b><span>pendientes de respuesta</span></div>
+        <a class="kpi ${unseenCk.length ? 'warn' : ''}" href="#/revisiones"><small>Check-ins sin revisar</small><b>${unseenCk.length}</b><span>pendientes de respuesta</span></a>
         <div class="kpi ${pendingMsgs.length ? 'warn' : ''}"><small>Mensajes por contestar</small><b>${pendingMsgs.length}</b><span>de tus clientes</span></div>
       </div>
       <div class="grid2">
@@ -550,22 +566,7 @@
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     // check-ins con fotos
     const ckBox = box.querySelector('[data-cks]');
-    for (const k of checkins) {
-      const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
-      const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh]].filter(m => m[1]);
-      const sc = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
-      el.innerHTML = `<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg</span>` : ''}</header>
-        ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])} cm`).join(' · ')}</p>` : ''}
-        ${sc.length ? `<div class="scores">${sc.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(5 - m[1])}</b></span>`).join('')}</div>` : ''}
-        ${k.notes ? `<p>“${nl2br(k.notes)}”</p>` : ''}
-        ${k.photo_path ? '<div class="photo" data-photo></div>' : ''}
-        ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
-        ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
-      ckBox.appendChild(el);
-      if (k.photo_path) DB.photoUrl(k.photo_path).then(u => { el.querySelector('[data-photo]').innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto de progreso" loading="lazy"></a>`; }).catch(() => {});
-      const rf = el.querySelector('[data-reply]');
-      if (rf) rf.onsubmit = async e => { e.preventDefault(); const v = rf.r.value.trim(); const patch = { coach_seen: true }; if (v) patch.coach_reply = v; await safe(() => DB.update('checkins', k.id, patch), 'Check-in revisado'); render(); };
-    }
+    for (const k of checkins) ckBox.appendChild(checkinCard(k, asCoach));
     // detalle de sesiones
     box.querySelectorAll('.sessions li').forEach(li => {
       li.querySelector('.srow').onclick = async () => {
@@ -736,13 +737,68 @@
     });
   }
 
+  // ----- Tarjeta de check-in (Progreso del cliente y bandeja de Revisiones)
+  function checkinCard(k, asCoach, { who, prev } = {}) {
+    const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
+    const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh]].filter(m => m[1]);
+    const sc = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
+    const dw = prev && prev.weight && k.weight ? Number(k.weight) - Number(prev.weight) : null;
+    el.innerHTML = `${who ? `<a class="ck-who" href="#/cliente/${who.id}/progreso">${esc(who.name)}</a>` : ''}<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg${dw != null ? ` · ${dw > 0 ? '+' : ''}${fmtKg(dw)}` : ''}</span>` : ''}</header>
+      ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])} cm`).join(' · ')}</p>` : ''}
+      ${sc.length ? `<div class="scores">${sc.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(5 - m[1])}</b></span>`).join('')}</div>` : ''}
+      ${k.notes ? `<p>“${nl2br(k.notes)}”</p>` : ''}
+      ${k.photo_path ? '<div class="photo" data-photo></div>' : ''}
+      ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
+      ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
+    if (k.photo_path) DB.photoUrl(k.photo_path).then(u => { el.querySelector('[data-photo]').innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto de progreso" loading="lazy"></a>`; }).catch(() => {});
+    const rf = el.querySelector('[data-reply]');
+    if (rf) rf.onsubmit = async e => { e.preventDefault(); const v = rf.r.value.trim(); const patch = { coach_seen: true }; if (v) patch.coach_reply = v; await safe(() => DB.update('checkins', k.id, patch), 'Check-in revisado'); render(); };
+    return el;
+  }
+
+  // ---------- Programas (por ahora: rutinas de cada cliente + catálogo)
+  const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
+  async function coachPrograms() {
+    shell(COACH_NAV, 'programas', loading(), { title: 'Programas' });
+    const [clients, routines] = await Promise.all([loadClients(), DB.list('routines', { order: ['position', 'asc'] })]);
+    const byClient = {}; routines.forEach(r => { (byClient[r.client_id] = byClient[r.client_id] || []).push(r); });
+    const active = clients.filter(c => c.active !== false);
+    const row = c => { const rs = byClient[c.id] || []; const days = rs.filter(r => r.day).map(r => DIAS[r.day].slice(0, 3)); return `<li><a class="lrow" href="#/cliente/${c.id}/rutinas"><span class="grow"><b>${esc(c.name)}</b><small>${rs.length ? `${rs.length} rutina${rs.length > 1 ? 's' : ''}${days.length ? ' · ' + days.join(', ') : ''}` : 'Sin rutinas todavía'}</small></span>${rs.length ? '' : '<span class="pill">Pendiente</span>'}</a></li>`; };
+    const sin = active.filter(c => !(byClient[c.id] || []).length), con = active.filter(c => (byClient[c.id] || []).length);
+    $app.querySelector('.content').innerHTML = `${PROGRAM_TABS('rutinas')}
+      <p class="muted small">Toca un cliente para editar su semana de entrenamiento. Pronto podrás crear programas por semanas y clonarlos con progresión automática.</p>
+      ${active.length ? `${sin.length ? `<section class="card flush"><h3 class="pad">Sin rutinas (${sin.length})</h3><ul class="list">${sin.map(row).join('')}</ul></section>` : ''}
+      ${con.length ? `<section class="card flush"><h3 class="pad">Con rutinas (${con.length})</h3><ul class="list">${con.map(row).join('')}</ul></section>` : ''}`
+      : `<div class="hero-empty">${ic('dumbbell', 'xl')}<h2>Aún no tienes clientes activos</h2><a class="btn primary" href="#/clientes">Ir a Clientes</a></div>`}`;
+  }
+
+  // ---------- Revisiones: bandeja de check-ins
+  async function coachReviews(filter) {
+    const all = filter === 'todas';
+    shell(COACH_NAV, 'revisiones', loading(), { title: 'Revisiones' });
+    const [clients, checkins] = await Promise.all([loadClients(), DB.list('checkins', { order: ['created_at', 'desc'], limit: 200 })]);
+    const pend = checkins.filter(k => !k.coach_seen);
+    const list = all ? checkins : pend;
+    const box = $app.querySelector('.content');
+    box.innerHTML = `<div class="tabs"><a href="#/revisiones" class="${all ? '' : 'on'}">Pendientes${pend.length ? ` (${pend.length})` : ''}</a><a href="#/revisiones/todas" class="${all ? 'on' : ''}">Todas</a></div>
+      ${list.length ? '<section class="card" data-list></section>' : `<div class="hero-empty">${ic('inbox', 'xl')}<h2>${all ? 'Aún no hay check-ins' : 'Todo revisado'}</h2><p>${all ? 'Cuando tus clientes envíen su check-in semanal aparecerá aquí.' : 'No tienes check-ins pendientes. Buen trabajo.'}</p>${all ? '' : '<a class="btn" href="#/revisiones/todas">Ver todos</a>'}</div>`}`;
+    const wrap = box.querySelector('[data-list]');
+    list.forEach(k => {
+      const who = byId(clients, k.client_id) || { id: k.client_id, name: 'Cliente' };
+      const idx = checkins.indexOf(k);
+      const prev = checkins.slice(idx + 1).find(x => x.client_id === k.client_id && x.weight);
+      wrap.appendChild(checkinCard(k, true, { who, prev }));
+    });
+    refreshReviewBadge();
+  }
+
   // ---------- Catálogo de ejercicios
   async function coachExercises() {
-    shell(COACH_NAV, 'ejercicios', loading(), { title: 'Ejercicios', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo</span></button>` });
+    shell(COACH_NAV, 'programas', loading(), { title: 'Programas', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo</span></button>` });
     $app.querySelector('[data-new]').onclick = () => exerciseForm();
     const ex = await loadExercises();
     const groups = {}; ex.forEach(e => { (groups[e.muscle || 'Otros'] = groups[e.muscle || 'Otros'] || []).push(e); });
-    $app.querySelector('.content').innerHTML = `<input class="search" placeholder="Buscar ejercicio…" data-q>
+    $app.querySelector('.content').innerHTML = `${PROGRAM_TABS('ejercicios')}<input class="search" placeholder="Buscar ejercicio…" data-q>
       <p class="muted small">Tu catálogo: aparece como sugerencia al crear rutinas. Añade un enlace a vídeo para que tus clientes vean la técnica.</p>
       ${Object.keys(groups).sort().map(g => `<section class="card flush" data-g><h3 class="pad">${esc(g)}</h3><ul class="list">${groups[g].map(e => `<li><button type="button" class="lrow" data-id="${e.id}"><span class="grow"><b>${esc(e.name)}</b><small>${esc(e.equipment || '')}</small></span>${e.media_url ? ic('video') : ''}</button></li>`).join('')}</ul></section>`).join('')}`;
     $app.querySelectorAll('[data-id]').forEach(b => b.onclick = () => exerciseForm(byId(ex, b.dataset.id)));
