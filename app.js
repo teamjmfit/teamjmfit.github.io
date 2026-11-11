@@ -217,7 +217,7 @@
     const demo = DB.mode === 'demo';
     $app.innerHTML = `<main class="login">
       <div class="login-card">
-        <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"><small>Entrenamiento y nutrición</small></div>
+        <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><small>Entrenamiento y nutrición</small></div>
         ${demo ? `
           <p class="muted">Modo demo: la app aún no está conectada a Supabase. Prueba los dos lados con datos de ejemplo (se guardan solo en este navegador).</p>
           <button class="btn primary block" data-demo="coach">${ic('users')} Entrar como entrenador</button>
@@ -272,7 +272,7 @@
   function shell(navItems, activeKey, content, { title, back, actions = '' } = {}) {
     const nav = navItems.map(n => `<a href="#/${n.href}" class="${n.key === activeKey ? 'on' : ''}">${ic(n.icon)}<span>${n.label}</span>${n.badge ? `<i class="badge">${n.badge}</i>` : ''}</a>`).join('');
     $app.innerHTML = `
-      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
+      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
         <nav>${nav}</nav>
         <button class="side-out" data-logout>${ic('out')} Salir</button>
         ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
@@ -280,7 +280,7 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           <h1>${esc(title || '')}</h1><span class="grow"></span>${actions}
-          <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="480" height="270">
+          <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
         <div class="content">${content}</div>
       </div>
@@ -1216,7 +1216,7 @@
   async function renderClient() {
     document.body.dataset.role = 'client';
     if (!S.client) {
-      $app.innerHTML = `<main class="login"><div class="login-card"><div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"></div>
+      $app.innerHTML = `<main class="login"><div class="login-card"><div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"></div>
         <h2>¡Ya casi está!</h2><p>Tu cuenta (<b>${esc(S.profile.email)}</b>) todavía no está vinculada a un plan. Pide a tu entrenador que te dé de alta con este mismo correo y vuelve a entrar.</p>
         <button class="btn primary block" data-retry>Comprobar de nuevo</button><button class="btn ghost block" data-out>Salir</button></div></main>`;
       $app.querySelector('[data-retry]').onclick = boot;
