@@ -3,16 +3,16 @@
   'use strict';
   var cfg = window.JMFIT_CONFIG || {};
   if (!cfg.SUPABASE_URL || !window.supabase) return;
-  var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  var me = null, busy = {};
+  var sb = (window.DB && window.DB.sb) || window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  var me = null, busy = {}, cmpCache = null;
   function iso(d) { var x = new Date(d); return new Date(x.getTime() - x.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
   function avg(a) { a = a.filter(function (v) { return v != null && !isNaN(v); }); return a.length ? a.reduce(function (s, v) { return s + Number(v); }, 0) / a.length : null; }
   function f1(v) { return v == null ? '–' : (Math.round(v * 10) / 10).toString().replace('.', ','); }
   async function who() {
     if (me) return me;
     var s = (await sb.auth.getSession()).data.session; if (!s) return null;
-    var p = (await sb.from('profiles').select('role').eq('id', s.user.id)).data;
-    var c = (await sb.from('clients').select('id').eq('user_id', s.user.id)).data;
+    var q = await Promise.all([sb.from('profiles').select('role').eq('id', s.user.id), sb.from('clients').select('id').eq('user_id', s.user.id)]);
+    var p = q[0].data, c = q[1].data;
     me = { role: p && p[0] ? p[0].role : 'client', clientId: c && c[0] ? c[0].id : null };
     return me;
   }
@@ -76,8 +76,13 @@
     var links = document.querySelectorAll('.list.big li > a[href^="#/cliente/"]'); if (!links.length || document.querySelector('[data-cmp]') || busy.k) return;
     busy.k = true;
     try {
-      var r1 = (await sb.from('routines').select('client_id,day')).data || [];
-      var r2 = (await sb.from('sessions').select('client_id,started_at,finished_at').gte('started_at', new Date(Date.now() - 28 * 864e5).toISOString())).data || [];
+      var pend = [].some.call(document.querySelectorAll('.list.big li > a[href^="#/cliente/"]'), function (a) { return !a.querySelector('[data-cmp]'); });
+      if (!pend) return;
+      if (!cmpCache || Date.now() - cmpCache.at > 60000) {
+        var q = await Promise.all([sb.from('routines').select('client_id,day'), sb.from('sessions').select('client_id,started_at,finished_at').gte('started_at', new Date(Date.now() - 28 * 864e5).toISOString())]);
+        cmpCache = { at: Date.now(), r1: q[0].data || [], r2: q[1].data || [] };
+      }
+      var r1 = cmpCache.r1, r2 = cmpCache.r2;
       var plan = {}, d7 = {}, d28 = {};
       r1.forEach(function (r) { if (r.day) plan[r.client_id] = (plan[r.client_id] || 0) + 1; });
       r2.forEach(function (s) { if (!s.finished_at) return; d28[s.client_id] = (d28[s.client_id] || 0) + 1; if (Date.now() - new Date(s.started_at) < 7 * 864e5) d7[s.client_id] = (d7[s.client_id] || 0) + 1; });
@@ -96,6 +101,7 @@
   var timer;
   function run() { clearTimeout(timer); timer = setTimeout(function () { clientCard(); progressCard(); compliance(); }, 150); }
   new MutationObserver(run).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
-  window.addEventListener('hashchange', function () { me = null; run(); });
+  sb.auth.onAuthStateChange(function (ev) { if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT' || ev === 'USER_UPDATED') me = null; });
+  window.addEventListener('hashchange', run);
   run();
 })();

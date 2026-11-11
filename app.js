@@ -41,10 +41,12 @@
   const weekLabel = w => `Semana ${w.week_no}${w.kind === 'deload' ? ' · Descarga' : w.kind === 'test' ? ' · Test' : ''}`;
   // Repetición automática: crea (y publica) las semanas que falten hasta hoy. Una vez por programa y día.
   async function rollWeeks(programs) {
-    S.rolled = S.rolled || {}; let n = 0;
+    if (!S.rolled) { try { S.rolled = JSON.parse(localStorage.getItem('jmfit-rolled') || '{}'); } catch (e) { S.rolled = {}; } }
+    let n = 0;
     for (const p of programs || []) {
       const k = p.id + today(); if (p.status !== 'active' || p.auto_repeat === false || S.rolled[k]) continue;
       S.rolled[k] = true; n += Number(await DB.rpc('roll_program_weeks', { p_program: p.id }).catch(() => 0)) || 0;
+      try { const t = today(); Object.keys(S.rolled).forEach(x => { if (!x.endsWith(t)) delete S.rolled[x]; }); localStorage.setItem('jmfit-rolled', JSON.stringify(S.rolled)); } catch (e) {}
     }
     return n;
   }
@@ -169,14 +171,30 @@
   }
 
   // ------------------------------------------------------------ arranque
+  const BOOT_KEY = 'jmfit-boot';
+  const bootSig = () => JSON.stringify([S.profile && S.profile.id, S.profile && S.profile.role, S.client && S.client.id, S.client && S.client.name]);
   async function boot() {
+    let shown = false;
+    // 1) si ya entraste antes en este móvil, pinta al momento con lo guardado
+    if (DB.mode === 'live' && !location.hash.includes('type=recovery')) {
+      try {
+        const b = JSON.parse(localStorage.getItem(BOOT_KEY) || 'null');
+        const s = b && await DB.session();
+        if (b && s && s.user && s.user.id === (b.profile && b.profile.id)) { S.profile = b.profile; S.client = b.client; render(); shown = true; }
+      } catch (e) {}
+    }
+    // 2) comprueba con el servidor (perfil y ficha a la vez) y solo repinta si algo cambió
+    const before = shown ? bootSig() : null;
     try {
-      S.profile = await DB.profile();
-      S.client = S.profile && S.profile.role === 'client' ? await DB.myClient() : null;
-    } catch (e) { console.error(e); S.profile = null; }
-    render();
+      const [p, c] = await Promise.all([DB.profile(), DB.myClient().catch(() => null)]);
+      S.profile = p; S.client = p && p.role === 'client' ? c : null;
+      try { if (p) localStorage.setItem(BOOT_KEY, JSON.stringify({ profile: p, client: S.client })); else localStorage.removeItem(BOOT_KEY); } catch (e) {}
+    } catch (e) { console.error(e); if (!shown) S.profile = null; }
+    if (!shown || bootSig() !== before) render();
   }
-  DB.onAuth(() => boot());
+  // Solo se vuelve a arrancar si cambia la persona (entrar/salir), no cada vez que se renueva la sesión
+  let lastAuth = DB.mode === 'live' ? 'init' : undefined;
+  DB.onAuth(s => { const u = s && s.user ? s.user.id : null; if (lastAuth === 'init') { lastAuth = u; return; } if (u === lastAuth) return; lastAuth = u; boot(); });
   window.addEventListener('hashchange', render);
 
   function parseRoute() { return (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean).map(decodeURIComponent); }
@@ -368,10 +386,18 @@
     }
   }
 
+  function dropSheet() { S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) {} }
   async function getSheet(force) {
+    if (!S.sheet && !force) { try { const c = JSON.parse(localStorage.getItem('jmfit-sheet') || 'null'); if (c && c.data) S.sheet = c; } catch (e) {} }
     if (S.sheet && !force && Date.now() - S.sheet.at < 120000) return S.sheet.data;
+    // hay copia (aunque sea vieja): se usa ya y se refresca en segundo plano
+    if (S.sheet && !force && !S.sheetLoading) {
+      S.sheetLoading = DB.sheets('resumen').then(data => { S.sheet = { at: Date.now(), data }; try { localStorage.setItem('jmfit-sheet', JSON.stringify(S.sheet)); } catch (e) {} }).catch(() => {}).finally(() => { S.sheetLoading = null; });
+      return S.sheet.data;
+    }
     const data = await DB.sheets('resumen');
     S.sheet = { at: Date.now(), data };
+    try { localStorage.setItem('jmfit-sheet', JSON.stringify(S.sheet)); } catch (e) {}
     return data;
   }
 
@@ -953,7 +979,7 @@
     const list = box.querySelector('[data-msgs]');
     let lastCount = -1;
     async function load() {
-      const msgs = await DB.list('messages', { eq: { client_id: c.id }, order: ['created_at', 'asc'] });
+      const msgs = await DB.list('messages', { eq: { client_id: c.id }, order: ['created_at', 'asc'], fresh: true });
       if (msgs.length === lastCount) return; lastCount = msgs.length;
       list.innerHTML = msgs.length ? msgs.map(m => `<div class="msg ${m.author === me ? 'mine' : ''}"><p>${nl2br(m.body)}</p><small>${fmtDate(m.created_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('')
         : `<p class="empty">${me === 'coach' ? 'Empieza la conversación con ' + esc(c.name.split(' ')[0]) + '.' : 'Escribe a tu entrenador cualquier duda.'}</p>`;
@@ -1016,7 +1042,7 @@
       onSubmit: async (form, fd) => {
         const pago = Object.fromEntries(fd);
         const r = await safe(() => DB.sheets('registrarPago', { pago }), 'Pago registrado');
-        S.sheet = null; if (after) after(r);
+        dropSheet(); if (after) after(r);
       }
     });
     const fill = () => {
@@ -1032,7 +1058,7 @@
   async function coachPayments() {
     shell(COACH_NAV, 'cobros', loading(), { title: 'Cobros', actions: `<button class="icon-btn" data-refresh title="Actualizar">${ic('refresh')}</button><button class="btn small ghost" data-conf>${ic('cog')}<span>Conectar hoja</span></button>` });
     $app.querySelector('[data-conf]').onclick = sheetSettings;
-    $app.querySelector('[data-refresh]').onclick = () => { S.sheet = null; render(); };
+    $app.querySelector('[data-refresh]').onclick = () => { dropSheet(); render(); };
     const box = $app.querySelector('.content');
     let data;
     try { data = await getSheet(); } catch (e) { box.innerHTML = e.message === 'NO_SHEET' ? `<div class="hero-empty">${ic('euro', 'xl')}<h2>Conecta tu hoja de cobros</h2><p>Así podrás ver vencimientos y registrar pagos desde la app, y todo queda apuntado en tu Excel de Google.</p><button class="btn primary" data-conf2>Conectar hoja</button></div>` : sheetError(e); const b = box.querySelector('[data-conf2]'); if (b) b.onclick = sheetSettings; return; }
@@ -1077,7 +1103,7 @@
       onSubmit: async (f, fd) => {
         await DB.setSetting('sheets_url', fd.get('url').trim());
         await DB.setSetting('sheets_token', fd.get('token').trim());
-        S.sheet = null;
+        dropSheet();
         if (fd.get('url').trim()) { await safe(() => getSheet(true), 'Hoja conectada ✔'); }
         render();
       }
@@ -1209,7 +1235,8 @@
   async function clientToday() {
     const c = S.client;
     shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}` });
-    await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
+    const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
+    if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
     const [allRoutines, items, sessions, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
@@ -1472,7 +1499,17 @@
   window.JMUI = { esc, nl2br, fmtKg, ic, toast, safe, modal, closeModal, confirmBox, loading, ago, today };
 
   // ------------------------------------------------------------ PWA
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    const hadSW = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // La app abre desde lo guardado; cuando hay versión nueva, se avisa para cargarla (sin cortar un entreno)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadSW || document.querySelector('.upd-bar')) return;
+      const b = document.createElement('button'); b.className = 'upd-bar'; b.type = 'button';
+      b.textContent = 'Hay una versión nueva de la app · Toca para actualizar';
+      b.onclick = () => location.reload(); document.body.appendChild(b);
+    });
+  }
 
   boot();
 })();
