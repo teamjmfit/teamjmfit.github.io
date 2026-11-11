@@ -175,6 +175,13 @@
   const bootSig = () => JSON.stringify([S.profile && S.profile.id, S.profile && S.profile.role, S.client && S.client.id, S.client && S.client.name]);
   async function boot() {
     let shown = false;
+    // Verificación en dos pasos: si la cuenta la tiene activada y esta sesión aún no metió el código, se pide antes de nada
+    if (DB.mode === 'live' && !location.hash.includes('type=recovery')) {
+      try {
+        const s0 = await DB.session();
+        if (s0) { const lv = await DB.mfa.level(); if (lv && lv.nextLevel === 'aal2' && lv.currentLevel !== 'aal2') { S.profile = null; return renderMfa(); } }
+      } catch (e) { console.error(e); }
+    }
     // 1) si ya entraste antes en este móvil, pinta al momento con lo guardado
     if (DB.mode === 'live' && !location.hash.includes('type=recovery')) {
       try {
@@ -250,6 +257,58 @@
       } catch (err) { toast(traducirError(err.message), 'err'); }
       finally { btn.disabled = false; }
     };
+  }
+  // Pantalla del código de 6 dígitos al entrar
+  async function renderMfa() {
+    document.body.dataset.role = 'guest';
+    $app.innerHTML = `<main class="login"><div class="login-card">
+        <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><small>Verificación en dos pasos</small></div>
+        <form id="mfa" class="stack">
+          <p class="muted">Abre tu app de códigos (Google Authenticator, Authy…) y escribe el código de 6 cifras de TEAM JMFIT.</p>
+          <label>Código<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus></label>
+          <button class="btn primary block" type="submit">Verificar</button>
+          <button type="button" class="link" data-out>Salir</button>
+        </form></div></main>`;
+    const f = $app.querySelector('#mfa');
+    f.querySelector('[data-out]').onclick = async () => { await DB.signOut(); render(); };
+    f.onsubmit = async e => {
+      e.preventDefault(); const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+      try {
+        const fac = (await DB.mfa.factors()).find(x => x.status === 'verified');
+        if (!fac) throw new Error('No hay ningún factor activado');
+        await DB.mfa.verify(fac.id, f.code.value.trim());
+        boot();
+      } catch (err) { toast(/invalid|expired/i.test(err.message) ? 'Código incorrecto o caducado' : err.message, 'err'); f.code.value = ''; f.code.focus(); }
+      finally { btn.disabled = false; }
+    };
+  }
+  // Activar / desactivar la verificación en dos pasos (entrenador)
+  async function securityModal() {
+    if (DB.mode !== 'live') { toast('La verificación en dos pasos solo funciona con la app real', 'err'); return; }
+    const facs = (await DB.mfa.factors()).filter(x => x.status === 'verified');
+    if (facs.length) {
+      modal('Verificación en dos pasos', `<p>✅ <b>Activada.</b> Cada vez que entres en un dispositivo nuevo te pedirá el código de tu app de autenticación.</p>
+        <p class="muted small">Si cambias de móvil, desactívala aquí y vuelve a activarla con el nuevo. Si pierdes el móvil: Supabase → Authentication → Users → tu usuario → borra el factor.</p>`,
+        { danger: { label: 'Desactivar', run: async () => { if (await confirmBox('¿Desactivar la verificación en dos pasos? Tu cuenta quedará protegida solo con la contraseña.', 'Desactivar')) { await safe(async () => { for (const f of facs) await DB.mfa.unenroll(f.id); }, 'Verificación desactivada'); } } } });
+      return;
+    }
+    let en;
+    try { en = await DB.mfa.enroll(); } catch (e) { toast('Error: ' + e.message, 'err'); return; }
+    const qr = en.totp.qr_code;
+    modal('Activar verificación en dos pasos', `
+      <ol class="small mfa-steps">
+        <li>Instala en tu móvil <b>Google Authenticator</b> (o Authy, 1Password…).</li>
+        <li>Pulsa <b>+</b> → <b>Escanear código QR</b> y escanea este:</li>
+      </ol>
+      <div class="mfa-qr"><img alt="Código QR para la app de autenticación" src="${esc(qr.startsWith('data:') ? qr : 'data:image/svg+xml;utf-8,' + encodeURIComponent(qr))}"></div>
+      <details class="small"><summary>¿No puedes escanear? Introduce la clave a mano</summary><code class="mfa-secret">${esc(en.totp.secret)}</code></details>
+      <label>3. Escribe el código de 6 cifras que te sale<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label>`, {
+      submitLabel: 'Activar',
+      onSubmit: async (f, fd) => {
+        try { await DB.mfa.verify(en.id, String(fd.get('code')).trim()); toast('Verificación en dos pasos activada 🔒', 'ok'); }
+        catch (e) { toast(/invalid|expired/i.test(e.message) ? 'Código incorrecto: prueba con el siguiente' : 'Error: ' + e.message, 'err'); return false; }
+      }
+    });
   }
   function traducirError(m) {
     if (/NOT_INVITED|saving new user/i.test(m)) return 'Este correo no está autorizado. Pide a tu entrenador que te dé de alta con este correo.';
@@ -328,7 +387,8 @@
 
   // ---------- Inicio
   async function coachHome() {
-    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋' });
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
+    $app.querySelector('[data-sec]').onclick = () => securityModal();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
     const [clients, sessions, checkins, msgs] = await Promise.all([
       loadClients(),
@@ -1434,7 +1494,7 @@
       ${p.meals && !hasBlocks ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
       ${p.notes ? `<section class="card"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
       <p class="muted small">Actualizado ${ago(p.updated_at)}</p>`;
-    if (hasBlocks) window.JMNutri.wireClient(box);
+    if (hasBlocks) window.JMNutri.wireClient(box, d, S.client && S.client.id);
   }
 
   // ---------- Check-in (cliente): el mismo formulario «Valoración semanal» de Harbiz

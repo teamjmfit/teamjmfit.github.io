@@ -597,3 +597,21 @@ a.kpi:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--muted) 50%, transpa
   .scale.ten span { padding: 8px 0; font-size: 13px; }
   .np-ptr { grid-template-columns: 1.2fr 1fr 1fr 1fr; }
 }
+
+/* ---------- v4: lista de la compra y verificación en dos pasos */
+.sl-days { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 4px 0 12px; }
+.sl-days label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.sl-days input { width: 70px; padding: 8px; }
+.sl-cat { margin-bottom: 12px; }
+.sl-cat h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sl-item { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--line); font-size: 15px; cursor: pointer; margin: 0; }
+.sl-item input { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+.sl-item span { flex: 1; }
+.sl-item b { font-size: 14px; white-space: nowrap; }
+.sl-item.done span, .sl-item.done b { text-decoration: line-through; opacity: .5; }
+.mfa-qr { display: grid; place-items: center; background: #fff; border-radius: var(--r-sm); padding: 14px; margin: 8px 0; }
+.mfa-qr img { width: 200px; height: 200px; }
+.mfa-secret { display: block; word-break: break-all; background: var(--bg2); padding: 8px; border-radius: 6px; margin-top: 6px; }
+.mfa-steps { padding-left: 18px; margin: 0; }
+.sl-days label, label.sl-item { flex-direction: row; align-items: center; text-align: left; }
+label.sl-item span, label.sl-item b { color: var(--text); }
