@@ -223,13 +223,13 @@
         };
         if (fn === 'create_program_from_routines') {
           const start = monday(a.p_start);
-          const prog = { id: uuid(), client_id: a.p_client, name: a.p_name, start_date: start, status: 'active', created_at: now() };
+          const prog = { id: uuid(), client_id: a.p_client, name: a.p_name, start_date: start, status: 'active', auto_repeat: true, created_at: now() };
           const w1 = { id: uuid(), program_id: prog.id, client_id: a.p_client, week_no: 1, start_date: start, kind: 'normal', source_week_id: null, published: false, created_at: now() };
           T('programs').push(prog); T('program_weeks').push(w1);
           copyWeek(T('routines').filter(r => r.client_id === a.p_client && !r.program_week_id).sort((x, y) => x.position - y.position), w1.id);
           save(); return prog.id;
         }
-        if (fn === 'clone_program_week') {
+        if (fn === 'clone_program_week' || fn === '_clone_week') {
           const mode = a.p_mode || 'progress', vol = a.p_deload_volume || 0.6;
           const src = T('program_weeks').find(w => w.id === a.p_week_id);
           if (!src) throw new Error('Semana no encontrada');
@@ -244,7 +244,7 @@
             const o = {}; const pr = it.progression || {}; const rule = pr.type || 'none';
             const inc = Number(pr.inc_kg ?? pr.inc ?? 0);
             const logs = T('set_logs').filter(l => l.lineage_id && l.lineage_id === it.lineage_id && done.has(l.session_id));
-            if (mode === 'progress' && rule !== 'none' && it.reps_max != null && logs.length >= it.sets) {
+            if ((mode === 'progress' || mode === 'repeat') && rule !== 'none' && it.reps_max != null && logs.length >= it.sets) {
               const minReps = Math.min(...logs.map(l => Number(l.reps) || 0)), top = Math.max(...logs.map(l => Number(l.weight) || 0));
               const rirs = logs.map(l => l.rir).filter(v => v != null), minRir = rirs.length ? Math.min(...rirs) : null;
               let up = false;
@@ -252,12 +252,27 @@
                 if (rule === 'load' || rule === 'double') { o.load_kg = roundLoad((it.load_kg ?? top) + inc); up = true; }
                 else if (rule === 'reps') { o.reps_min = it.reps_min + inc; o.reps_max = it.reps_max + inc; o.reps = o.reps_min === o.reps_max ? String(o.reps_min) : o.reps_min + '-' + o.reps_max; up = true; }
               }
-              if (!up) o.load_kg = it.load_kg ?? top;
+              if (!up) o.load_kg = mode === 'repeat' ? (top || it.load_kg) : (it.load_kg ?? top);
+            } else if (mode === 'repeat' && logs.length) {
+              const top = Math.max(...logs.map(l => Number(l.weight) || 0)); if (top > 0) o.load_kg = top;
             }
             if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.min((it.target_rir ?? 2) + 2, 5); }
             return o;
           });
           save(); return nw.id;
+        }
+        if (fn === 'roll_program_weeks') {
+          const prog = T('programs').find(p => p.id === a.p_program);
+          if (!prog || prog.auto_repeat === false || prog.status !== 'active') return 0;
+          let n = 0; const t = new Date(); const td = new Date(t.getTime() - t.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+          while (n < 12) {
+            const lw = T('program_weeks').filter(w => w.program_id === prog.id).sort((x, y) => y.week_no - x.week_no)[0];
+            if (!lw || !lw.published || plus(lw.start_date, 7) > td) break;
+            const id = await this.rpc('_clone_week', { p_week_id: lw.id, p_mode: 'repeat' });
+            const nw = T('program_weeks').find(w => w.id === id); nw.published = true; nw.notes = 'Repetida automáticamente';
+            n++;
+          }
+          save(); return n;
         }
         if (fn === 'propagate_item_change') {
           const it = T('routine_items').find(i => i.id === a.p_item_id); if (!it) return 0;

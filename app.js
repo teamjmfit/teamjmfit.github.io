@@ -39,6 +39,16 @@
   const progVal = k => { const [t, v] = String(k || 'none').split(':'); return t === 'reps' ? { type: 'reps', inc: Number(v) || 1 } : t === 'load' ? { type: 'load', inc_kg: Number(v) || 2.5 } : { type: 'none' }; };
   const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
   const weekLabel = w => `Semana ${w.week_no}${w.kind === 'deload' ? ' · Descarga' : w.kind === 'test' ? ' · Test' : ''}`;
+  // Repetición automática: crea (y publica) las semanas que falten hasta hoy. Una vez por programa y día.
+  async function rollWeeks(programs) {
+    S.rolled = S.rolled || {}; let n = 0;
+    for (const p of programs || []) {
+      const k = p.id + today(); if (p.status !== 'active' || p.auto_repeat === false || S.rolled[k]) continue;
+      S.rolled[k] = true; n += Number(await DB.rpc('roll_program_weeks', { p_program: p.id }).catch(() => 0)) || 0;
+    }
+    return n;
+  }
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   // La semana que ve el cliente: la última publicada que ya ha empezado. Si no hay, ve sus rutinas fijas.
   const currentWeek = (weeks, programs) => {
     const ok = new Set(programs.filter(p => p.status === 'active').map(p => p.id)), t = today();
@@ -423,7 +433,7 @@
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
     const c = await DB.get('clients', id);
@@ -441,6 +451,7 @@
       <div data-tab>${loading()}</div>`;
     const box = content.querySelector('[data-tab]');
     if (tab === 'rutinas') return tabRoutines(c, box);
+    if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
     if (tab === 'progreso') return tabProgress(c, box, true);
     if (tab === 'mensajes') return tabMessages(c, box, 'coach');
@@ -449,6 +460,7 @@
 
   // ----- Rutinas (entrenador)
   async function tabRoutines(c, box) {
+    await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
     const [allRoutines, items, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
@@ -471,6 +483,7 @@
           <button class="btn small primary" data-newprog ${fixed.length ? '' : 'disabled title="Crea antes alguna rutina"'}>${ic('plus')} Crear programa</button></div></section>`
       : `<section class="card prog-card">
           <div class="row gap"><span class="grow"><b>${esc(prog.name)}</b><small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span></div>
+          <label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>
           <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'}">S${w.week_no}${w.kind === 'deload' ? ' ↓' : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
           ${view ? `<div class="row gap wrap wkbar"><span class="grow"><b>${esc(weekLabel(view))}</b> <small class="muted">${fmtDate(view.start_date)} – ${fmtDate(addDays(view.start_date, 6))}</small> <span class="pill ${view.published ? 'green' : 'amber'}">${view.published ? 'Publicada' : 'Borrador'}</span></span>
               <button class="btn small ${view.published ? 'ghost' : 'primary'}" data-pub>${view.published ? 'Ocultar al cliente' : 'Publicar'}</button>
@@ -499,6 +512,11 @@
     const ca = box.querySelector('[data-copyall]'); if (ca) ca.onclick = () => copyPlanFrom(c);
     const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
     box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
+    const au = box.querySelector('[data-auto]');
+    if (au) au.onchange = async () => {
+      await safe(() => DB.update('programs', prog.id, { auto_repeat: au.checked }), au.checked ? 'Repetición automática activada' : 'Repetición automática desactivada');
+      if (au.checked) { S.rolled = {}; } tabRoutines(c, box);
+    };
     if (view) {
       box.querySelector('[data-pub]').onclick = async () => {
         if (view.published && !(await confirmBox(`El cliente dejará de ver la ${weekLabel(view)}.`, 'Ocultar'))) return;
@@ -529,6 +547,7 @@
 
   function cloneWeek(c, w, done) {
     const modes = [['progress', 'Progresión automática', 'Sube carga o reps en los ejercicios con regla de progresión si el cliente cumplió el objetivo en esta semana (todas las series en el tope del rango y con el RIR pedido). Lo demás se copia igual.'],
+      ['repeat', 'Repetir con los pesos que hizo', 'Misma semana; cada ejercicio parte de la carga que registró el cliente (y sube si tiene regla de progresión y la cumplió).'],
       ['copy', 'Copia exacta', 'Mismas series, reps y cargas.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR +2.']];
     modal('Crear la semana siguiente', `<p class="muted">A partir de la ${esc(weekLabel(w))}. Se crea en borrador para que la revises antes de publicarla.</p>
       <div class="choices">${modes.map(([v, t, d], i) => `<label class="choice"><input type="radio" name="mode" value="${v}" ${i ? '' : 'checked'}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>`, {
@@ -537,6 +556,75 @@
         S.weekSel[c.id] = id; done();
       }
     });
+  }
+
+  // ----- Calendario mensual del cliente (entrenador)
+  async function tabCalendar(c, box) {
+    S.calMonth = S.calMonth || {};
+    const [y, m] = (S.calMonth[c.id] || today().slice(0, 7)).split('-').map(Number);
+    await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
+    const [routines, items, programs, weeks, sessions] = await Promise.all([
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('programs', { eq: { client_id: c.id } }),
+      DB.list('program_weeks', { eq: { client_id: c.id } }),
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 400 })
+    ]);
+    const prog = programs.filter(p => p.status === 'active').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+    const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
+    const lastW = pweeks[pweeks.length - 1];
+    const fixed = routines.filter(r => !r.program_week_id);
+    const t = today();
+    const first = new Date(y, m - 1, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+    const lastDay = new Date(y, m, 0), end = new Date(lastDay); end.setDate(lastDay.getDate() + (7 - ((lastDay.getDay() + 6) % 7)) - 1);
+    const plan = iso => {
+      const dow = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
+      const w = pweeks.find(x => x.start_date <= iso && iso <= addDays(x.start_date, 6));
+      if (w) return { week: w, kind: w.published ? 'pub' : 'draft', rs: routines.filter(r => r.program_week_id === w.id && r.day === dow) };
+      if (lastW && iso > addDays(lastW.start_date, 6)) {
+        if (prog.auto_repeat !== false && lastW.published) return { week: lastW, kind: 'auto', rs: routines.filter(r => r.program_week_id === lastW.id && r.day === dow) };
+        return { kind: 'none', rs: [] };
+      }
+      return { kind: 'fixed', rs: fixed.filter(r => r.day === dow) };
+    };
+    const doneOn = iso => sessions.filter(s => s.finished_at && ymd(new Date(s.started_at)) === iso);
+    const cap = x => x.charAt(0).toUpperCase() + x.slice(1);
+    // Una rutina cuenta como hecha si el cliente la hizo cualquier día de esa misma semana
+    const doneInWeek = (r, iso) => { const d0 = new Date(iso + 'T12:00:00'); d0.setDate(d0.getDate() - (d0.getDay() + 6) % 7); const a = ymd(d0), z = addDays(a, 6);
+      return sessions.some(s => { const sd = s.finished_at && ymd(new Date(s.started_at)); return sd && sd >= a && sd <= z && (s.routine_id === r.id || (s.routine_name || '') === r.name); }); };
+    const cells = [];
+    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = ymd(d), p = plan(iso), done = doneOn(iso);
+      const monday = d.getDay() === 1;
+      cells.push(`<button type="button" class="cday ${d.getMonth() !== m - 1 ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''}" data-day="${iso}">
+        <span class="cnum">${d.getDate()}${monday && p.week ? `<i class="cwk">S${p.week.week_no + (p.kind === 'auto' ? Math.floor((new Date(iso) - new Date(lastW.start_date)) / 6048e5) : 0)}</i>` : ''}</span>
+        ${p.rs.map(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name); return `<span class="cev ${p.kind} ${dn ? 'done' : doneInWeek(r, iso) ? 'moved' : iso < t ? 'missed' : ''}">${esc(r.name)}</span>`; }).join('')}
+        ${done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name)).map(s => `<span class="cev done">${esc(s.routine_name || 'Entreno')}</span>`).join('')}
+      </button>`);
+    }
+    const mName = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
+    const monthDone = sessions.filter(s => s.finished_at && s.started_at.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}`).length;
+    box.innerHTML = `<section class="card cal">
+        <header class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><h3 class="grow center">${esc(mName)}</h3><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button></header>
+        <p class="muted small center">${monthDone} entreno${monthDone === 1 ? '' : 's'} hecho${monthDone === 1 ? '' : 's'} este mes${prog ? ` · ${esc(prog.name)}${prog.auto_repeat !== false ? ' · se repite sola cada semana' : ''}` : ' · rutinas fijas (se repiten cada semana)'}</p>
+        <div class="cgrid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<small class="chead">${x}</small>`).join('')}${cells.join('')}</div>
+        <div class="clegend"><span class="cev pub">Planificado</span><span class="cev done">Hecho</span><span class="cev moved pub">Hecho otro día</span><span class="cev missed pub">No hecho</span>${prog ? '<span class="cev auto">Se repetirá</span><span class="cev draft">Borrador</span>' : ''}</div>
+      </section><div data-dayinfo></div>`;
+    box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const d = new Date(y, m - 1 + Number(b.dataset.mv), 1); S.calMonth[c.id] = ymd(d).slice(0, 7); tabCalendar(c, box); });
+    const info = box.querySelector('[data-dayinfo]');
+    const showDay = iso => {
+      S.calSel = iso; box.querySelectorAll('.cday').forEach(x => x.classList.toggle('sel', x.dataset.day === iso));
+      const p = plan(iso), done = doneOn(iso);
+      info.innerHTML = `<section class="card"><h3>${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
+        ${p.rs.map(r => `<div class="routine-mini"><b>${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length ? '' : '<p class="empty">Descanso</p>')}
+        ${done.map(s => `<p class="pill green">✓ ${esc(s.routine_name || 'Entreno')} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}</p>`).join('')}
+        ${p.rs.length ? `<button class="btn small" data-goweek>${ic('edit')} Editar ${p.week && p.kind !== 'auto' ? esc(weekLabel(p.week)) : p.kind === 'auto' ? 'la última semana' : 'rutinas fijas'}</button>` : ''}</section>`;
+      const g = info.querySelector('[data-goweek]');
+      if (g) g.onclick = () => { S.weekSel = S.weekSel || {}; S.weekSel[c.id] = p.week ? p.week.id : 'fixed'; go('#/cliente/' + c.id + '/rutinas'); };
+    };
+    box.querySelectorAll('[data-day]').forEach(b => b.onclick = () => showDay(b.dataset.day));
+    const inMonth = S.calSel && S.calSel.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? S.calSel : (t.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? t : null);
+    if (inMonth) showDay(inMonth);
   }
 
   async function copyRoutinesTo(target, routines, allItems) {
@@ -1017,6 +1105,7 @@
   async function clientToday() {
     const c = S.client;
     shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}` });
+    await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
     const [allRoutines, items, sessions, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
