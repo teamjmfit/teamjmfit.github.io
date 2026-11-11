@@ -23,8 +23,26 @@
       if (opts.limit) q = q.limit(opts.limit);
       return q;
     };
+    // Caché de lecturas: lo mismo pedido dos veces en 30 s sale de memoria (y si ya está en camino, se comparte).
+    // Cualquier escritura en una tabla borra su caché; cualquier rpc borra toda la caché.
+    const cache = new Map(), TTL = 30000;
+    const ck = (t, o) => t + '|' + JSON.stringify(o || {});
+    const cached = (t, o, fn) => {
+      const k = ck(t, o), hit = cache.get(k);
+      if (hit && Date.now() - hit.at < TTL && !(o && o.fresh)) return hit.p.then(clone);
+      const p = fn(); cache.set(k, { at: Date.now(), p });
+      p.catch(() => cache.delete(k));
+      return p.then(clone);
+    };
+    const clone = v => (v == null ? v : JSON.parse(JSON.stringify(v)));
+    const drop = t => { for (const k of cache.keys()) if (!t || k.startsWith(t + '|')) cache.delete(k); };
+    // las vistas dependen de varias tablas
+    const VIEWS = { option_items: ['option_macros'], meal_options: ['option_macros'], foods: ['option_macros'], set_logs: ['last_performance'], daily_metrics: ['weekly_weight'] };
+    const dropW = t => { drop(t); (VIEWS[t] || []).forEach(drop); };
     return {
       mode: 'live',
+      sb,
+      clearCache() { drop(); },
       async session() { const { data } = await sb.auth.getSession(); return data.session; },
       onAuth(fn) { sb.auth.onAuthStateChange((_e, s) => fn(s)); },
       async signIn(email, password) { ok(await sb.auth.signInWithPassword({ email, password })); },
@@ -34,7 +52,7 @@
       },
       async resetPassword(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
       async updatePassword(password) { ok(await sb.auth.updateUser({ password })); },
-      async signOut() { await sb.auth.signOut(); },
+      async signOut() { drop(); try { ['jmfit-boot', 'jmfit-sheet', 'jmfit-rolled'].forEach(k => localStorage.removeItem(k)); } catch (e) {} await sb.auth.signOut(); },
       async profile() {
         const s = await this.session(); if (!s) return null;
         const rows = ok(await sb.from('profiles').select('*').eq('id', s.user.id));
@@ -45,13 +63,13 @@
         const rows = ok(await sb.from('clients').select('*').eq('user_id', s.user.id));
         return rows[0] || null;
       },
-      async list(t, opts) { return ok(await applyFilters(sb.from(t).select('*'), opts)); },
-      async get(t, id, key = 'id') { const r = ok(await sb.from(t).select('*').eq(key, id)); return r[0] || null; },
-      async insert(t, rows) { return ok(await sb.from(t).insert(rows).select()); },
-      async update(t, id, patch, key = 'id') { return ok(await sb.from(t).update(patch).eq(key, id).select()); },
-      async upsert(t, row, key = 'id') { return ok(await sb.from(t).upsert(row, { onConflict: key }).select()); },
-      async remove(t, id, key = 'id') { ok(await sb.from(t).delete().eq(key, id)); },
-      async rpc(fn, args) { return ok(await sb.rpc(fn, args)); },
+      list(t, opts) { return cached(t, opts, async () => ok(await applyFilters(sb.from(t).select('*'), opts))); },
+      get(t, id, key = 'id') { return cached(t, { get: [key, id] }, async () => { const r = ok(await sb.from(t).select('*').eq(key, id)); return r[0] || null; }); },
+      async insert(t, rows) { try { return ok(await sb.from(t).insert(rows).select()); } finally { dropW(t); } },
+      async update(t, id, patch, key = 'id') { try { return ok(await sb.from(t).update(patch).eq(key, id).select()); } finally { dropW(t); } },
+      async upsert(t, row, key = 'id') { try { return ok(await sb.from(t).upsert(row, { onConflict: key }).select()); } finally { dropW(t); } },
+      async remove(t, id, key = 'id') { try { ok(await sb.from(t).delete().eq(key, id)); } finally { dropW(t); } },
+      async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence)$/.test(fn)) drop(); } },
       async uploadPhoto(clientId, blob) {
         const path = `${clientId}/${Date.now()}.jpg`;
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
@@ -366,9 +384,16 @@
   const DB = LIVE ? liveBackend() : demoBackend();
 
   // ------------------------------------------------- Hoja de cobros (Apps Script)
+  const sheetsInflight = {};
   DB.sheets = async function (action, payload) {
-    const url = await DB.getSetting('sheets_url');
-    const token = await DB.getSetting('sheets_token');
+    if (action === 'resumen' && !payload) {
+      if (!sheetsInflight.r) sheetsInflight.r = sheetsCall(action, payload).finally(() => { sheetsInflight.r = null; });
+      return sheetsInflight.r;
+    }
+    return sheetsCall(action, payload);
+  };
+  async function sheetsCall(action, payload) {
+    const [url, token] = await Promise.all([DB.getSetting('sheets_url'), DB.getSetting('sheets_token')]);
     if (!url) {
       if (DB.mode === 'demo') return demoSheets(action, payload);
       throw new Error('NO_SHEET');
@@ -377,7 +402,7 @@
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || 'Error en la hoja');
     return json.data;
-  };
+  }
 
   // Datos de ejemplo de cobros para el modo demo (inventados)
   let demoPagos = null;

@@ -67,7 +67,12 @@
     if (!id) { if (!silent) U().toast('Primero pega el enlace de tu hoja de alimentos', 'err'); return null; }
     try {
       const rows = await fetchSheet(id);
+      // si la hoja no ha cambiado desde la última vez, no hace falta tocar la base de datos
+      const sig = id + ':' + rows.length + ':' + [...JSON.stringify(rows)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 0);
+      let prev = ''; try { prev = localStorage.getItem('jmfit-foods-sig') || ''; } catch (e) {}
+      if (silent && sig === prev) { N.lastSync = Date.now(); try { localStorage.setItem('jmfit-foods-sync', String(N.lastSync)); } catch (e) {} return { total: rows.length, nuevos: 0, actualizados: 0, desactivados: 0 }; }
       const res = await DB().rpc('sync_foods', { p_rows: rows });
+      try { localStorage.setItem('jmfit-foods-sig', sig); } catch (e) {}
       N.lastSync = Date.now(); try { localStorage.setItem('jmfit-foods-sync', String(N.lastSync)); } catch (e) {}
       await loadFoods(true);
       const ch = res && (res.nuevos || res.actualizados || res.desactivados);
@@ -80,7 +85,8 @@
     try { N.lastSync = N.lastSync || Number(localStorage.getItem('jmfit-foods-sync')) || 0; } catch (e) {}
     if (Date.now() - N.lastSync < 10 * 6e4) return false;
     N.lastSync = Date.now();
-    return !!(await syncFoods({ silent: true }));
+    const r = await syncFoods({ silent: true });
+    return !!(r && (r.nuevos || r.actualizados || r.desactivados));
   }
 
   // ------------------------------------------------------------ editor del entrenador

@@ -5,7 +5,7 @@
   'use strict';
   var cfg = window.JMFIT_CONFIG || {};
   if (!cfg.SUPABASE_URL || !window.supabase) return;
-  var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  var sb = (window.DB && window.DB.sb) || window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
   var KEY = 'jmfit-invite';
   var base = location.origin + location.pathname;
   var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };

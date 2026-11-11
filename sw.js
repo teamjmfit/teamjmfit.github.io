@@ -1,12 +1,29 @@
-// TEAM JMFIT · service worker: guarda la app para que abra rápido y sin conexión.
-const CACHE = 'jmfit-v13';
+// TEAM JMFIT · service worker: abre la app al instante desde el móvil y la actualiza en segundo plano.
+const CACHE = 'jmfit-v14';
 const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'exercises.js', 'data.js', 'app.js',
   'fix.js', 'invite.js', 'features.js', 'nutri.js', 'manifest.json', 'icon-192.png', 'logo.webp'];
+// Archivos de fuera que no cambian nunca (versión fija): se guardan una vez
+const IMMUTABLE = /^https:\/\/(cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@[\d.]+\/|fonts\.gstatic\.com\/)/;
+const FONTS_CSS = /^https:\/\/fonts\.googleapis\.com\//;
+
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+
 self.addEventListener('fetch', e => {
-  const u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin) return; // Supabase y Google van siempre a la red
-  // red primero (siempre la última versión), caché si no hay conexión
-  e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; }).catch(() => caches.match(e.request)));
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = req.url, u = new URL(url);
+  // Supabase, hojas de Google, vídeos…: siempre a la red
+  if (u.origin !== location.origin && !IMMUTABLE.test(url) && !FONTS_CSS.test(url)) return;
+  if (IMMUTABLE.test(url)) {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => { if (r.ok) { const cp = r.clone(); caches.open(CACHE).then(c => c.put(req, cp)); } return r; })));
+    return;
+  }
+  // App y estilos: lo guardado al instante y, a la vez, se descarga la versión nueva para la próxima vez
+  e.respondWith(caches.open(CACHE).then(async c => {
+    const hit = await c.match(req, { ignoreSearch: req.mode === 'navigate' });
+    const net = fetch(req).then(r => { if (r.ok) c.put(req, r.clone()); return r; });
+    if (hit) { e.waitUntil(net.catch(() => {})); return hit; }
+    return net.catch(() => c.match('./'));
+  }));
 });
