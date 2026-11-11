@@ -224,13 +224,13 @@
           <button class="btn block" data-demo="client">${ic('dumbbell')} Entrar como cliente (Laura)</button>
           <button class="btn ghost block small" data-reset>Reiniciar datos de ejemplo</button>
         ` : `
-          <div class="seg"><button class="${mode === 'in' ? 'on' : ''}" data-mode="in">Entrar</button><button class="${mode === 'up' ? 'on' : ''}" data-mode="up">Crear cuenta</button></div>
+          <div class="seg"><button class="${mode === 'in' ? 'on' : ''}" data-mode="in">Entrar</button><button class="${mode === 'up' ? 'on' : ''}" data-mode="up">Soy atleta nuevo</button></div>
           <form id="auth" class="stack">
             ${mode === 'up' ? '<label>Nombre<input name="name" required autocomplete="name"></label>' : ''}
             <label>Correo<input name="email" type="email" required autocomplete="email"></label>
             ${mode !== 'reset' ? `<label>Contraseña<input name="password" type="password" minlength="6" required autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}"></label>` : ''}
-            <button class="btn primary block" type="submit">${mode === 'up' ? 'Crear cuenta' : mode === 'reset' ? 'Enviar enlace' : 'Entrar'}</button>
-            ${mode === 'up' ? '<p class="muted small">Usa el mismo correo que diste a tu entrenador.</p>' : ''}
+            <button class="btn primary block" type="submit">${mode === 'up' ? 'Crear mi cuenta de atleta' : mode === 'reset' ? 'Enviar enlace' : 'Entrar'}</button>
+            ${mode === 'up' ? '<p class="muted small">Solo para atletas de TEAM JMFIT: usa el mismo correo que diste a tu entrenador o entra desde tu enlace de invitación.</p>' : ''}
             ${mode === 'in' ? '<button type="button" class="link" data-mode="reset">¿Olvidaste la contraseña?</button>' : ''}
             ${mode === 'reset' ? '<button type="button" class="link" data-mode="in">Volver</button>' : ''}
           </form>`}
@@ -447,7 +447,7 @@
 
   function appUrl() { return location.origin + location.pathname; }
   function invite(c) {
-    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Crear cuenta" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
+    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Soy atleta nuevo" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
     modal('Invita a ' + c.name, `
       <p>Envíale este mensaje para que cree su cuenta con <b>${esc(c.email)}</b>. En cuanto se registre, verá su plan.</p>
       <textarea class="mono" rows="8" readonly>${esc(msg)}</textarea>

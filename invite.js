@@ -92,7 +92,7 @@
     var card = document.querySelector('.login-card');
     if (card && getCode() && !card.querySelector('[data-invite-banner]')) {
       var n = document.createElement('p'); n.setAttribute('data-invite-banner', '');
-      n.className = 'note'; n.textContent = 'Te han invitado a TEAM JMFIT. Crea tu cuenta con tu correo para empezar.';
+      n.className = 'note'; n.textContent = 'Te han invitado como atleta de TEAM JMFIT. Crea tu cuenta con tu correo para empezar.';
       var brand = card.querySelector('.brand'); brand ? brand.after(n) : card.prepend(n);
       if (!switched) { var up = card.querySelector('[data-mode="up"]'); if (up && !up.classList.contains('on')) { switched = true; up.click(); } }
     }
