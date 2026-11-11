@@ -217,20 +217,20 @@
     const demo = DB.mode === 'demo';
     $app.innerHTML = `<main class="login">
       <div class="login-card">
-        <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"><small>Entrenamiento y nutrición</small></div>
+        <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><small>Entrenamiento y nutrición</small></div>
         ${demo ? `
           <p class="muted">Modo demo: la app aún no está conectada a Supabase. Prueba los dos lados con datos de ejemplo (se guardan solo en este navegador).</p>
           <button class="btn primary block" data-demo="coach">${ic('users')} Entrar como entrenador</button>
           <button class="btn block" data-demo="client">${ic('dumbbell')} Entrar como cliente (Laura)</button>
           <button class="btn ghost block small" data-reset>Reiniciar datos de ejemplo</button>
         ` : `
-          <div class="seg"><button class="${mode === 'in' ? 'on' : ''}" data-mode="in">Entrar</button><button class="${mode === 'up' ? 'on' : ''}" data-mode="up">Crear cuenta</button></div>
+          <div class="seg"><button class="${mode === 'in' ? 'on' : ''}" data-mode="in">Entrar</button><button class="${mode === 'up' ? 'on' : ''}" data-mode="up">Soy atleta nuevo</button></div>
           <form id="auth" class="stack">
             ${mode === 'up' ? '<label>Nombre<input name="name" required autocomplete="name"></label>' : ''}
             <label>Correo<input name="email" type="email" required autocomplete="email"></label>
             ${mode !== 'reset' ? `<label>Contraseña<input name="password" type="password" minlength="6" required autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}"></label>` : ''}
-            <button class="btn primary block" type="submit">${mode === 'up' ? 'Crear cuenta' : mode === 'reset' ? 'Enviar enlace' : 'Entrar'}</button>
-            ${mode === 'up' ? '<p class="muted small">Usa el mismo correo que diste a tu entrenador.</p>' : ''}
+            <button class="btn primary block" type="submit">${mode === 'up' ? 'Crear mi cuenta de atleta' : mode === 'reset' ? 'Enviar enlace' : 'Entrar'}</button>
+            ${mode === 'up' ? '<p class="muted small">Solo para atletas de TEAM JMFIT: usa el mismo correo que diste a tu entrenador o entra desde tu enlace de invitación.</p>' : ''}
             ${mode === 'in' ? '<button type="button" class="link" data-mode="reset">¿Olvidaste la contraseña?</button>' : ''}
             ${mode === 'reset' ? '<button type="button" class="link" data-mode="in">Volver</button>' : ''}
           </form>`}
@@ -272,7 +272,7 @@
   function shell(navItems, activeKey, content, { title, back, actions = '' } = {}) {
     const nav = navItems.map(n => `<a href="#/${n.href}" class="${n.key === activeKey ? 'on' : ''}">${ic(n.icon)}<span>${n.label}</span>${n.badge ? `<i class="badge">${n.badge}</i>` : ''}</a>`).join('');
     $app.innerHTML = `
-      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
+      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
         <nav>${nav}</nav>
         <button class="side-out" data-logout>${ic('out')} Salir</button>
         ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
@@ -280,7 +280,7 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           <h1>${esc(title || '')}</h1><span class="grow"></span>${actions}
-          <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="480" height="270">
+          <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
         <div class="content">${content}</div>
       </div>
@@ -447,7 +447,7 @@
 
   function appUrl() { return location.origin + location.pathname; }
   function invite(c) {
-    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Crear cuenta" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
+    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Soy atleta nuevo" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
     modal('Invita a ' + c.name, `
       <p>Envíale este mensaje para que cree su cuenta con <b>${esc(c.email)}</b>. En cuanto se registre, verá su plan.</p>
       <textarea class="mono" rows="8" readonly>${esc(msg)}</textarea>
@@ -1216,7 +1216,7 @@
   async function renderClient() {
     document.body.dataset.role = 'client';
     if (!S.client) {
-      $app.innerHTML = `<main class="login"><div class="login-card"><div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="480" height="270"></div>
+      $app.innerHTML = `<main class="login"><div class="login-card"><div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"></div>
         <h2>¡Ya casi está!</h2><p>Tu cuenta (<b>${esc(S.profile.email)}</b>) todavía no está vinculada a un plan. Pide a tu entrenador que te dé de alta con este mismo correo y vuelve a entrar.</p>
         <button class="btn primary block" data-retry>Comprobar de nuevo</button><button class="btn ghost block" data-out>Salir</button></div></main>`;
       $app.querySelector('[data-retry]').onclick = boot;
