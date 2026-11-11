@@ -37,7 +37,7 @@
     const clone = v => (v == null ? v : JSON.parse(JSON.stringify(v)));
     const drop = t => { for (const k of cache.keys()) if (!t || k.startsWith(t + '|')) cache.delete(k); };
     // las vistas dependen de varias tablas
-    const VIEWS = { option_items: ['option_macros'], meal_options: ['option_macros'], foods: ['option_macros'], set_logs: ['last_performance'], daily_metrics: ['weekly_weight'] };
+    const VIEWS = { option_items: ['option_macros'], meal_options: ['option_macros'], foods: ['option_macros'], set_logs: ['last_performance'], daily_metrics: ['weekly_weight'], checkins: ['checkin_photos'], meal_plans: ['meal_blocks', 'meal_options', 'option_items', 'option_macros'], meal_blocks: ['meal_options', 'option_items', 'option_macros'] };
     const dropW = t => { drop(t); (VIEWS[t] || []).forEach(drop); };
     return {
       mode: 'live',
@@ -71,10 +71,11 @@
       async remove(t, id, key = 'id') { try { ok(await sb.from(t).delete().eq(key, id)); } finally { dropW(t); } },
       async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence)$/.test(fn)) drop(); } },
       async uploadPhoto(clientId, blob) {
-        const path = `${clientId}/${Date.now()}.jpg`;
+        const path = `${clientId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
         return path;
       },
+      async removePhotos(paths) { if (paths.length) await sb.storage.from('checkins').remove(paths); },
       async photoUrl(path) {
         const d = ok(await sb.storage.from('checkins').createSignedUrl(path, 3600));
         return d.signedUrl;
@@ -229,6 +230,8 @@
           store.tables.routines = T('routines').filter(r => !rids.has(r.id));
           store.tables.routine_items = T('routine_items').filter(i => !rids.has(i.routine_id));
         }
+        if (t === 'meal_plans') for (const b of T('meal_blocks').filter(x => x.plan_id === id)) await this.remove('meal_blocks', b.id);
+        if (t === 'checkins') store.tables.checkin_photos = T('checkin_photos').filter(r => r.checkin_id !== id);
         if (t === 'meal_blocks') {
           const oids = new Set(T('meal_options').filter(o => o.block_id === id).map(o => o.id));
           store.tables.meal_options = T('meal_options').filter(o => o.block_id !== id);
@@ -236,7 +239,7 @@
         }
         if (t === 'meal_options') store.tables.option_items = T('option_items').filter(i => i.option_id !== id);
         if (t === 'sessions') store.tables.set_logs = T('set_logs').filter(r => r.session_id !== id);
-        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans', 'meal_blocks', 'meal_options', 'option_items']
+        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans', 'meal_plans', 'meal_blocks', 'meal_options', 'option_items', 'checkin_photos', 'daily_metrics']
           .forEach(n => { store.tables[n] = T(n).filter(r => r.client_id !== id); });
         save();
       },
@@ -244,6 +247,7 @@
         return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
       },
       async photoUrl(path) { return path; },
+      async removePhotos() {},
       async getSetting(key) { const r = T('settings').find(s => s.key === key); return r ? r.value : ''; },
       async setSetting(key, value) { await this.upsert('settings', { key, value }, 'key'); },
       // Versiones locales de las funciones de la migración 002 (mismas reglas que en Supabase)
@@ -347,8 +351,11 @@
         if (fn === 'copy_meal_plan') {
           const to = a.p_to; let n = 0;
           for (const b of T('meal_blocks').filter(x => x.client_id === to)) await this.remove('meal_blocks', b.id);
+          store.tables.meal_plans = T('meal_plans').filter(x => x.client_id !== to);
+          const pmap = {};
+          T('meal_plans').filter(x => x.client_id === a.p_from).forEach(pl => { const np = Object.assign({}, pl, { id: uuid(), client_id: to }); pmap[pl.id] = np.id; T('meal_plans').push(np); });
           T('meal_blocks').filter(b => b.client_id === a.p_from).sort((x, y) => x.position - y.position).forEach(b => {
-            const nb = Object.assign({}, b, { id: uuid(), client_id: to }); T('meal_blocks').push(nb); n++;
+            const nb = Object.assign({}, b, { id: uuid(), client_id: to, plan_id: pmap[b.plan_id] || null }); T('meal_blocks').push(nb); n++;
             T('meal_options').filter(o => o.block_id === b.id).forEach(o => {
               const no = Object.assign({}, o, { id: uuid(), block_id: nb.id, client_id: to }); T('meal_options').push(no);
               T('option_items').filter(i => i.option_id === o.id).forEach(i => T('option_items').push(Object.assign({}, i, { id: uuid(), option_id: no.id, client_id: to })));
@@ -362,8 +369,9 @@
           const r1 = x => Math.round(x * 10) / 10;
           return {
             show_macros: show, targets: show ? { kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat } : null, water: p.water, notes: p.notes, legacy_meals: p.meals, updated_at: p.updated_at,
+            plans: T('meal_plans').filter(x => x.client_id === c.id).sort((x, y) => x.position - y.position).map(x => ({ id: x.id, name: x.name, notes: x.notes, targets: show && x.kcal != null ? { kcal: x.kcal, protein: x.protein, carbs: x.carbs, fat: x.fat } : null })),
             blocks: T('meal_blocks').filter(b => b.client_id === c.id).sort((x, y) => x.position - y.position).map(b => ({
-              id: b.id, name: b.name, time_hint: b.time_hint, notes: b.notes,
+              id: b.id, plan_id: b.plan_id, name: b.name, time_hint: b.time_hint, notes: b.notes,
               options: T('meal_options').filter(o => o.block_id === b.id).sort((x, y) => x.position - y.position).map(o => {
                 const its = T('option_items').filter(i => i.option_id === o.id).sort((x, y) => x.position - y.position);
                 const m = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };

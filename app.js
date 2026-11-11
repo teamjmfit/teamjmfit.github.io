@@ -372,6 +372,7 @@
         </div>
       </div>`;
     $app.querySelector('.content').innerHTML = html;
+    if (window.JMBackup) window.JMBackup.remind($app.querySelector('.content .stack'));
     // cobros (no bloquea)
     const box = $app.querySelector('#venc');
     try {
@@ -403,8 +404,9 @@
 
   // ---------- Lista de clientes
   async function coachClients() {
-    shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
+    shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<button class="btn ghost" data-backup title="Descargar un Excel con todos los datos">${ic('copy')}<span>Copia de seguridad</span></button><button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
     $app.querySelector('[data-new]').onclick = () => clientForm();
+    $app.querySelector('[data-backup]').onclick = e => window.JMBackup && window.JMBackup.run(e.currentTarget);
     const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { order: ['started_at', 'desc'], limit: 200 })]);
     const last = {}; sessions.forEach(s => { if (s.finished_at && !last[s.client_id]) last[s.client_id] = s.finished_at; });
     const row = c => `<li><a href="#/cliente/${c.id}"><span class="av">${initials(c.name)}</span>
@@ -460,7 +462,7 @@
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['ficha', 'Ficha'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
     const c = await DB.get('clients', id);
@@ -481,6 +483,7 @@
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
     if (tab === 'progreso') return tabProgress(c, box, true);
+    if (tab === 'ficha') return tabFicha(c, box);
     if (tab === 'mensajes') return tabMessages(c, box, 'coach');
     if (tab === 'cobros') return tabClientPayments(c, box);
   }
@@ -909,37 +912,101 @@
   }
 
   // ----- Progreso (compartido)
+  const mondayOf = s => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.toISOString().slice(0, 10); };
+  const avg = a => { const v = a.filter(x => x != null && !isNaN(x)).map(Number); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const sgn = v => (v == null ? '–' : (v > 0 ? '+' : '') + fmtKg(v));
+  // Semanas (lunes a domingo) con el peso medio (pesajes diarios + check-ins) y las escalas del check-in
+  function weeklyRows(checkins, daily) {
+    const byDate = {};
+    daily.forEach(d => { if (d.weight) (byDate[d.date] = byDate[d.date] || []).push(Number(d.weight)); });
+    checkins.forEach(k => { if (k.weight) (byDate[k.date] = byDate[k.date] || []).push(Number(k.weight)); });
+    const W = {};
+    const wk = k => (W[k] = W[k] || { wk: k, w: [], ck: [] });
+    Object.entries(byDate).forEach(([d, ws]) => wk(mondayOf(d)).w.push(avg(ws)));
+    checkins.forEach(k => wk(mondayOf(k.date)).ck.push(k));
+    const rows = Object.values(W).sort((a, b) => a.wk.localeCompare(b.wk)).map(r => {
+      const sc = key => avg(r.ck.map(k => k[key]));
+      return { wk: r.wk, avg: avg(r.w), n: r.w.length, fatigue: sc('fatigue'), stress: sc('stress'), energy: sc('energy10'), hunger: sc('hunger'), sleep_q: sc('sleep_q'), diet: sc('diet_adh'), train: sc('train_adh'), steps: sc('steps') };
+    });
+    let prev = null;
+    rows.forEach(r => { r.delta = r.avg != null && prev != null ? r.avg - prev : null; if (r.avg != null) prev = r.avg; });
+    return rows;
+  }
+  // Gráfica de líneas con varias series (null = sin dato) y línea de objetivo opcional
+  function multiChart(labels, series, { min, max, goal, unit = '', label = 'Gráfica' } = {}) {
+    const W = 600, H = 210, P = 44, n = labels.length;
+    const all = series.flatMap(s => s.vals).filter(v => v != null).concat(goal != null ? [goal] : []);
+    if (!all.length) return '';
+    let lo = min != null ? min : Math.min(...all), hi = max != null ? max : Math.max(...all);
+    if (hi - lo < 1) { lo -= 0.5; hi += 0.5; }
+    const x = i => P + (i * (W - P * 2)) / Math.max(1, n - 1);
+    const y = v => H - P - ((v - lo) * (H - P * 2)) / (hi - lo);
+    const fmt = v => (unit === 'kg' ? fmtKg(v) : String(Math.round(v * 10) / 10).replace('.', ','));
+    const paths = series.map(s => {
+      let d = '', pen = false;
+      s.vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `; pen = true; });
+      const pts = s.vals.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" class="pt ${s.cls}"><title>${esc(s.name)} · semana del ${fmtDate(labels[i])}: ${fmt(v)}${unit ? ' ' + unit : ''}</title></circle>`)).join('');
+      return `<path d="${d}" class="line ${s.cls}"/>${pts}`;
+    }).join('');
+    const step = Math.max(1, Math.ceil(n / 6));
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
+      <line x1="${P}" x2="${W - P}" y1="${y(hi)}" y2="${y(hi)}" class="grid"/><line x1="${P}" x2="${W - P}" y1="${y(lo)}" y2="${y(lo)}" class="grid"/>
+      <text x="${W - P + 4}" y="${y(hi) + 4}" class="lbl">${fmt(hi)}</text><text x="${W - P + 4}" y="${y(lo) + 4}" class="lbl">${fmt(lo)}</text>
+      ${goal != null ? `<line x1="${P}" x2="${W - P}" y1="${y(goal)}" y2="${y(goal)}" class="goal"/><text x="${P + 4}" y="${y(goal) - 6}" class="lbl goal-t">Objetivo ${fmt(goal)}</text>` : ''}
+      ${paths}
+      ${labels.map((l, i) => (i % step === 0 || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" class="lbl" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${fmtDate(l)}</text>` : '')).join('')}
+    </svg>${series.length > 1 ? `<div class="legend">${series.map(s => `<span><i class="${s.cls}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}`;
+  }
+
   async function tabProgress(c, box, asCoach) {
-    const [checkins, sessions, logs] = await Promise.all([
+    const [checkins, sessions, logs, daily, photos] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
       DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 60 }),
-      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1500 })
+      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1500 }),
+      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => [])
     ]);
     const done = sessions.filter(s => s.finished_at);
-    const weights = checkins.filter(x => x.weight).slice().reverse();
     const best = {};
     logs.forEach(l => { if (l.weight && l.reps) { const e1 = l.weight * (1 + l.reps / 30); if (!best[l.exercise_name] || e1 > best[l.exercise_name].e1) best[l.exercise_name] = { e1, w: l.weight, r: l.reps }; } });
     const prs = Object.entries(best).sort((a, b) => b[1].e1 - a[1].e1).slice(0, 8);
-    const first = weights[0], lastW = weights[weights.length - 1];
-    const diff = first && lastW && first !== lastW ? lastW.weight - first.weight : null;
+
+    const rows = weeklyRows(checkins, daily), wrows = rows.filter(r => r.avg != null);
+    const last = wrows[wrows.length - 1], first = wrows[0];
+    const goal = c.goal_weight != null && c.goal_weight !== '' ? Number(c.goal_weight) : null;
+    const target = c.weekly_target != null && c.weekly_target !== '' ? Number(c.weekly_target) : null;
+    const recent = wrows.slice(-5).map(r => r.delta).filter(v => v != null);
+    const pace = recent.length ? avg(recent) : null;
+    const left = goal != null && last ? goal - last.avg : null;
+    const etaW = left != null && pace && Math.sign(pace) === Math.sign(left) && Math.abs(left) > 0.2 ? Math.ceil(Math.abs(left / pace)) : null;
+    const vsT = d => (target == null || d == null ? '' : Math.abs(d - target) <= 0.2 ? 'ok' : 'off');
+    const labels = rows.map(r => r.wk);
+    const hasFat = rows.some(r => r.fatigue != null || r.stress != null || r.energy != null);
 
     box.innerHTML = `
       ${!asCoach ? `<button class="btn primary block big" data-ck>${ic('camera')} Enviar check-in semanal</button>` : ''}
       <div class="kpis small">
-        <div class="kpi"><small>Peso actual</small><b>${lastW ? fmtKg(lastW.weight) + ' kg' : '–'}</b><span>${diff != null ? (diff > 0 ? '+' : '') + fmtKg(diff) + ' kg desde el inicio' : 'Registra tu peso en el check-in'}</span></div>
-        <div class="kpi"><small>Entrenos completados</small><b>${done.length}</b><span>${done[0] ? 'Último ' + ago(done[0].finished_at) : '—'}</span></div>
-        <div class="kpi"><small>Check-ins</small><b>${checkins.length}</b><span>${checkins[0] ? 'Último ' + fmtDate(checkins[0].date) : '—'}</span></div>
+        <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
+        <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null ? `objetivo ${sgn(target)} kg/sem` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
+        <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
+        <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
-      ${weights.length > 1 ? `<section class="card"><h3>Evolución del peso</h3>${lineChart(weights.map(w => ({ x: w.date, y: Number(w.weight) })))}</section>` : ''}
+      ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
+      ${hasFat ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
+        { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
+        { name: 'Estrés', cls: 's4', vals: rows.map(r => r.stress) },
+        { name: 'Energía', cls: 's2', vals: rows.map(r => r.energy) }], { min: 1, max: 10, label: 'Fatiga, estrés y energía (1-10)' })}<p class="muted small">Escala 1-10 de cada check-in semanal.</p></section>` : ''}
+      ${wrows.length ? `<section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t"><thead><tr><th>Semana</th><th>Media</th><th>Cambio</th>${target != null ? '<th>vs objetivo</th>' : ''}<th>Fatiga</th><th>Energía</th><th>Nutrición</th><th>Pasos</th></tr></thead><tbody>
+        ${rows.slice().reverse().slice(0, 16).map(r => `<tr><td>${fmtDate(r.wk)}</td><td><b>${r.avg != null ? fmtKg(r.avg) : '–'}</b>${r.n > 1 ? `<small class="muted"> (${r.n})</small>` : ''}</td><td class="${r.delta == null ? '' : r.delta < 0 ? 'dn' : 'up'}">${sgn(r.delta)}</td>${target != null ? `<td><span class="pill ${vsT(r.delta) === 'ok' ? 'green' : vsT(r.delta) ? 'amber' : ''}">${r.delta == null ? '–' : sgn(r.delta - target)}</span></td>` : ''}<td>${r.fatigue != null ? fmtKg(r.fatigue) : '–'}</td><td>${r.energy != null ? fmtKg(r.energy) : '–'}</td><td>${r.diet != null ? fmtKg(r.diet) : '–'}</td><td>${r.steps != null ? Math.round(r.steps).toLocaleString('es-ES') : '–'}</td></tr>`).join('')}
+      </tbody></table></div>${target != null ? '<p class="muted small pad">«vs objetivo»: diferencia entre lo que ha cambiado y lo que se buscaba esa semana (verde = dentro de ±0,2 kg).</p>' : ''}</section>` : ''}
       ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="grid2">
         <section class="card"><h3>Check-ins</h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
         <section class="card"><h3>Entrenos</h3>${done.length ? `<ul class="sessions">${done.map(s => `<li data-s="${s.id}" class="${asCoach && !s.coach_seen ? 'unseen' : ''}"><button type="button" class="srow"><b>${esc(s.routine_name || 'Entreno')}</b><small>${fmtDate(s.started_at, { weekday: 'short', day: 'numeric', month: 'short' })} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</small></button><div class="sdetail" hidden></div></li>`).join('')}</ul>` : '<p class="empty">Aún no hay entrenos registrados.</p>'}</section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
-    // check-ins con fotos
     const ckBox = box.querySelector('[data-cks]');
-    for (const k of checkins) ckBox.appendChild(checkinCard(k, asCoach));
+    checkins.forEach((k, i) => ckBox.appendChild(checkinCard(k, asCoach, { prev: checkins.slice(i + 1).find(x => x.weight), photos: photos.filter(p => p.checkin_id === k.id) })));
     // detalle de sesiones
     box.querySelectorAll('.sessions li').forEach(li => {
       li.querySelector('.srow').onclick = async () => {
@@ -953,6 +1020,55 @@
         if (asCoach && !s.coach_seen) { s.coach_seen = true; li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
       };
     });
+  }
+
+  // ----- Ficha del cliente (entrenador)
+  const ageOf = b => { if (!b) return null; const d = new Date(b + 'T12:00:00'), n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--; return a; };
+  async function tabFicha(c, box) {
+    const [checkins, daily] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
+      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => [])
+    ]);
+    const wrows = weeklyRows(checkins, daily).filter(r => r.avg != null);
+    const cur = wrows[wrows.length - 1], ini = wrows[0];
+    const age = ageOf(c.birth_date), h = Number(c.height_cm) || null;
+    const bmi = h && cur ? cur.avg / ((h / 100) ** 2) : null;
+    const since = c.start_date || (ini && ini.wk) || (c.created_at && c.created_at.slice(0, 10));
+    const weeks = since ? Math.max(0, Math.round((Date.now() - new Date(since + 'T12:00:00')) / (7 * 864e5))) : null;
+    const lastCk = checkins[0];
+    const item = (l, v) => `<div><small>${l}</small><b>${v}</b></div>`;
+    box.innerHTML = `
+      <section class="card"><h3>Resumen</h3><div class="ficha-sum">
+        ${item('Edad', age != null ? age + ' años' : '–')}${item('Sexo', { male: 'Hombre', female: 'Mujer', other: 'Otro' }[c.sex] || '–')}${item('Altura', h ? fmtKg(h) + ' cm' : '–')}
+        ${item('Peso inicial', ini ? fmtKg(ini.avg) + ' kg' : '–')}${item('Peso actual (media)', cur ? fmtKg(cur.avg) + ' kg' : '–')}${item('Cambio total', ini && cur && ini !== cur ? sgn(cur.avg - ini.avg) + ' kg' : '–')}
+        ${item('Peso objetivo', c.goal_weight ? fmtKg(c.goal_weight) + ' kg' : '–')}${item('Ritmo buscado', c.weekly_target != null && c.weekly_target !== '' ? sgn(Number(c.weekly_target)) + ' kg/sem' : '–')}${item('IMC', bmi ? fmtKg(bmi) : '–')}
+        ${item('En el equipo', weeks != null ? weeks + ' semanas' : '–')}${item('Último check-in', lastCk ? fmtDate(lastCk.date) : '–')}${item('Fatiga (último)', lastCk && lastCk.fatigue ? lastCk.fatigue + '/10' : '–')}
+      </div>${lastCk && (lastCk.pains || lastCk.fatigue_muscles) ? `<p class="small note">⚠️ ${esc([lastCk.pains, lastCk.fatigue_muscles].filter(Boolean).join(' · '))}</p>` : ''}</section>
+      <form class="card" data-ficha><h3>Datos de la ficha</h3>
+        <div class="form-grid">
+          <label>Fecha de nacimiento<input type="date" name="birth_date" value="${esc(c.birth_date || '')}"></label>
+          <label>Sexo<select name="sex">${[['', '—'], ['male', 'Hombre'], ['female', 'Mujer'], ['other', 'Otro']].map(([v, l]) => `<option value="${v}" ${(c.sex || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label>Altura (cm)<input type="number" step="0.5" inputmode="decimal" name="height_cm" value="${esc(c.height_cm ?? '')}"></label>
+          <label>Empezó el<input type="date" name="start_date" value="${esc(c.start_date || '')}"></label>
+          <label>Peso objetivo (kg)<input type="number" step="0.1" inputmode="decimal" name="goal_weight" value="${esc(c.goal_weight ?? '')}"></label>
+          <label>Cambio por semana buscado (kg)<input type="number" step="0.05" inputmode="decimal" name="weekly_target" value="${esc(c.weekly_target ?? '')}" placeholder="-0,5 para bajar · 0,25 para subir"></label>
+          <label class="full">Objetivo<input name="goal" value="${esc(c.goal || '')}" placeholder="Ej: perder grasa manteniendo fuerza"></label>
+          <label class="full">Actividad diaria y trabajo<textarea name="activity" rows="2" placeholder="Trabajo de oficina, 8.000 pasos, turnos…">${esc(c.activity || '')}</textarea></label>
+          <label class="full">Lesiones o patologías<textarea name="injuries" rows="2">${esc(c.injuries || '')}</textarea></label>
+          <label class="full">Notas privadas<textarea name="notes" rows="3">${esc(c.notes || '')}</textarea></label>
+        </div>
+        <p class="muted small">El peso objetivo y el ritmo semanal se usan en Progreso para ver si va bien cada semana (el cliente también lo ve).</p>
+        <div class="row gap"><span class="grow"></span><button class="btn primary">Guardar ficha</button></div>
+      </form>`;
+    const f = box.querySelector('[data-ficha]');
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(f), d = {};
+      ['birth_date', 'sex', 'start_date', 'goal', 'activity', 'injuries', 'notes'].forEach(k => { d[k] = String(fd.get(k) || '').trim() || null; });
+      ['height_cm', 'goal_weight', 'weekly_target'].forEach(k => { d[k] = num(String(fd.get(k) || '').replace(',', '.')); });
+      if (d.weekly_target != null && Math.abs(d.weekly_target) > 2) { toast('El cambio por semana parece demasiado grande (máx. ±2 kg)', 'err'); return; }
+      try { await safe(() => DB.update('clients', c.id, d), 'Ficha guardada'); render(); } catch (err) { /* ya avisado */ }
+    };
   }
 
   function lineChart(pts) {
@@ -1111,21 +1227,50 @@
   }
 
   // ----- Tarjeta de check-in (Progreso del cliente y bandeja de Revisiones)
-  function checkinCard(k, asCoach, { who, prev } = {}) {
+  function checkinCard(k, asCoach, { who, prev, photos } = {}) {
     const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
-    const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh]].filter(m => m[1]);
-    const sc = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
+    const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh], ['Gemelo', k.calf], ['Cuello', k.neck], ['Hombros', k.shoulders]].filter(m => m[1]);
+    const old = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
+    const ten = Object.entries(CK_SCALES).filter(([key]) => k[key] != null);
+    const short = { train_adh: 'Entreno', diet_adh: 'Nutrición', hunger: 'Hambre', satiety: 'Saciedad', fatigue: 'Fatiga', energy10: 'Energía', sleep_q: 'Sueño', stress: 'Estrés', motivation: 'Motivación' };
+    const bad = key => ['hunger', 'fatigue', 'stress'].includes(key);       // aquí un número alto es mala señal
+    const tone = (key, v) => { const g = bad(key) ? 11 - v : v; return g >= 7 ? 'g' : g >= 5 ? 'm' : 'b'; };
+    const texts = Object.entries(CK_TEXTS).filter(([key]) => k[key]);
     const dw = prev && prev.weight && k.weight ? Number(k.weight) - Number(prev.weight) : null;
-    el.innerHTML = `${who ? `<a class="ck-who" href="#/cliente/${who.id}/progreso">${esc(who.name)}</a>` : ''}<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg${dw != null ? ` · ${dw > 0 ? '+' : ''}${fmtKg(dw)}` : ''}</span>` : ''}</header>
+    el.innerHTML = `${who ? `<a class="ck-who" href="#/cliente/${who.id}/progreso">${esc(who.name)}</a>` : ''}<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg${dw != null ? ` · ${dw > 0 ? '+' : ''}${fmtKg(dw)}` : ''}</span>` : ''}${k.source === 'harbiz' ? '<span class="pill">Harbiz</span>' : ''}
+        ${asCoach ? `<span class="grow"></span><button type="button" class="icon-btn sm" data-delck aria-label="Borrar check-in" title="Borrar check-in">${ic('trash')}</button>` : ''}</header>
+      ${ten.length ? `<div class="ck-grid">${ten.map(([key]) => `<span class="${tone(key, k[key])}"><small>${short[key]}</small><b>${k[key]}</b></span>`).join('')}</div>` : ''}
+      ${k.steps != null || k.sleep_h != null ? `<p class="small">${[k.steps != null ? `👣 ${Number(k.steps).toLocaleString('es-ES')} pasos/día` : '', k.sleep_h != null ? `😴 ${fmtKg(k.sleep_h)} h de sueño` : ''].filter(Boolean).join(' · ')}</p>` : ''}
+      ${old.length ? `<div class="scores">${old.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(Math.max(0, 5 - m[1]))}</b></span>`).join('')}</div>` : ''}
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])} cm`).join(' · ')}</p>` : ''}
-      ${sc.length ? `<div class="scores">${sc.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(5 - m[1])}</b></span>`).join('')}</div>` : ''}
-      ${k.notes ? `<p>“${nl2br(k.notes)}”</p>` : ''}
-      ${k.photo_path ? '<div class="photo" data-photo></div>' : ''}
+      ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
+      <div class="ck-pics" data-photos hidden></div>
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
       ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
-    if (k.photo_path) DB.photoUrl(k.photo_path).then(u => { el.querySelector('[data-photo]').innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto de progreso" loading="lazy"></a>`; }).catch(() => {});
+    // fotos: las de cada postura y, si es antiguo, la única foto que tenía
+    const order = p => { const i = CK_POSES.findIndex(x => x[0] === p); return i < 0 ? 10 + (parseInt(String(p).replace(/\D/g, ''), 10) || 0) : i; };
+    const label = p => (CK_POSES.find(x => x[0] === p) || [, ''])[1];
+    const showPhotos = list => {
+      const pics = list.slice().sort((a, b) => order(a.pose) - order(b.pose));
+      if (k.photo_path && !pics.some(p => p.path === k.photo_path)) pics.unshift({ path: k.photo_path, pose: '' });
+      if (!pics.length) return;
+      const box = el.querySelector('[data-photos]'); box.hidden = false;
+      box.innerHTML = pics.map((p, i) => `<figure data-pi="${i}"><div class="ph"></div>${label(p.pose) ? `<figcaption>${label(p.pose)}</figcaption>` : ''}</figure>`).join('');
+      pics.forEach((p, i) => DB.photoUrl(p.path).then(u => { box.querySelector(`[data-pi="${i}"] .ph`).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto ${esc(label(p.pose) || 'de progreso')}" loading="lazy"></a>`; }).catch(() => {}));
+      el._paths = pics.map(p => p.path);
+    };
+    if (photos) showPhotos(photos); else DB.list('checkin_photos', { eq: { checkin_id: k.id } }).then(showPhotos).catch(() => showPhotos([]));
     const rf = el.querySelector('[data-reply]');
     if (rf) rf.onsubmit = async e => { e.preventDefault(); const v = rf.r.value.trim(); const patch = { coach_seen: true }; if (v) patch.coach_reply = v; await safe(() => DB.update('checkins', k.id, patch), 'Check-in revisado'); render(); };
+    const del = el.querySelector('[data-delck]');
+    if (del) del.onclick = async () => {
+      if (!(await confirmBox(`¿Borrar el check-in del ${fmtDate(k.date, { day: 'numeric', month: 'long' })}${k.weight ? ` (${fmtKg(k.weight)} kg)` : ''} con sus fotos? No se puede deshacer.`))) return;
+      try {
+        await safe(() => DB.remove('checkins', k.id), 'Check-in borrado');
+        DB.removePhotos(el._paths || []).catch(() => {});
+        el.remove(); refreshReviewBadge();
+      } catch (e) { /* ya avisado */ }
+    };
     return el;
   }
 
@@ -1162,11 +1307,12 @@
     box.innerHTML = `<div class="tabs"><a href="#/revisiones" class="${all ? '' : 'on'}">Pendientes${pend.length ? ` (${pend.length})` : ''}</a><a href="#/revisiones/todas" class="${all ? 'on' : ''}">Todas</a></div>
       ${list.length ? '<section class="card" data-list></section>' : `<div class="hero-empty">${ic('inbox', 'xl')}<h2>${all ? 'Aún no hay check-ins' : 'Todo revisado'}</h2><p>${all ? 'Cuando tus clientes envíen su check-in semanal aparecerá aquí.' : 'No tienes check-ins pendientes. Buen trabajo.'}</p>${all ? '' : '<a class="btn" href="#/revisiones/todas">Ver todos</a>'}</div>`}`;
     const wrap = box.querySelector('[data-list]');
+    const photos = list.length ? await DB.list('checkin_photos', { in: { checkin_id: list.map(k => k.id) } }).catch(() => []) : [];
     list.forEach(k => {
       const who = byId(clients, k.client_id) || { id: k.client_id, name: 'Cliente' };
       const idx = checkins.indexOf(k);
       const prev = checkins.slice(idx + 1).find(x => x.client_id === k.client_id && x.weight);
-      wrap.appendChild(checkinCard(k, true, { who, prev }));
+      wrap.appendChild(checkinCard(k, true, { who, prev, photos: photos.filter(p => p.checkin_id === k.id) }));
     });
     refreshReviewBadge();
   }
@@ -1291,33 +1437,70 @@
     if (hasBlocks) window.JMNutri.wireClient(box);
   }
 
-  // ---------- Check-in (cliente)
+  // ---------- Check-in (cliente): el mismo formulario «Valoración semanal» de Harbiz
+  const CK_POSES = [['front', 'Frente'], ['side', 'Perfil'], ['back', 'Espalda']];
+  const CK_SCALES = {
+    train_adh: ['Cumplimiento del entrenamiento', '1 nada · 10 todo'],
+    diet_adh: ['Cumplimiento de la nutrición', '1 nada · 10 todo'],
+    hunger: ['Hambre', '1 sin hambre · 10 mucha hambre'],
+    satiety: ['Saciedad', '1 me quedo vacío · 10 muy lleno'],
+    fatigue: ['Fatiga central (sistema nervioso)', '1 nada · 10 muchísima'],
+    energy10: ['Energía general', '1 muy baja · 10 muy alta'],
+    sleep_q: ['Calidad del sueño', '1 muy mala · 10 muy buena'],
+    stress: ['Estrés', '1 nada · 10 muchísimo'],
+    motivation: ['Motivación para la semana que viene', '1 nada · 10 muchísima']
+  };
+  const CK_TEXTS = { fatigue_muscles: 'Fatiga periférica (músculos sin recuperar)', pains: 'Molestias o dolores', misses: '¿Has fallado en algo esta semana?', notes: 'Dudas o comentarios para Jorge' };
   function checkinForm(c) {
-    const scale = (n, l) => `<fieldset class="scale"><legend>${l}</legend>${[1, 2, 3, 4, 5].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
-    const f = modal('Check-in semanal', `
+    const scale = n => `<fieldset class="scale ten"><legend>${CK_SCALES[n][0]} <small>${CK_SCALES[n][1]}</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
+    const text = (n, rows = 1, ph = '') => `<label>${CK_TEXTS[n]}${rows > 1 ? `<textarea name="${n}" rows="${rows}" placeholder="${ph}"></textarea>` : `<input name="${n}" placeholder="${ph}">`}</label>`;
+    const f = modal('Valoración semanal', `
+      <p class="muted small">Este formulario es la pieza más importante de nuestro trabajo juntos: sé sincero, así puedo ajustar tu plan.</p>
       <div class="form-grid">
-        <label>Peso (kg)<input name="weight" type="number" step="0.1" inputmode="decimal"></label>
-        <label>Fecha<input name="date" type="date" value="${today()}"></label>
+        <label>Fecha<input name="date" type="date" value="${today()}" required></label>
+        <label>Peso en ayunas (kg)<input name="weight" type="number" step="0.05" inputmode="decimal" required><small class="muted">Nada más levantarte, después de hacer pis, sin comer ni beber.</small></label>
       </div>
+      ${scale('train_adh')}${scale('diet_adh')}
+      <label>Media de pasos de la semana<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="Ej: 9000"></label>
+      ${scale('hunger')}${scale('satiety')}${scale('fatigue')}
+      ${text('fatigue_muscles', 1, 'Ej: piernas cargadas desde el martes')}${text('pains', 1, 'Dónde y desde cuándo')}${text('misses', 2, 'Comidas, entrenos, descanso…')}
+      ${scale('energy10')}
+      <label>Horas de sueño (media por noche)<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="Ej: 7,5"></label>
+      ${scale('sleep_q')}${scale('stress')}${scale('motivation')}
+      ${text('notes', 3)}
       <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
-        <label>Cintura<input name="waist" type="number" step="0.1" inputmode="decimal"></label><label>Cadera<input name="hip" type="number" step="0.1" inputmode="decimal"></label><label>Pecho<input name="chest" type="number" step="0.1" inputmode="decimal"></label><label>Brazo<input name="arm" type="number" step="0.1" inputmode="decimal"></label><label>Muslo<input name="thigh" type="number" step="0.1" inputmode="decimal"></label></div></details>
-      ${scale('energy', 'Energía esta semana')}${scale('sleep', 'Calidad del sueño')}${scale('adherence', 'Cumplimiento del plan')}
-      <label>¿Cómo ha ido la semana?<textarea name="notes" rows="3" placeholder="Molestias, dudas, cómo te has sentido…"></textarea></label>
-      <label class="file">${ic('camera')} <span data-fname>Añadir foto de progreso (opcional)</span><input name="photo" type="file" accept="image/*" hidden></label>`, {
+        ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}</div></details>
+      <fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
+        ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
+        <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
+      </fieldset>`, {
       submitLabel: 'Enviar check-in',
       onSubmit: async (form, fd) => {
-        const d = {}; ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'energy', 'sleep', 'adherence'].forEach(k => { d[k] = num(fd.get(k)); });
-        d.notes = fd.get('notes'); d.date = fd.get('date') || today(); d.client_id = c.id;
-        const file = fd.get('photo');
-        await safe(async () => {
-          if (file && file.size) d.photo_path = await DB.uploadPhoto(c.id, await shrink(file));
-          await DB.insert('checkins', d);
-        }, '¡Check-in enviado! 💪');
+        const d = { client_id: c.id, date: fd.get('date') || today() };
+        const n = k => num(String(fd.get(k) || '').replace(',', '.'));
+        ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'calf', 'neck', 'shoulders', 'steps', 'sleep_h', ...Object.keys(CK_SCALES)].forEach(k => { const v = n(k); if (v != null) d[k] = v; });
+        if (d.steps != null) d.steps = Math.round(d.steps);
+        Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v) d[k] = v; });
+        if (!d.weight) { toast('Pon tu peso en ayunas', 'err'); return false; }
+        const files = CK_POSES.map(([p]) => [p, form['ph_' + p].files[0]]).filter(x => x[1]);
+        [...form.ph_extra.files].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
+        try { await safe(async () => {
+          const [k] = await DB.insert('checkins', d);
+          const rows = [];
+          for (const [pose, file] of files) rows.push({ checkin_id: k.id, client_id: c.id, pose, path: await DB.uploadPhoto(c.id, await shrink(file)) });
+          if (rows.length) { await DB.insert('checkin_photos', rows); await DB.update('checkins', k.id, { photo_path: rows[0].path }); }
+        }, '¡Check-in enviado! 💪'); } catch (e) { return false; }
         render();
       }
     });
-    f.photo.onchange = () => { f.querySelector('[data-fname]').textContent = f.photo.files[0] ? f.photo.files[0].name : 'Añadir foto de progreso (opcional)'; };
+    f.querySelectorAll('.ck-ph input').forEach(inp => inp.onchange = () => {
+      const lab = inp.closest('.ck-ph'), fl = [...inp.files];
+      if (inp.name === 'ph_extra') { lab.querySelector('[data-extra]').textContent = fl.length ? `${Math.min(6, fl.length)} foto${fl.length > 1 ? 's' : ''} más` : 'Más fotos'; }
+      const pv = lab.querySelector('.ck-prev');
+      if (fl[0]) { pv.innerHTML = `<img alt="" src="${URL.createObjectURL(fl[0])}">`; lab.classList.add('has'); }
+    });
   }
+
   function shrink(file, max = 1280) {
     return new Promise((res, rej) => {
       const img = new Image(); const url = URL.createObjectURL(file);

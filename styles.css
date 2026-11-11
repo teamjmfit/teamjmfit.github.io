@@ -540,3 +540,60 @@ a.kpi:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--muted) 50%, transpa
 .badge, .num { color: var(--accent-ink); }
 .vplay .ic { color: var(--accent-ink); fill: var(--accent-ink); }
 .upd-bar { color: var(--accent-ink); }
+
+/* ---------- v3: varios planes, check-in completo, ficha, progreso */
+.np-plans { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.np-plans .chip.on { font-weight: 700; }
+.np-planhead { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; padding: 10px 12px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 12px; }
+.np-planhead .np-pn { flex: 1 1 200px; font-size: 12px; color: var(--muted); }
+.np-planhead .np-pt { flex: 2 1 280px; }
+.np-ptr { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 6px; margin-top: 4px; }
+.np-ptr label { font-size: 11px; color: var(--muted); }
+.np-ptr input, .np-planhead .np-pn input { padding: 8px 9px; font-size: 14px; background: var(--card); }
+.np-cplans { margin-bottom: 4px; }
+.np-ctot { margin: 6px 0 10px; padding: 9px 12px; background: var(--accent-soft); border-radius: var(--r-sm); font-size: 14px; }
+
+.scale legend small { font-weight: 500; opacity: .8; margin-left: 4px; }
+.scale.ten { gap: 4px; }
+.scale.ten label { min-width: 0; flex: 1 1 0; }
+.scale.ten span { padding: 9px 0; font-size: 14px; }
+.ck-photos { border: 0; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ck-photos legend { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.ck-photos legend small { font-weight: 500; }
+.ck-ph { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; margin: 0; }
+.ck-prev { width: 100%; aspect-ratio: 3 / 4; display: grid; place-items: center; border: 1.5px dashed var(--line); border-radius: var(--r-sm); background: var(--bg2); color: var(--muted); overflow: hidden; }
+.ck-ph.has .ck-prev { border-style: solid; border-color: var(--accent); }
+.ck-prev img { width: 100%; height: 100%; object-fit: cover; }
+.ck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 6px 0 8px; }
+.ck-grid span { background: var(--bg2); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; }
+.ck-grid small { font-size: 11px; color: var(--muted); }
+.ck-grid b { font-size: 16px; }
+.ck-grid .g b { color: var(--green); } .ck-grid .m b { color: var(--amber); } .ck-grid .b b { color: var(--red); }
+.ck-txt { margin: 6px 0; font-size: 14px; } .ck-txt small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
+.ck-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin: 8px 0; }
+.ck-pics figure { margin: 0; } .ck-pics .ph { aspect-ratio: 3 / 4; background: var(--bg2); border-radius: var(--r-sm); overflow: hidden; }
+.ck-pics img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ck-pics figcaption { font-size: 11px; color: var(--muted); text-align: center; margin-top: 2px; }
+.checkin header { gap: 8px; flex-wrap: wrap; } .checkin header .grow { flex: 1; }
+
+.chart .line.s2 { stroke: #5aa7ff; } .chart .pt.s2 { stroke: #5aa7ff; }
+.chart .line.s3 { stroke: var(--red); } .chart .pt.s3 { stroke: var(--red); }
+.chart .line.s4 { stroke: var(--amber); } .chart .pt.s4 { stroke: var(--amber); }
+.chart .goal { stroke: var(--green); stroke-width: 1.5; stroke-dasharray: 6 5; } .chart .goal-t { fill: var(--green); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: var(--accent); }
+.legend i.s2 { background: #5aa7ff; } .legend i.s3 { background: var(--red); } .legend i.s4 { background: var(--amber); }
+.wk-t { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+.wk-t th, .wk-t td { padding: 8px 10px; text-align: left; border-top: 1px solid var(--line); }
+.wk-t th { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-top: 0; }
+.wk-t .dn { color: var(--green); } .wk-t .up { color: var(--amber); }
+.card .pad { padding-left: 16px; padding-right: 16px; }
+.ficha-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.ficha-sum div { background: var(--bg2); border-radius: var(--r-sm); padding: 9px 12px; display: flex; flex-direction: column; }
+.ficha-sum small { font-size: 11px; color: var(--muted); } .ficha-sum b { font-size: 16px; }
+.backup-remind { border-color: color-mix(in srgb, var(--amber) 50%, var(--line)); }
+@media (max-width: 700px) {
+  .ck-photos { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .scale.ten span { padding: 8px 0; font-size: 13px; }
+  .np-ptr { grid-template-columns: 1.2fr 1fr 1fr 1fr; }
+}
