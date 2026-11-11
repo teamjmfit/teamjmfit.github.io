@@ -752,6 +752,104 @@
   }
 
   // ----- Nutrición (entrenador)
+  // ----- Calculadora nutricional (fórmulas de la Calculadora V1 de Jorge)
+  const ACT = [['Poco activo', 1.2, 0.35, 'Todo el día sentado y no entrena.'], ['Algo activo', 1.375, 0.45, 'Gran parte del día sentado, pero entrena en el gimnasio.'],
+    ['Activo', 1.55, 0.5, 'Se mueve bastante durante el día y además entrena.'], ['Muy activo', 1.725, 0.55, 'Mucho movimiento a diario y entrenos intensos frecuentes.'],
+    ['Extremadamente activo', 1.9, 0.6, 'Trabajo físico muy exigente o entrenos dobles / alto rendimiento.']];
+  const GOALS = ['Mantenimiento', 'Pérdida de grasa', 'Ganancia muscular'];
+  const MEALS5 = ['Comida 1 · Desayuno', 'Comida 2 · Media mañana', 'Comida 3 · Almuerzo', 'Comida 4 · Pre-entreno', 'Comida 5 · Post-entreno'];
+  function nutriCalc(i) {
+    const a = ACT.find(x => x[0] === i.act) || ACT[2], gain = i.goal === 'Ganancia muscular', loss = i.goal === 'Pérdida de grasa', fem = i.sex === 'Femenino';
+    const tmb = 10 * i.kg + 6.25 * i.cm - 5 * i.age + (fem ? -161 : 5);
+    const get = tmb * a[1];
+    const kcal = gain ? get * 1.12 : loss ? get * 0.82 : get;
+    const pR = gain ? 1.6 : loss ? 2 : 1.8, fR = fem ? 1.1 : 0.8;
+    const p = i.kg * pR, f = i.kg * fR, c = (kcal - p * 4 - f * 9) / 4;
+    const r2 = x => Math.round(x * 100) / 100;
+    const rate = gain ? `+${r2(i.kg * 0.0025)} a +${r2(i.kg * 0.005)} kg/sem` : loss ? `-${r2(i.kg * 0.005)} a -${r2(i.kg * 0.01)} kg/sem` : '0 kg/sem (mantenimiento)';
+    const x = a[2];
+    const dist = [
+      [0.2, (1 - x) * 0.3, 0.75 * (loss ? 0.4 : gain ? 0.3 : 0.35)],
+      [0.2, (1 - x) * 0.45, 0.75 * (loss ? 0.35 : gain ? 0.3 : 0.35)],
+      [gain ? 0.2 : 0.25, (1 - x) * 0.25, 0.75 * (loss ? 0.25 : gain ? 0.4 : 0.3)],
+      [0.05, x * 0.45, 0.05],
+      [gain ? 0.35 : 0.3, x * 0.55, 0.2]
+    ];
+    return { tmb, get, practical: (gain ? 37.4 : loss ? 28.6 : 33) * i.kg, kcal, adj: (kcal - get) / get, rate, water: i.kg * 0.04, p, f, c, pR, fR, fiber: Math.round(kcal / 1000 * 12), dist };
+  }
+  async function calcCard(c, form, hasPlan) {
+    const key = 'jmfit-calc-' + c.id;
+    let saved = {}; try { saved = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+    const cks = await DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 5 }).catch(() => []);
+    const lastW = (cks.find(k => k.weight) || {}).weight;
+    const bm = String(c.notes || '').match(/Nacimiento:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    const age = bm ? Math.floor((Date.now() - new Date(+bm[3], +bm[2] - 1, +bm[1])) / 31557600000) : '';
+    const inp = Object.assign({ sex: 'Masculino', age, cm: '', kg: lastW || '', goal: 'Mantenimiento', act: 'Activo' }, saved);
+    const box = document.createElement('details'); box.className = 'card calc'; if (!hasPlan) box.open = true;
+    const o = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
+    box.innerHTML = `<summary><b>${ic('chart')} Calculadora de necesidades y macros</b><small class="muted">Mifflin-St Jeor · actividad · objetivo</small></summary>
+      <div class="form-grid three calc-in">
+        <label>Género<select name="sex">${o(['Masculino', 'Femenino'], inp.sex)}</select></label>
+        <label>Edad (años)<input name="age" type="number" min="12" max="99" value="${esc(inp.age)}"></label>
+        <label>Altura (cm)<input name="cm" type="number" min="120" max="230" value="${esc(inp.cm)}"></label>
+        <label>Peso (kg)${lastW ? ` <small class="muted">· último check-in ${fmtKg(lastW)}</small>` : ''}<input name="kg" type="number" step="0.1" min="30" max="250" value="${esc(inp.kg)}"></label>
+        <label>Objetivo<select name="goal">${o(GOALS, inp.goal)}</select></label>
+        <label>Nivel de actividad<select name="act">${o(ACT.map(a => a[0]), inp.act)}</select></label>
+      </div>
+      <p class="muted small" data-actd></p>
+      <div data-out></div>`;
+    form.parentNode.insertBefore(box, form);
+    const get = () => { const v = n => box.querySelector(`[name=${n}]`).value; return { sex: v('sex'), age: Number(v('age')), cm: Number(v('cm')), kg: Number(v('kg')), goal: v('goal'), act: v('act') }; };
+    let pct = null;   // reparto por comidas editado a mano (como en el Excel); null = automático
+    const R = x => Math.round(x), pc = x => Math.round(x * 100);
+    let sig = '';
+    const draw = () => {
+      const i = get(); const ns = JSON.stringify([i, pct]); if (ns === sig) return; sig = ns;   // sin cambios: no redibujar (si no, se pierde el clic en los botones)
+      try { localStorage.setItem(key, JSON.stringify(i)); } catch (e) {}
+      box.querySelector('[data-actd]').textContent = (ACT.find(a => a[0] === i.act) || [])[3] || '';
+      const out = box.querySelector('[data-out]');
+      if (!(i.age && i.cm && i.kg)) { out.innerHTML = '<p class="empty">Rellena edad, altura y peso para calcular.</p>'; return; }
+      const r = nutriCalc(i); const d = pct || r.dist;
+      const sums = [0, 1, 2].map(j => d.reduce((s, row) => s + row[j], 0));
+      out.innerHTML = `<div class="kpis small calc-k">
+          <div class="kpi"><small>TMB</small><b>${R(r.tmb)}</b><span>kcal en reposo</span></div>
+          <div class="kpi"><small>Mantenimiento</small><b>${R(r.get)}</b><span>práctico: ${R(r.practical)} kcal</span></div>
+          <div class="kpi"><small>Objetivo</small><b>${R(r.kcal)}</b><span>${r.adj ? (r.adj > 0 ? '+' : '') + pc(r.adj) + ' % · ' : ''}${esc(r.rate)}</span></div>
+          <div class="kpi"><small>Agua mínima</small><b>${fmtKg(Math.round(r.water * 10) / 10)} L</b><span>fibra ${r.fiber} g</span></div>
+        </div>
+        <table class="calc-t"><thead><tr><th></th><th>g/kg</th><th>g</th><th>kcal</th><th>%</th></tr></thead><tbody>
+          <tr><td>Proteína</td><td>${fmtKg(r.pR)}</td><td><b>${R(r.p)}</b></td><td>${R(r.p * 4)}</td><td>${pc(r.p * 4 / r.kcal)}</td></tr>
+          <tr><td>Grasas</td><td>${fmtKg(r.fR)}</td><td><b>${R(r.f)}</b></td><td>${R(r.f * 9)}</td><td>${pc(r.f * 9 / r.kcal)}</td></tr>
+          <tr><td>Carbohidratos</td><td>${fmtKg(Math.round(r.c / i.kg * 100) / 100)}</td><td><b>${R(r.c)}</b></td><td>${R(r.c * 4)}</td><td>${pc(r.c * 4 / r.kcal)}</td></tr>
+        </tbody></table>
+        ${r.c < 0 ? '<p class="pill red">Con estos datos no quedan calorías para carbohidratos: revisa peso u objetivo.</p>' : ''}
+        <h4>Reparto en 5 comidas</h4><p class="muted small">% de cada macro por comida (cada columna suma 100) y gramos resultantes.</p>
+        <div class="tscroll"><table class="calc-t calc-d"><thead><tr><th>Comida</th><th>% P</th><th>% C</th><th>% G</th><th>P g</th><th>C g</th><th>G g</th></tr></thead><tbody>
+          ${MEALS5.map((m, k) => `<tr><td><span class="lg">${m.split(' · ')[0]} · </span>${m.split(' · ')[1]}</td>${[0, 1, 2].map(j => `<td><input type="number" step="0.5" data-pct="${k},${j}" value="${Math.round(d[k][j] * 1000) / 10}"></td>`).join('')}<td><b>${R(d[k][0] * r.p)}</b></td><td><b>${R(d[k][1] * r.c)}</b></td><td><b>${R(d[k][2] * r.f)}</b></td></tr>`).join('')}
+          <tr class="tot"><td>Total</td>${sums.map(x => `<td class="${Math.abs(x - 1) > 0.005 ? 'bad' : ''}">${Math.round(x * 1000) / 10}</td>`).join('')}<td>${R(d.reduce((s, row) => s + R(row[0] * r.p), 0))}</td><td>${R(d.reduce((s, row) => s + R(row[1] * r.c), 0))}</td><td>${R(d.reduce((s, row) => s + R(row[2] * r.f), 0))}</td></tr>
+        </tbody></table></div>
+        <div class="row gap wrap calc-actions">
+          <button type="button" class="btn primary small" data-apply>Usar en el plan (kcal, macros y agua)</button>
+          <button type="button" class="btn small" data-meals>Añadir reparto al menú</button>
+          ${pct ? '<button type="button" class="btn ghost small" data-reset>Restablecer reparto</button>' : ''}
+        </div>`;
+      out.querySelectorAll('[data-pct]').forEach(el => el.onchange = () => { const [k, j] = el.dataset.pct.split(',').map(Number); pct = (pct || r.dist).map(row => row.slice()); pct[k][j] = (Number(el.value) || 0) / 100; draw(); });
+      const rs = out.querySelector('[data-reset]'); if (rs) rs.onclick = () => { pct = null; draw(); };
+      out.querySelector('[data-apply]').onclick = () => {
+        const set = (n, v) => { form[n].value = v; };
+        set('kcal', R(r.kcal)); set('protein', R(r.p)); set('carbs', Math.max(0, R(r.c))); set('fat', R(r.f)); set('water', fmtKg(Math.round(r.water * 10) / 10) + ' L');
+        form.dispatchEvent(new Event('input')); toast('Valores puestos en el plan. Revisa y pulsa Guardar plan', 'ok');
+      };
+      out.querySelector('[data-meals]').onclick = () => {
+        const txt = `REPARTO POR COMIDAS (${R(r.kcal)} kcal)\n` + MEALS5.map((m, k) => `${m}: P ${R(d[k][0] * r.p)} g · C ${R(d[k][1] * r.c)} g · G ${R(d[k][2] * r.f)} g`).join('\n');
+        form.meals.value = form.meals.value.trim() ? form.meals.value.trimEnd() + '\n\n' + txt : txt;
+        toast('Reparto añadido al menú. Pulsa Guardar plan', 'ok');
+      };
+    };
+    box.querySelectorAll('.calc-in input, .calc-in select').forEach(el => { el.oninput = draw; el.onchange = draw; });
+    draw();
+  }
+
   async function tabNutrition(c, box) {
     const p = (await DB.get('nutrition_plans', c.id, 'client_id')) || {};
     box.innerHTML = `<form class="card stack" data-nf>
@@ -768,6 +866,7 @@
       <div class="row"><small class="muted">${p.updated_at ? 'Actualizado ' + ago(p.updated_at) : 'Sin plan todavía'}</small><span class="grow"></span><button class="btn primary">Guardar plan</button></div>
     </form>`;
     const f = box.querySelector('[data-nf]');
+    calcCard(c, f, !!p.kcal);
     const calc = () => { const g = n => Number(f[n].value) || 0; const k = g('protein') * 4 + g('carbs') * 4 + g('fat') * 9; f.querySelector('[data-calc]').textContent = k ? `Los macros suman ${k} kcal${g('kcal') ? ` (objetivo ${g('kcal')} kcal)` : ''}.` : ''; };
     f.oninput = calc; calc();
     f.onsubmit = async e => {

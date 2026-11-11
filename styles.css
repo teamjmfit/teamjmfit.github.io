@@ -360,3 +360,21 @@ label.check input { width: auto; margin-top: 3px; }
 .clegend .cev { font-size: 11px; }
 .routine-mini { margin: 8px 0; }
 @media (min-width: 900px) { .cday { min-height: 96px; } .cev { font-size: 11px; } }
+
+/* Calculadora nutricional */
+.calc { margin-bottom: 12px; }
+.calc summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; list-style: none; }
+.calc summary::-webkit-details-marker { display: none; }
+.calc summary b { display: inline-flex; gap: 6px; align-items: center; }
+.calc[open] summary { margin-bottom: 12px; }
+.calc-k { margin: 12px 0; }
+.calc-t { width: 100%; border-collapse: collapse; font-size: 14px; margin: 6px 0 10px; }
+.calc-t th, .calc-t td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+.calc-t th:first-child, .calc-t td:first-child { text-align: left; }
+.calc-t th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.calc-d input { width: 58px; padding: 4px 6px; text-align: right; }
+.calc-t .tot td { font-weight: 700; border-bottom: 0; }
+.calc-t td.bad { color: var(--red); }
+.calc-actions { margin-top: 6px; }
+.tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 560px) { .calc-d { font-size: 12px; } .calc-d .lg { display: none; } .calc-d input { width: 44px; padding: 4px 1px; font-size: 12px; } .calc-d th { text-transform: none; } .calc-d th, .calc-d td { padding: 5px 2px; white-space: nowrap; } .calc-k .kpi b { font-size: 26px; } }
