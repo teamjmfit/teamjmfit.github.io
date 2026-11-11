@@ -93,34 +93,45 @@
   async function coachEditor(c, host, form) {
     const { esc, ic, toast, confirmBox, modal, loading } = U();
     host.innerHTML = `<section class="card np">${loading()}</section>`;
-    const st = { blocks: [], options: [], items: [] };
+    const st = { plans: [], blocks: [], options: [], items: [] };
+    N.plan = N.plan || {};
     const load = async () => {
-      const [b, o, i] = await Promise.all([
+      const [pl, b, o, i] = await Promise.all([
+        DB().list('meal_plans', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
         DB().list('meal_blocks', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
         DB().list('meal_options', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
         DB().list('option_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
         loadFoods()
       ]);
-      st.blocks = b; st.options = o; st.items = i;
+      st.plans = pl; st.blocks = b; st.options = o; st.items = i;
+      // comidas de antes de tener planes: van a un plan «Plan»
+      const orphan = st.blocks.filter(x => !x.plan_id || !st.plans.some(p => p.id === x.plan_id));
+      if (orphan.length) {
+        const p0 = st.plans[0] || (await DB().insert('meal_plans', { client_id: c.id, name: 'Plan', position: 0 }))[0];
+        if (!st.plans.includes(p0)) st.plans.push(p0);
+        for (const x of orphan) { x.plan_id = p0.id; await DB().update('meal_blocks', x.id, { plan_id: p0.id }); }
+      }
     };
     await load();
     autoSync().then(ch => { if (ch) draw(); });
     const optsOf = bid => st.options.filter(o => o.block_id === bid).sort((a, b) => a.position - b.position || String(a.label).localeCompare(b.label));
     const itemsOf = oid => st.items.filter(i => i.option_id === oid).sort((a, b) => a.position - b.position);
     const selOf = bid => { const os = optsOf(bid); const s = os.find(o => o.id === N.sel[bid]); return s || os[0] || null; };
-    const target = k => (form && form[k] ? Number(form[k].value) || 0 : 0);
+    const cur = () => st.plans.find(p => p.id === N.plan[c.id]) || st.plans[0] || null;
+    const blocksOf = () => { const p = cur(); return p ? st.blocks.filter(b => b.plan_id === p.id).sort((x, y) => x.position - y.position) : []; };
+    const target = k => { const p = cur(); if (p && p[k] != null && p[k] !== '') return Number(p[k]) || 0; return form && form[k] ? Number(form[k].value) || 0 : 0; };
     const nextLabel = bid => { const used = new Set(optsOf(bid).map(o => o.label)); for (const L of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (!used.has(L)) return L; return 'Z' + Date.now() % 1000; };
 
     function summary() {
       const F = foodMap(); const t = { kcal: 0, p: 0, c: 0, f: 0, fi: 0 };
-      st.blocks.forEach(b => { const o = selOf(b.id); if (!o) return; const m = sumMacros(itemsOf(o.id), F); for (const k in t) t[k] += m[k]; });
+      blocksOf().forEach(b => { const o = selOf(b.id); if (!o) return; const m = sumMacros(itemsOf(o.id), F); for (const k in t) t[k] += m[k]; });
       const bar = (lab, cls, v, goal, unit) => {
         const pct = goal ? Math.min(100, v / goal * 100) : 0, over = goal && v > goal * 1.05;
         return `<div class="np-goal ${cls}"><small>${lab}</small><b>${unit === 'kcal' ? r0(v) : f1(v)}${goal ? `<span> / ${r0(goal)}</span>` : ''} ${unit}</b>${goal ? `<i><em style="width:${pct}%" class="${over ? 'over' : ''}"></em></i>` : ''}</div>`;
       };
       const kc = t.p * 4 + t.c * 4 + t.f * 9, pc = x => (kc ? Math.round(x / kc * 100) : 0);
       return `${bar('Calorías', 'k', t.kcal, target('kcal'), 'kcal')}${bar('Proteína', 'p', t.p, target('protein'), 'g')}${bar('Hidratos', 'c', t.c, target('carbs'), 'g')}${bar('Grasas', 'f', t.f, target('fat'), 'g')}
-        <p class="muted small np-split">${kc ? `Reparto: P ${pc(t.p * 4)} % · C ${pc(t.c * 4)} % · G ${pc(t.f * 9)} % · fibra ${f1(t.fi)} g` : 'Añade comidas y alimentos para ver el total del día.'} <span class="np-hint">Cuenta la opción seleccionada de cada comida.</span></p>`;
+        <p class="muted small np-split">${cur() && st.plans.length > 1 ? `<b>${esc(cur().name)}</b> · ` : ''}${kc ? `Reparto: P ${pc(t.p * 4)} % · C ${pc(t.c * 4)} % · G ${pc(t.f * 9)} % · fibra ${f1(t.fi)} g` : 'Añade comidas y alimentos para ver el total del día.'} <span class="np-hint">Cuenta la opción seleccionada de cada comida.</span></p>`;
     }
     function rowHtml(it) {
       const f = foodMap().get(it.food_id), m = itemMacros(it, f);
@@ -161,15 +172,61 @@
         <div class="row gap wrap"><span class="grow"></span><button type="button" class="btn small primary" data-addfood>${ic('plus')} Añadir alimentos</button></div>
       </div>`;
     }
+    function planBar() {
+      const p = cur();
+      const ph = k => (form && form[k] && form[k].value ? form[k].value : '');
+      return `<div class="np-plans">
+          ${st.plans.map(x => `<button type="button" class="chip ${p && x.id === p.id ? 'on' : ''}" data-plan="${x.id}">${esc(x.name)}</button>`).join('')}
+          <button type="button" class="chip dashed" data-addplan>${ic('plus')} Plan</button>
+          ${p ? `<button type="button" class="chip dashed" data-dupplan title="Duplicar este plan">${ic('copy')} Duplicar</button>` : ''}
+        </div>
+        ${p ? `<div class="np-planhead">
+          <label class="np-pn">Nombre del plan<input value="${esc(p.name)}" data-pname list="np-plannames"></label>
+          <datalist id="np-plannames"><option value="Día de entreno"><option value="Día de descanso"><option value="Día alto"><option value="Día bajo"><option value="Refeed"></datalist>
+          <div class="np-pt"><small class="muted">Objetivo de este plan (vacío = el general)</small>
+            <div class="np-ptr">${[['kcal', 'kcal'], ['protein', 'P'], ['carbs', 'C'], ['fat', 'G']].map(([k, l]) => `<label>${l}<input type="number" inputmode="numeric" min="0" value="${p[k] ?? ''}" placeholder="${esc(ph(k))}" data-pt="${k}"></label>`).join('')}</div></div>
+          ${st.plans.length > 1 ? `<button type="button" class="icon-btn sm" data-delplan aria-label="Borrar plan">${ic('trash')}</button>` : ''}
+        </div>` : ''}`;
+    }
+    async function ensurePlan() {
+      if (cur()) return cur();
+      const [p] = await DB().insert('meal_plans', { client_id: c.id, name: 'Plan', position: 0 });
+      st.plans.push(p); N.plan[c.id] = p.id; return p;
+    }
+    async function addPlan() {
+      const names = new Set(st.plans.map(p => p.name));
+      const name = ['Día de entreno', 'Día de descanso', 'Plan 3', 'Plan 4'].find(n => !names.has(n)) || 'Plan';
+      if (st.plans.length === 1 && st.plans[0].name === 'Plan') { st.plans[0].name = 'Día de entreno'; await DB().update('meal_plans', st.plans[0].id, { name: 'Día de entreno' }); }
+      const nm = st.plans.length === 1 && name === 'Día de entreno' ? 'Día de descanso' : name;
+      const [p] = await DB().insert('meal_plans', { client_id: c.id, name: nm, position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1 });
+      st.plans.push(p); N.plan[c.id] = p.id; draw();
+    }
+    async function dupPlan() {
+      const src = cur(); if (!src) return;
+      const [p] = await DB().insert('meal_plans', { client_id: c.id, name: src.name + ' (copia)', position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1, kcal: src.kcal, protein: src.protein, carbs: src.carbs, fat: src.fat, notes: src.notes });
+      st.plans.push(p);
+      for (const b of blocksOf()) {
+        const [nb] = await DB().insert('meal_blocks', { client_id: c.id, plan_id: p.id, name: b.name, position: b.position, time_hint: b.time_hint, notes: b.notes });
+        st.blocks.push(nb);
+        for (const o of optsOf(b.id)) {
+          const [no] = await DB().insert('meal_options', { block_id: nb.id, client_id: c.id, label: o.label, name: o.name, position: o.position, notes: o.notes });
+          st.options.push(no);
+          const its = itemsOf(o.id);
+          if (its.length) st.items.push(...await DB().insert('option_items', its.map(i => ({ option_id: no.id, client_id: c.id, food_id: i.food_id, food_name: i.food_name, grams: i.grams, units: i.units, position: i.position }))));
+        }
+      }
+      N.plan[c.id] = p.id; draw();
+    }
     function draw() {
       host.innerHTML = `<section class="card np">
         <div class="row gap wrap np-head"><h3>Plan por comidas</h3><span class="grow"></span>
           <button type="button" class="btn small ghost" data-copyplan>${ic('copy')} Copiar de otro cliente</button>
           <button type="button" class="btn small ghost" data-foods>${ic('apple')} Base de alimentos</button></div>
         <p class="muted small">Igual que en Harbiz: cada comida puede tener varias opciones; las cantidades se pueden cambiar cuando quieras y los macros se recalculan solos.</p>
+        ${planBar()}
         <div class="np-sum" data-sum>${summary()}</div>
         <datalist id="np-meals">${MEALS.map(m => `<option value="${m}">`).join('')}</datalist>
-        <div class="np-blocks">${st.blocks.map(blockHtml).join('') || '<p class="empty">Todavía no hay comidas. Empieza añadiendo el desayuno.</p>'}</div>
+        <div class="np-blocks">${blocksOf().map(blockHtml).join('') || '<p class="empty">Todavía no hay comidas. Empieza añadiendo el desayuno.</p>'}</div>
         <div class="row gap wrap"><button type="button" class="btn dashed" data-addblock>${ic('plus')} Añadir comida</button></div>
       </section>`;
       wire();
@@ -196,10 +253,11 @@
     const later = (k, fn, ms = 500) => { clearTimeout(timers[k]); timers[k] = setTimeout(fn, ms); };
 
     async function addBlock() {
-      const used = new Set(st.blocks.map(b => b.name));
+      const p = await ensurePlan();
+      const used = new Set(blocksOf().map(b => b.name));
       const name = MEALS.find(m => !used.has(m)) || 'Comida';
-      const posn = st.blocks.reduce((m, b) => Math.max(m, b.position), -1) + 1;
-      const [b] = await DB().insert('meal_blocks', { client_id: c.id, name, position: posn });
+      const posn = blocksOf().reduce((m, b) => Math.max(m, b.position), -1) + 1;
+      const [b] = await DB().insert('meal_blocks', { client_id: c.id, plan_id: p.id, name, position: posn });
       const [o] = await DB().insert('meal_options', { block_id: b.id, client_id: c.id, label: 'A', position: 0 });
       st.blocks.push(b); st.options.push(o); N.sel[b.id] = o.id; draw();
       const el = host.querySelector(`[data-b="${b.id}"] [data-bname]`); if (el) el.select();
@@ -217,6 +275,31 @@
 
     function wire() {
       host.querySelector('[data-addblock]').onclick = () => run(addBlock);
+      host.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { N.plan[c.id] = b.dataset.plan; draw(); });
+      host.querySelector('[data-addplan]').onclick = () => run(addPlan);
+      const dp = host.querySelector('[data-dupplan]'); if (dp) dp.onclick = () => run(dupPlan, 'Plan duplicado');
+      const p = cur();
+      if (p) {
+        const pn = host.querySelector('[data-pname]');
+        pn.oninput = () => { p.name = pn.value.trim() || 'Plan'; const chip = host.querySelector(`[data-plan="${p.id}"]`); if (chip) chip.textContent = p.name; later('pn' + p.id, () => run(() => DB().update('meal_plans', p.id, { name: p.name }))); };
+        host.querySelectorAll('[data-pt]').forEach(inp => inp.oninput = () => {
+          const k = inp.dataset.pt, v = inp.value === '' ? null : Math.round(Number(inp.value)); p[k] = v;
+          const s = host.querySelector('[data-sum]'); if (s) s.innerHTML = summary();
+          later('pt' + p.id + k, () => run(() => DB().update('meal_plans', p.id, { [k]: v })));
+        });
+        const dl = host.querySelector('[data-delplan]');
+        if (dl) dl.onclick = async () => {
+          if (!(await confirmBox(`¿Borrar el plan «${p.name}» con todas sus comidas?`))) return;
+          run(async () => {
+            await DB().remove('meal_plans', p.id);
+            const bids = new Set(st.blocks.filter(b => b.plan_id === p.id).map(b => b.id));
+            const oids = new Set(st.options.filter(o => bids.has(o.block_id)).map(o => o.id));
+            st.plans = st.plans.filter(x => x.id !== p.id); st.blocks = st.blocks.filter(b => !bids.has(b.id));
+            st.options = st.options.filter(o => !oids.has(o.id)); st.items = st.items.filter(i => !oids.has(i.option_id));
+            delete N.plan[c.id]; draw();
+          }, 'Plan borrado');
+        };
+      }
       host.querySelector('[data-foods]').onclick = () => foodsModal(() => draw());
       host.querySelector('[data-copyplan]').onclick = () => copyPlanModal(c, async () => { await load(); draw(); });
       host.querySelectorAll('[data-b]').forEach(el => {
@@ -227,8 +310,8 @@
         const nt = el.querySelector('[data-bnotes]'); nt.oninput = e => { save({ notes: e.target.value }); nt.style.height = 'auto'; nt.style.height = nt.scrollHeight + 'px'; };
         const up = el.querySelector('[data-up]');
         if (up) up.onclick = () => run(async () => {
-          const i = st.blocks.indexOf(b), prev = st.blocks[i - 1]; const p1 = prev.position, p2 = b.position === p1 ? p1 + 1 : b.position;
-          prev.position = p2; b.position = p1; st.blocks.sort((x, y) => x.position - y.position);
+          const bl = blocksOf(), i = bl.indexOf(b), prev = bl[i - 1]; const p1 = prev.position, p2 = b.position === p1 ? p1 + 1 : b.position;
+          prev.position = p2; b.position = p1;
           await DB().update('meal_blocks', b.id, { position: p1 }); await DB().update('meal_blocks', prev.id, { position: p2 }); draw();
         });
         el.querySelector('[data-delblock]').onclick = async () => {
@@ -354,7 +437,7 @@
     const withPlan = clients.filter(x => has.has(x.id));
     modal('Copiar plan de otro cliente', withPlan.length ? `
       <label>Copiar el plan por comidas de<select name="from">${withPlan.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
-      <p class="muted small">Se sustituyen las comidas que tenga ahora ${esc(c.name)}. Después puedes ajustar las cantidades a sus macros.</p>`
+      <p class="muted small">Se copian todos sus planes (entreno, descanso…) y se sustituyen los que tenga ahora ${esc(c.name)}. Después puedes ajustar las cantidades a sus macros.</p>`
       : '<p class="empty">Ningún otro cliente tiene todavía plan por comidas.</p>', {
       submitLabel: 'Copiar plan',
       onSubmit: withPlan.length ? async (f, fd) => {
@@ -370,8 +453,17 @@
     const blocks = (d && d.blocks) || [];
     if (!blocks.length) return '';
     const show = d.show_macros !== false;
+    const plans = (d.plans || []).filter(p => blocks.some(b => b.plan_id === p.id));
+    const groups = plans.length ? plans.map(p => ({ p, bs: blocks.filter(b => b.plan_id === p.id) })) : [{ p: null, bs: blocks }];
+    const loose = plans.length ? blocks.filter(b => !plans.some(p => p.id === b.plan_id)) : [];
+    if (loose.length) groups[0].bs = groups[0].bs.concat(loose);
+    const tot = bs => { const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 }; bs.forEach(b => { const o = (b.options || [])[0]; if (o && o.macros) for (const k in t) t[k] += Number(o.macros[k]) || 0; }); return t; };
     return `<section class="card np-client"><h3>Mis comidas</h3>
-      ${blocks.map(b => `<div class="np-cb" data-cb="${b.id}">
+      ${groups.length > 1 ? `<div class="np-opts np-cplans">${groups.map((g, k) => `<button type="button" class="chip ${k === 0 ? 'on' : ''}" data-cplan="${k}">${esc(g.p.name)}</button>`).join('')}</div>
+        <p class="muted small">Elige el plan del día: cada uno tiene sus propias calorías.</p>` : ''}
+      ${groups.map((g, gk) => { const t = tot(g.bs); return `<div class="np-cg" data-cg="${gk}" ${gk ? 'hidden' : ''}>
+      ${show && t.kcal ? `<p class="np-ctot"><b>${r0(t.kcal)} kcal</b> · P ${r0(t.protein)} g · C ${r0(t.carbs)} g · G ${r0(t.fat)} g <small class="muted">${groups.length > 1 ? 'este día' : 'al día'}</small></p>` : ''}
+      ${g.bs.map(b => `<div class="np-cb" data-cb="${b.id}">
         <div class="row"><b>${esc(b.name)}</b>${b.time_hint ? `<small class="muted"> · ${esc(b.time_hint)}</small>` : ''}</div>
         ${b.notes ? `<p class="muted small">${nl2br(b.notes)}</p>` : ''}
         ${b.options.length > 1 ? `<div class="np-opts">${b.options.map((o, k) => `<button type="button" class="chip ${k === 0 ? 'on' : ''}" data-copt="${k}">Opción ${k + 1}</button>`).join('')}</div>` : ''}
@@ -380,10 +472,15 @@
           ${show && o.macros && (o.items || []).length ? `<p class="small np-cm"><b>${r0(o.macros.kcal)} kcal</b> · P ${f1(o.macros.protein)} g · C ${f1(o.macros.carbs)} g · G ${f1(o.macros.fat)} g</p>` : ''}
         </div>`).join('')}
       </div>`).join('')}
+      </div>`; }).join('')}
       <p class="muted small">Puedes elegir cualquier opción de cada comida: están pensadas para que sumen parecido.</p>
     </section>`;
   }
   function wireClient(root) {
+    root.querySelectorAll('[data-cplan]').forEach(btn => btn.onclick = () => {
+      root.querySelectorAll('[data-cplan]').forEach(b => b.classList.toggle('on', b === btn));
+      root.querySelectorAll('[data-cg]').forEach(g => { g.hidden = g.dataset.cg !== btn.dataset.cplan; });
+    });
     root.querySelectorAll('[data-cb]').forEach(cb => cb.querySelectorAll('[data-copt]').forEach(btn => btn.onclick = () => {
       cb.querySelectorAll('[data-copt]').forEach(b => b.classList.toggle('on', b === btn));
       cb.querySelectorAll('[data-co]').forEach(o => { o.hidden = o.dataset.co !== btn.dataset.copt; });
