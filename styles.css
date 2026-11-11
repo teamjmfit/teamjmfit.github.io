@@ -378,3 +378,13 @@ label.check input { width: auto; margin-top: 3px; }
 .calc-actions { margin-top: 6px; }
 .tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 560px) { .calc-d { font-size: 12px; } .calc-d .lg { display: none; } .calc-d input { width: 44px; padding: 4px 1px; font-size: 12px; } .calc-d th { text-transform: none; } .calc-d th, .calc-d td { padding: 5px 2px; white-space: nowrap; } .calc-k .kpi b { font-size: 26px; } }
+
+/* Logo TEAM JMFIT */
+.brand-logo { display: block; height: auto; border-radius: 12px; background: #030201; }
+.side .brand { flex-direction: column; align-items: flex-start; gap: 8px; }
+.side .brand-logo { width: 100%; max-width: 200px; }
+.brand.big { flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.brand.big .brand-logo { width: min(260px, 78vw); }
+.brand-logo.sm { width: 64px; border-radius: 8px; }
+.splash { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #030201; }
+.splash img { width: min(280px, 72vw); height: auto; }
