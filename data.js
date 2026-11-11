@@ -67,6 +67,21 @@
   }
 
   // ---------------------------------------------------------------- DEMO
+  const DEMO_FOODS = [
+    ['Huevo M', 'Huevos', 'Genérico', 150, 12.7, 0.7, 9.7, 0, 'Unidad', 55], ['Claras de Huevo - Lidl', 'Huevos', 'Lidl', 43, 9.8, 0.9, 0, 0.6, null, null],
+    ['Pan de Pueblo - Mercadona', 'Panes y cereales', 'Mercadona', 245, 7.5, 51, 0.8, 2.9, null, null], ['Pan integral', 'Panes y cereales', 'Genérico', 240, 10, 37, 4, 8.3, 'Rebanada', 30],
+    ['Avena', 'Panes y cereales', 'Genérico', 389, 16.9, 66.3, 6.9, 10.6, null, null], ['Arroz Blanco Crudo', 'Arroces y pastas', 'Genérico', 359, 6.6, 79.2, 0.6, 1.4, null, null],
+    ['Crema de Arroz', 'Arroces y pastas', 'Genérico', 366.7, 8.1, 76.6, 2.5, 2.7, null, null], ['Pasta Cruda', 'Arroces y pastas', 'Genérico', 357, 12.2, 72.3, 1.4, 3, null, null],
+    ['Pechuga de Pollo Cruda', 'Carnes', 'Genérico', 109, 23, 0, 1.2, 0, null, null], ['Pechuga de Pavo 92% - Hacendado', 'Carnes', 'Mercadona', 89, 19.5, 1, 1.3, 0, null, null],
+    ['Jamón serrano', 'Embutidos', 'Genérico', 248, 33.5, 1, 12, 0, 'Loncha', 12.5], ['Merluza', 'Pescados', 'Genérico', 82, 18, 0, 2, 0, null, null],
+    ['Salmón', 'Pescados', 'Genérico', 146, 21.62, 0, 5.93, 0, null, null], ['Atún al natural (lata)', 'Pescados', 'Genérico', 115, 25, 0.2, 0.8, 0, 'Lata', 60],
+    ['Queso fresco batido 0%', 'Lácteos', 'Genérico', 46, 8, 3.5, 0, 0, null, null], ['Yogur Natural 0% - Hacendado', 'Lácteos', 'Mercadona', 36, 4.3, 4.5, 0.1, 0, null, null],
+    ['Leche Semidesnatada', 'Lácteos', 'Genérico', 44.6, 3, 4.6, 1.5, 0, null, null], ['Aceite de oliva virgen extra', 'Grasas y aceites', 'Genérico', 884, 0, 0, 100, 0, null, null],
+    ['Aguacate', 'Grasas y aceites', 'Genérico', 160, 2, 8.5, 14.7, 6.7, null, null], ['Crema Cacahuete - Lidl', 'Grasas y aceites', 'Lidl', 684, 30.4, 12, 55.1, 9.2, null, null],
+    ['Nueces', 'Frutos secos', 'Genérico', 714, 15, 14, 65, 0, null, null], ['Plátano', 'Frutas', 'Genérico', 92, 1.1, 22, 0.3, 2.6, 'Pieza', 90],
+    ['Manzana', 'Frutas', 'Genérico', 52, 0.3, 14, 0.2, 2.4, 'Unidad', 150], ['Patata cruda', 'Tubérculos', 'Genérico', 77, 2, 17, 0.1, 2.2, null, null],
+    ['Verdura', 'Verduras', 'Genérico', 24, 1, 5, 0, 0, null, null], ['Whey Protein', 'Suplementos', 'Genérico', 380, 86.6, 1.2, 3.9, 0.9, null, null]
+  ];
   function demoBackend() {
     const KEY = 'jmfit-demo-v1';
     let store;
@@ -74,6 +89,7 @@
     const load = () => {
       try { store = JSON.parse(localStorage.getItem(KEY)); } catch (e) { store = null; }
       if (!store || !store.tables) { store = { tables: {}, who: null }; seed(); save(); }
+      if (!(store.tables.foods || []).length) { store.tables.foods = DEMO_FOODS.map(([name, category, store_, kcal, protein, carbs, fat, fiber, unit_name, unit_g]) => ({ id: uuid(), name, category, store: store_, kind: store_ === 'Genérico' ? (category === 'Suplementos' ? 'Suplemento' : 'Genérico') : 'Marca', kcal, protein, carbs, fat, fiber, unit_name, unit_g, active: true })); save(); }
     };
     const T = n => (store.tables[n] = store.tables[n] || []);
     const keyOf = (t) => ({ settings: 'key', nutrition_plans: 'client_id' }[t] || 'id');
@@ -195,8 +211,14 @@
           store.tables.routines = T('routines').filter(r => !rids.has(r.id));
           store.tables.routine_items = T('routine_items').filter(i => !rids.has(i.routine_id));
         }
+        if (t === 'meal_blocks') {
+          const oids = new Set(T('meal_options').filter(o => o.block_id === id).map(o => o.id));
+          store.tables.meal_options = T('meal_options').filter(o => o.block_id !== id);
+          store.tables.option_items = T('option_items').filter(i => !oids.has(i.option_id));
+        }
+        if (t === 'meal_options') store.tables.option_items = T('option_items').filter(i => i.option_id !== id);
         if (t === 'sessions') store.tables.set_logs = T('set_logs').filter(r => r.session_id !== id);
-        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans']
+        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans', 'meal_blocks', 'meal_options', 'option_items']
           .forEach(n => { store.tables[n] = T(n).filter(r => r.client_id !== id); });
         save();
       },
@@ -288,6 +310,52 @@
             n++;
           });
           save(); return n;
+        }
+        // Migración 005: base de alimentos y plan por comidas
+        const fmap = () => new Map(T('foods').map(f => [f.id, f]));
+        const gramsOf = (i, f) => (i.units != null && f && f.unit_g > 0 ? i.units * f.unit_g : Number(i.grams) || 0);
+        if (fn === 'sync_foods') {
+          let nuevos = 0, actualizados = 0, desactivados = 0; const names = new Set();
+          for (const r of a.p_rows || []) {
+            const nm = String(r.name || '').trim(); if (!nm || r.kcal == null) continue; names.add(nm.toLowerCase());
+            const row = { name: nm, kind: r.kind || 'Genérico', store: r.store || 'Genérico', category: r.category || 'Otros', kcal: +r.kcal, protein: +r.protein || 0, carbs: +r.carbs || 0, fat: +r.fat || 0, fiber: +r.fiber || 0, unit_name: r.unit_name || null, unit_g: r.unit_g != null ? +r.unit_g : null, active: r.active !== false, source: r.source || null };
+            const ex = T('foods').find(f => f.name.toLowerCase() === nm.toLowerCase());
+            if (!ex) { T('foods').push(Object.assign({ id: uuid(), created_at: now(), updated_at: now() }, row)); nuevos++; }
+            else if (Object.keys(row).some(k => (ex[k] ?? null) !== (row[k] ?? null))) { Object.assign(ex, row, { updated_at: now() }); actualizados++; }
+          }
+          T('foods').forEach(f => { if (f.active !== false && !names.has(f.name.toLowerCase())) { f.active = false; desactivados++; } });
+          save(); return { nuevos, actualizados, desactivados, total: names.size };
+        }
+        if (fn === 'copy_meal_plan') {
+          const to = a.p_to; let n = 0;
+          for (const b of T('meal_blocks').filter(x => x.client_id === to)) await this.remove('meal_blocks', b.id);
+          T('meal_blocks').filter(b => b.client_id === a.p_from).sort((x, y) => x.position - y.position).forEach(b => {
+            const nb = Object.assign({}, b, { id: uuid(), client_id: to }); T('meal_blocks').push(nb); n++;
+            T('meal_options').filter(o => o.block_id === b.id).forEach(o => {
+              const no = Object.assign({}, o, { id: uuid(), block_id: nb.id, client_id: to }); T('meal_options').push(no);
+              T('option_items').filter(i => i.option_id === o.id).forEach(i => T('option_items').push(Object.assign({}, i, { id: uuid(), option_id: no.id, client_id: to })));
+            });
+          });
+          save(); return n;
+        }
+        if (fn === 'get_my_nutrition') {
+          const c = T('clients').find(x => x.user_id === 'demo-client'); if (!c) return null;
+          const p = T('nutrition_plans').find(x => x.client_id === c.id) || {}; const show = p.show_macros !== false; const F = fmap();
+          const r1 = x => Math.round(x * 10) / 10;
+          return {
+            show_macros: show, targets: show ? { kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat } : null, water: p.water, notes: p.notes, legacy_meals: p.meals, updated_at: p.updated_at,
+            blocks: T('meal_blocks').filter(b => b.client_id === c.id).sort((x, y) => x.position - y.position).map(b => ({
+              id: b.id, name: b.name, time_hint: b.time_hint, notes: b.notes,
+              options: T('meal_options').filter(o => o.block_id === b.id).sort((x, y) => x.position - y.position).map(o => {
+                const its = T('option_items').filter(i => i.option_id === o.id).sort((x, y) => x.position - y.position);
+                const m = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
+                its.forEach(i => { const f = F.get(i.food_id); if (!f) return; const g = gramsOf(i, f); m.kcal += g * f.kcal / 100; m.protein += g * f.protein / 100; m.carbs += g * f.carbs / 100; m.fat += g * f.fat / 100; m.fiber += g * (f.fiber || 0) / 100; });
+                return { id: o.id, label: o.label, name: o.name, notes: o.notes,
+                  macros: show ? { kcal: Math.round(m.kcal), protein: r1(m.protein), carbs: r1(m.carbs), fat: r1(m.fat), fiber: r1(m.fiber) } : null,
+                  items: its.map(i => { const f = F.get(i.food_id); const g = gramsOf(i, f); return { food: f ? f.name : i.food_name, grams: Math.round(g), unit: f && f.unit_name, units: i.units != null ? i.units : (f && f.unit_g > 0 ? r1(i.grams / f.unit_g) : null), kcal: show && f ? Math.round(g * f.kcal / 100) : null }; }) };
+              })
+            }))
+          };
         }
         throw new Error('Función no disponible en modo demo: ' + fn);
       },
