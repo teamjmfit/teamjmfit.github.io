@@ -780,6 +780,7 @@
   async function calcCard(c, form, hasPlan) {
     const key = 'jmfit-calc-' + c.id;
     let saved = {}; try { saved = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+    Object.keys(saved).forEach(k => { if (saved[k] === '' || saved[k] === 0 || saved[k] == null) delete saved[k]; });   // nunca pisar datos reales con vacíos
     const cks = await DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 5 }).catch(() => []);
     const lastW = (cks.find(k => k.weight) || {}).weight;
     const bm = String(c.notes || '').match(/Nacimiento:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -805,7 +806,7 @@
     let sig = '';
     const draw = () => {
       const i = get(); const ns = JSON.stringify([i, pct]); if (ns === sig) return; sig = ns;   // sin cambios: no redibujar (si no, se pierde el clic en los botones)
-      try { localStorage.setItem(key, JSON.stringify(i)); } catch (e) {}
+      try { const keep = {}; Object.entries(i).forEach(([k, v]) => { if (v !== '' && v !== 0 && !Number.isNaN(v)) keep[k] = v; }); localStorage.setItem(key, JSON.stringify(keep)); } catch (e) {}
       box.querySelector('[data-actd]').textContent = (ACT.find(a => a[0] === i.act) || [])[3] || '';
       const out = box.querySelector('[data-out]');
       if (!(i.age && i.cm && i.kg)) { out.innerHTML = '<p class="empty">Rellena edad, altura y peso para calcular.</p>'; return; }
