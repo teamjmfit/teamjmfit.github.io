@@ -863,18 +863,21 @@
         <label>Agua<input name="water" value="${esc(p.water)}" placeholder="2,5 L"></label>
       </div>
       <p class="muted small" data-calc></p>
-      <label>Menú / distribución de comidas<textarea name="meals" rows="10" placeholder="Desayuno: …&#10;Comida: …&#10;Cena: …">${esc(p.meals)}</textarea></label>
+      <label class="check"><input type="checkbox" name="show_macros" ${p.show_macros === false ? '' : 'checked'}> Mostrar calorías y macros al cliente</label>
+      <details ${p.meals ? 'open' : ''}><summary class="muted small">Menú en texto libre (opcional)</summary><label>Menú / distribución de comidas<textarea name="meals" rows="8" placeholder="Desayuno: …&#10;Comida: …&#10;Cena: …">${esc(p.meals)}</textarea></label></details>
       <label>Recomendaciones<textarea name="notes" rows="4" placeholder="Suplementación, comidas libres, intercambios…">${esc(p.notes)}</textarea></label>
       <div class="row"><small class="muted">${p.updated_at ? 'Actualizado ' + ago(p.updated_at) : 'Sin plan todavía'}</small><span class="grow"></span><button class="btn primary">Guardar plan</button></div>
-    </form>`;
+    </form><div data-mealplan></div>`;
     const f = box.querySelector('[data-nf]');
     calcCard(c, f, !!p.kcal);
+    if (window.JMNutri) window.JMNutri.coachEditor(c, box.querySelector('[data-mealplan]'), f).catch(e => { console.error(e); box.querySelector('[data-mealplan]').innerHTML = `<p class="empty">No se pudo cargar el plan por comidas: ${esc(e.message)}</p>`; });
     const calc = () => { const g = n => Number(f[n].value) || 0; const k = g('protein') * 4 + g('carbs') * 4 + g('fat') * 9; f.querySelector('[data-calc]').textContent = k ? `Los macros suman ${k} kcal${g('kcal') ? ` (objetivo ${g('kcal')} kcal)` : ''}.` : ''; };
     f.oninput = calc; calc();
     f.onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(f));
       ['kcal', 'protein', 'carbs', 'fat'].forEach(k => { d[k] = num(d[k]); });
+      d.show_macros = !!f.show_macros.checked;
       await safe(() => DB.upsert('nutrition_plans', Object.assign({ client_id: c.id, updated_at: new Date().toISOString() }, d), 'client_id'), 'Plan de nutrición guardado');
     };
   }
@@ -1242,18 +1245,23 @@
 
   async function clientNutrition() {
     shell(CLIENT_NAV, 'nutricion', loading(), { title: 'Mi nutrición' });
-    const p = await DB.get('nutrition_plans', S.client.id, 'client_id');
+    const [p0, d] = await Promise.all([DB.get('nutrition_plans', S.client.id, 'client_id'), DB.rpc('get_my_nutrition').catch(() => null)]);
     const box = $app.querySelector('.content');
-    if (!p) { box.innerHTML = `<div class="hero-empty">${ic('apple', 'xl')}<h2>Aún no tienes plan de nutrición</h2><p>Cuando tu entrenador lo publique, lo verás aquí.</p></div>`; return; }
+    const hasBlocks = !!(d && d.blocks && d.blocks.length && window.JMNutri);
+    let p = p0 && d && d.show_macros === false ? Object.assign({}, p0, { kcal: null, protein: null, carbs: null, fat: null }) : p0;
+    if (!p && !hasBlocks) { box.innerHTML = `<div class="hero-empty">${ic('apple', 'xl')}<h2>Aún no tienes plan de nutrición</h2><p>Cuando tu entrenador lo publique, lo verás aquí.</p></div>`; return; }
+    p = p || { updated_at: d && d.updated_at };
     const tot = (p.protein || 0) * 4 + (p.carbs || 0) * 4 + (p.fat || 0) * 9;
     const pct = v => (tot ? Math.round(v / tot * 100) : 0);
     box.innerHTML = `
       ${p.kcal ? `<section class="card macros"><div class="kcal"><b>${p.kcal}</b><small>kcal al día</small></div>
         ${tot ? `<div class="mbar"><i style="flex:${pct(p.protein * 4)}" class="p"></i><i style="flex:${pct(p.carbs * 4)}" class="c"></i><i style="flex:${pct(p.fat * 9)}" class="f"></i></div>` : ''}
         <div class="mrow"><span class="p">Proteína <b>${p.protein ?? '–'} g</b></span><span class="c">Carbohidratos <b>${p.carbs ?? '–'} g</b></span><span class="f">Grasas <b>${p.fat ?? '–'} g</b></span>${p.water ? `<span>Agua <b>${esc(p.water)}</b></span>` : ''}</div></section>` : ''}
-      ${p.meals ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
+      ${hasBlocks ? window.JMNutri.clientView(d) : ''}
+      ${p.meals && !hasBlocks ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
       ${p.notes ? `<section class="card"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
       <p class="muted small">Actualizado ${ago(p.updated_at)}</p>`;
+    if (hasBlocks) window.JMNutri.wireClient(box);
   }
 
   // ---------- Check-in (cliente)
@@ -1460,6 +1468,8 @@
       }
     });
   }
+
+  window.JMUI = { esc, nl2br, fmtKg, ic, toast, safe, modal, closeModal, confirmBox, loading, ago, today };
 
   // ------------------------------------------------------------ PWA
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
