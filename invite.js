@@ -56,7 +56,7 @@
           var msg = '¡Hola! Te doy acceso a la app de TEAM JMFIT 💪\n\n1. Entra aquí: ' + link + '\n2. Crea tu cuenta con tu correo y confírmalo.\n3. En el móvil, añádela a la pantalla de inicio.\n\nAhí verás tus entrenos, tu nutrición y podrás enviarme tus check-ins.';
           return '<section class="card" style="margin:0"><header class="row gap" style="margin-bottom:8px"><b class="grow">' + esc(i.label || 'Enlace') + '</b><span class="pill ' + (ok ? 'green' : 'red') + '">' + (ok ? 'Activo' : !i.active ? 'Desactivado' : expired ? 'Caducado' : 'Sin usos') + '</span></header>' +
             '<p class="small muted">' + i.uses + (i.max_uses != null ? ' de ' + i.max_uses : '') + ' altas · ' + (i.expires_at ? 'caduca el ' + new Date(i.expires_at).toLocaleDateString('es-ES') : 'sin caducidad') + '</p>' +
-            '<input readonly value="' + esc(link) + '" onclick="this.select()" style="margin:6px 0 10px">' +
+            '<input readonly data-sel value="' + esc(link) + '" style="margin:6px 0 10px">' +
             '<div class="row gap wrap"><button type="button" class="btn small" data-copy="' + esc(link) + '">Copiar enlace</button>' +
             '<a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">Enviar por WhatsApp</a>' +
             '<button type="button" class="btn small ghost" data-toggle="' + esc(i.code) + '" data-on="' + (i.active ? '1' : '0') + '">' + (i.active ? 'Desactivar' : 'Activar') + '</button></div></section>';
@@ -66,6 +66,7 @@
         '<label>Altas máximas<input name="max" type="number" min="1" value="10"></label>' +
         '<label>Caduca en (días)<input name="days" type="number" min="1" value="30"></label></div>' +
         '<button class="btn primary" style="margin-top:12px">Crear enlace</button></form>';
+      box.querySelectorAll('[data-sel]').forEach(function (i) { i.onclick = function () { i.select(); }; });
       box.querySelectorAll('[data-copy]').forEach(function (b) { b.onclick = function () { navigator.clipboard.writeText(b.dataset.copy).then(function () { toast('Enlace copiado', 'ok'); }); }; });
       box.querySelectorAll('[data-toggle]').forEach(function (b) {
         b.onclick = async function () {
