@@ -51,6 +51,7 @@
       async update(t, id, patch, key = 'id') { return ok(await sb.from(t).update(patch).eq(key, id).select()); },
       async upsert(t, row, key = 'id') { return ok(await sb.from(t).upsert(row, { onConflict: key }).select()); },
       async remove(t, id, key = 'id') { ok(await sb.from(t).delete().eq(key, id)); },
+      async rpc(fn, args) { return ok(await sb.rpc(fn, args)); },
       async uploadPhoto(clientId, blob) {
         const path = `${clientId}/${Date.now()}.jpg`;
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
@@ -189,6 +190,11 @@
         store.tables[t] = T(t).filter(r => r[key] !== id);
         // borrado en cascada sencillo
         if (t === 'routines') store.tables.routine_items = T('routine_items').filter(r => r.routine_id !== id);
+        if (t === 'program_weeks') {
+          const rids = new Set(T('routines').filter(r => r.program_week_id === id).map(r => r.id));
+          store.tables.routines = T('routines').filter(r => !rids.has(r.id));
+          store.tables.routine_items = T('routine_items').filter(i => !rids.has(i.routine_id));
+        }
         if (t === 'sessions') store.tables.set_logs = T('set_logs').filter(r => r.session_id !== id);
         if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans']
           .forEach(n => { store.tables[n] = T(n).filter(r => r.client_id !== id); });
@@ -200,6 +206,76 @@
       async photoUrl(path) { return path; },
       async getSetting(key) { const r = T('settings').find(s => s.key === key); return r ? r.value : ''; },
       async setSetting(key, value) { await this.upsert('settings', { key, value }, 'key'); },
+      // Versiones locales de las funciones de la migración 002 (mismas reglas que en Supabase)
+      async rpc(fn, a = {}) {
+        const monday = v => { const d = new Date(v + 'T12:00:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.toISOString().slice(0, 10); };
+        const plus = (v, n) => { const d = new Date(v + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+        const roundLoad = x => (x == null ? null : Math.round(x / 0.25) * 0.25);
+        const copyWeek = (routines, weekId, fx) => {
+          for (const r of routines) {
+            const nr = Object.assign({}, r, { id: uuid(), program_week_id: weekId, created_at: now() });
+            T('routines').push(nr);
+            T('routine_items').filter(i => i.routine_id === r.id).sort((x, y) => x.position - y.position).forEach(i => {
+              if (!i.lineage_id) i.lineage_id = uuid();
+              T('routine_items').push(Object.assign({}, i, { id: uuid(), routine_id: nr.id }, fx ? fx(i) : {}));
+            });
+          }
+        };
+        if (fn === 'create_program_from_routines') {
+          const start = monday(a.p_start);
+          const prog = { id: uuid(), client_id: a.p_client, name: a.p_name, start_date: start, status: 'active', created_at: now() };
+          const w1 = { id: uuid(), program_id: prog.id, client_id: a.p_client, week_no: 1, start_date: start, kind: 'normal', source_week_id: null, published: false, created_at: now() };
+          T('programs').push(prog); T('program_weeks').push(w1);
+          copyWeek(T('routines').filter(r => r.client_id === a.p_client && !r.program_week_id).sort((x, y) => x.position - y.position), w1.id);
+          save(); return prog.id;
+        }
+        if (fn === 'clone_program_week') {
+          const mode = a.p_mode || 'progress', vol = a.p_deload_volume || 0.6;
+          const src = T('program_weeks').find(w => w.id === a.p_week_id);
+          if (!src) throw new Error('Semana no encontrada');
+          const weeks = T('program_weeks').filter(w => w.program_id === src.program_id);
+          let base = src;
+          if (src.kind === 'deload' && mode !== 'deload') base = weeks.filter(w => w.week_no < src.week_no && w.kind === 'normal').sort((x, y) => y.week_no - x.week_no)[0] || src;
+          const nw = { id: uuid(), program_id: src.program_id, client_id: src.client_id, week_no: Math.max(...weeks.map(w => w.week_no)) + 1, start_date: plus(weeks.map(w => w.start_date).sort().pop(), 7), kind: mode === 'deload' ? 'deload' : 'normal', source_week_id: src.id, published: false, created_at: now() };
+          T('program_weeks').push(nw);
+          const srcR = new Set(T('routines').filter(r => r.program_week_id === src.id).map(r => r.id));
+          const done = new Set(T('sessions').filter(x => x.finished_at && srcR.has(x.routine_id)).map(x => x.id));
+          copyWeek(T('routines').filter(r => r.program_week_id === base.id).sort((x, y) => (x.position - y.position) || ((x.day || 0) - (y.day || 0))), nw.id, it => {
+            const o = {}; const pr = it.progression || {}; const rule = pr.type || 'none';
+            const inc = Number(pr.inc_kg ?? pr.inc ?? 0);
+            const logs = T('set_logs').filter(l => l.lineage_id && l.lineage_id === it.lineage_id && done.has(l.session_id));
+            if (mode === 'progress' && rule !== 'none' && it.reps_max != null && logs.length >= it.sets) {
+              const minReps = Math.min(...logs.map(l => Number(l.reps) || 0)), top = Math.max(...logs.map(l => Number(l.weight) || 0));
+              const rirs = logs.map(l => l.rir).filter(v => v != null), minRir = rirs.length ? Math.min(...rirs) : null;
+              let up = false;
+              if (minReps >= it.reps_max && (it.target_rir == null || minRir == null || minRir >= it.target_rir)) {
+                if (rule === 'load' || rule === 'double') { o.load_kg = roundLoad((it.load_kg ?? top) + inc); up = true; }
+                else if (rule === 'reps') { o.reps_min = it.reps_min + inc; o.reps_max = it.reps_max + inc; o.reps = o.reps_min === o.reps_max ? String(o.reps_min) : o.reps_min + '-' + o.reps_max; up = true; }
+              }
+              if (!up) o.load_kg = it.load_kg ?? top;
+            }
+            if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.min((it.target_rir ?? 2) + 2, 5); }
+            return o;
+          });
+          save(); return nw.id;
+        }
+        if (fn === 'propagate_item_change') {
+          const it = T('routine_items').find(i => i.id === a.p_item_id); if (!it) return 0;
+          const r = T('routines').find(x => x.id === it.routine_id);
+          const wk = r && T('program_weeks').find(w => w.id === r.program_week_id); if (!wk) return 0;
+          const later = new Set(T('program_weeks').filter(w => w.program_id === wk.program_id && w.week_no > wk.week_no && !w.published).map(w => w.id));
+          const rids = new Set(T('routines').filter(x => later.has(x.program_week_id)).map(x => x.id));
+          let n = 0;
+          T('routine_items').forEach(i => {
+            if (!rids.has(i.routine_id) || i.lineage_id !== it.lineage_id) return;
+            for (const [k, v] of Object.entries(a.p_changes || {})) if (v != null) i[k] = v;
+            if ((a.p_changes || {}).reps != null) { const m = String(i.reps).match(/^\s*(\d+)(?:\s*[-–]\s*(\d+))?/); if (m) { i.reps_min = +m[1]; i.reps_max = +(m[2] || m[1]); } }
+            n++;
+          });
+          save(); return n;
+        }
+        throw new Error('Función no disponible en modo demo: ' + fn);
+      },
       resetDemo() { localStorage.removeItem(KEY); load(); }
     };
   }

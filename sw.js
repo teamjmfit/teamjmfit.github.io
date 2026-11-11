@@ -1,5 +1,5 @@
 // TEAM JMFIT · service worker: guarda la app para que abra rápido y sin conexión.
-const CACHE = 'jmfit-v6';
+const CACHE = 'jmfit-v7';
 const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'exercises.js', 'data.js', 'app.js',
   'fix.js', 'invite.js', 'features.js', 'manifest.json', 'icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

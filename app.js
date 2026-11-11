@@ -32,7 +32,18 @@
     if (rest && !(o.notes || '').includes(rest)) o.notes = o.notes ? rest + ' · ' + o.notes : rest;
     return o;
   }
-  const TRAINING_FIELDS = ['load_kg', 'target_rir', 'target_rpe', 'tempo', 'reps_min', 'reps_max'];
+  const TRAINING_FIELDS = ['load_kg', 'target_rir', 'target_rpe', 'tempo', 'reps_min', 'reps_max', 'progression'];
+  // Programas por semanas: regla de progresión de cada ejercicio y utilidades de semana
+  const PROG_RULES = [['none', 'Sin progresión'], ['load:1.25', '+1,25 kg'], ['load:2.5', '+2,5 kg'], ['load:5', '+5 kg'], ['reps:1', '+1 rep'], ['reps:2', '+2 reps']];
+  const progKey = p => (!p || !p.type || p.type === 'none' ? 'none' : p.type === 'reps' ? 'reps:' + Number(p.inc || 1) : 'load:' + Number(p.inc_kg || p.inc || 2.5));
+  const progVal = k => { const [t, v] = String(k || 'none').split(':'); return t === 'reps' ? { type: 'reps', inc: Number(v) || 1 } : t === 'load' ? { type: 'load', inc_kg: Number(v) || 2.5 } : { type: 'none' }; };
+  const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+  const weekLabel = w => `Semana ${w.week_no}${w.kind === 'deload' ? ' · Descarga' : w.kind === 'test' ? ' · Test' : ''}`;
+  // La semana que ve el cliente: la última publicada que ya ha empezado. Si no hay, ve sus rutinas fijas.
+  const currentWeek = (weeks, programs) => {
+    const ok = new Set(programs.filter(p => p.status === 'active').map(p => p.id)), t = today();
+    return weeks.filter(w => w.published && ok.has(w.program_id) && w.start_date <= t).sort((a, b) => b.start_date.localeCompare(a.start_date) || b.week_no - a.week_no)[0] || null;
+  };
   // Vídeo de técnica: YouTube (sin cookies), Vimeo, Google Drive, imagen o enlace externo
   function mediaInfo(url) {
     const u = String(url || '').trim(); if (!/^https?:\/\//i.test(u)) return null;
@@ -438,16 +449,39 @@
 
   // ----- Rutinas (entrenador)
   async function tabRoutines(c, box) {
-    const [routines, items] = await Promise.all([
+    const [allRoutines, items, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] })
+      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('programs', { eq: { client_id: c.id } }),
+      DB.list('program_weeks', { eq: { client_id: c.id } })
     ]);
     if (!S.exercises.length) await loadExercises();
+    S.weekSel = S.weekSel || {};
+    const prog = programs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+    const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
+    const wantFixed = S.weekSel[c.id] === 'fixed';
+    const view = prog && !wantFixed ? (pweeks.find(w => w.id === S.weekSel[c.id]) || pweeks[pweeks.length - 1] || null) : null;
+    const fixed = allRoutines.filter(r => !r.program_week_id);
+    const routines = allRoutines.filter(r => (view ? r.program_week_id === view.id : !r.program_week_id));
+    const live = currentWeek(pweeks, prog ? [prog] : []);
+    const laterDrafts = view ? pweeks.filter(w => w.week_no > view.week_no && !w.published).length : 0;
     routines.sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
+    const progBox = !prog
+      ? `<section class="card prog-card"><div class="row gap"><span class="grow"><b>Programa por semanas</b><small class="muted">Convierte estas rutinas en la semana 1. Luego creas cada semana nueva con un clic (copia, progresión automática o descarga) y la publicas cuando esté lista.</small></span>
+          <button class="btn small primary" data-newprog ${fixed.length ? '' : 'disabled title="Crea antes alguna rutina"'}>${ic('plus')} Crear programa</button></div></section>`
+      : `<section class="card prog-card">
+          <div class="row gap"><span class="grow"><b>${esc(prog.name)}</b><small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span></div>
+          <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'}">S${w.week_no}${w.kind === 'deload' ? ' ↓' : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
+          ${view ? `<div class="row gap wrap wkbar"><span class="grow"><b>${esc(weekLabel(view))}</b> <small class="muted">${fmtDate(view.start_date)} – ${fmtDate(addDays(view.start_date, 6))}</small> <span class="pill ${view.published ? 'green' : 'amber'}">${view.published ? 'Publicada' : 'Borrador'}</span></span>
+              <button class="btn small ${view.published ? 'ghost' : 'primary'}" data-pub>${view.published ? 'Ocultar al cliente' : 'Publicar'}</button>
+              <button class="btn small" data-clone>${ic('copy')} Crear semana ${Math.max(...pweeks.map(w => w.week_no)) + 1}</button>
+              ${!view.published && view.week_no === pweeks[pweeks.length - 1].week_no && pweeks.length > 1 ? `<button class="icon-btn danger" data-delwk title="Eliminar esta semana">${ic('trash')}</button>` : ''}</div>`
+            : `<p class="muted small">Rutinas fijas: el cliente solo las ve mientras no haya ninguna semana publicada en curso.</p>`}
+        </section>`;
     const week = [1, 2, 3, 4, 5, 6, 7].map(d => { const r = routines.filter(x => x.day === d); return `<div class="wday ${r.length ? 'has' : ''}"><small>${DIAS_C[d]}</small>${r.map(x => `<span>${esc(x.name)}</span>`).join('') || '<em>—</em>'}</div>`; }).join('');
-    box.innerHTML = `
+    box.innerHTML = `${progBox}
       <div class="week">${week}</div>
-      <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button><button class="btn ghost" data-copyall>${ic('copy')} Copiar plan desde otro cliente</button></div>
+      <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button>${view ? '' : `<button class="btn ghost" data-copyall>${ic('copy')} Copiar plan desde otro cliente</button>`}</div>
       <div class="routines">${routines.map(r => {
         const its = items.filter(i => i.routine_id === r.id);
         return `<section class="card routine">
@@ -455,19 +489,60 @@
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
             <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></header>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
-          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
+          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.${progKey(i.progression) !== 'none' ? ' · ↑ ' + esc((PROG_RULES.find(p => p[0] === progKey(i.progression)) || [0, progKey(i.progression)])[1]) : ''}</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
         </section>`;
-      }).join('') || '<p class="empty">Este cliente aún no tiene rutinas. Crea la primera.</p>'}</div>`;
-    box.querySelector('[data-add]').onclick = () => routineEditor(c, null, []);
-    box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = byId(routines, b.dataset.edit); routineEditor(c, r, items.filter(i => i.routine_id === r.id)); });
+      }).join('') || `<p class="empty">${view ? 'Esta semana no tiene rutinas.' : 'Este cliente aún no tiene rutinas. Crea la primera.'}</p>`}</div>`;
+    const opts = { week: view, laterDrafts };
+    box.querySelector('[data-add]').onclick = () => routineEditor(c, null, [], opts);
+    box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = byId(routines, b.dataset.edit); routineEditor(c, r, items.filter(i => i.routine_id === r.id), opts); });
     box.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => duplicateRoutines(c, [byId(routines, b.dataset.dup)], items));
-    box.querySelector('[data-copyall]').onclick = () => copyPlanFrom(c);
+    const ca = box.querySelector('[data-copyall]'); if (ca) ca.onclick = () => copyPlanFrom(c);
+    const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
+    box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
+    if (view) {
+      box.querySelector('[data-pub]').onclick = async () => {
+        if (view.published && !(await confirmBox(`El cliente dejará de ver la ${weekLabel(view)}.`, 'Ocultar'))) return;
+        await safe(() => DB.update('program_weeks', view.id, { published: !view.published }), view.published ? 'Semana ocultada' : `Publicada: el cliente la verá desde el ${fmtDate(view.start_date, { weekday: 'long', day: 'numeric', month: 'short' })}`);
+        tabRoutines(c, box);
+      };
+      box.querySelector('[data-clone]').onclick = () => cloneWeek(c, view, () => tabRoutines(c, box));
+      const dw = box.querySelector('[data-delwk]');
+      if (dw) dw.onclick = async () => {
+        if (!(await confirmBox(`Se eliminará la ${weekLabel(view)} (borrador) con sus rutinas.`))) return;
+        await safe(() => DB.remove('program_weeks', view.id), 'Semana eliminada'); S.weekSel[c.id] = null; tabRoutines(c, box);
+      };
+    }
+  }
+
+  function newProgram(c, n) {
+    modal('Nuevo programa por semanas', `<p class="muted">Se copiarán las ${n} rutinas fijas de ${esc(c.name)} a la semana 1, en borrador. Las fijas no se borran: el cliente las seguirá viendo hasta que publiques la semana 1.</p>
+      <label>Nombre<input name="name" required value="Bloque 1" placeholder="Ej: Hipertrofia otoño"></label>
+      <label>Empieza la semana del<input name="start" type="date" required value="${today()}"></label>
+      <p class="muted small">Tip: en cada ejercicio elige su «Progresión» (p. ej. +2,5 kg) para que las semanas siguientes suban solas.</p>`, {
+      submitLabel: 'Crear programa', onSubmit: async (f, fd) => {
+        if (!fd.get('start')) { toast('Elige la fecha de inicio', 'err'); return false; }
+        await safe(() => DB.rpc('create_program_from_routines', { p_client: c.id, p_name: String(fd.get('name')).trim() || 'Programa', p_start: fd.get('start') }), 'Programa creado: semana 1 en borrador');
+        S.weekSel = S.weekSel || {}; S.weekSel[c.id] = null; render();
+      }
+    });
+  }
+
+  function cloneWeek(c, w, done) {
+    const modes = [['progress', 'Progresión automática', 'Sube carga o reps en los ejercicios con regla de progresión si el cliente cumplió el objetivo en esta semana (todas las series en el tope del rango y con el RIR pedido). Lo demás se copia igual.'],
+      ['copy', 'Copia exacta', 'Mismas series, reps y cargas.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR +2.']];
+    modal('Crear la semana siguiente', `<p class="muted">A partir de la ${esc(weekLabel(w))}. Se crea en borrador para que la revises antes de publicarla.</p>
+      <div class="choices">${modes.map(([v, t, d], i) => `<label class="choice"><input type="radio" name="mode" value="${v}" ${i ? '' : 'checked'}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>`, {
+      submitLabel: 'Crear semana', onSubmit: async (f, fd) => {
+        const id = await safe(() => DB.rpc('clone_program_week', { p_week_id: w.id, p_mode: fd.get('mode') }), 'Semana creada en borrador');
+        S.weekSel[c.id] = id; done();
+      }
+    });
   }
 
   async function copyRoutinesTo(target, routines, allItems) {
     for (const r of routines) {
       const [nr] = await DB.insert('routines', { client_id: target.id, name: r.name, day: r.day, position: r.position, notes: r.notes });
-      const its = allItems.filter(i => i.routine_id === r.id).map(i => ({ routine_id: nr.id, client_id: target.id, exercise_id: i.exercise_id, exercise_name: i.exercise_name, media_url: i.media_url, position: i.position, sets: i.sets, reps: i.reps, load: i.load, rest_sec: i.rest_sec, notes: i.notes, ...Object.fromEntries(TRAINING_FIELDS.filter(k => i[k] !== undefined).map(k => [k, i[k]])) }));
+      const its = allItems.filter(i => i.routine_id === r.id).map(i => ({ ...(crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}), routine_id: nr.id, client_id: target.id, exercise_id: i.exercise_id, exercise_name: i.exercise_name, media_url: i.media_url, position: i.position, sets: i.sets, reps: i.reps, load: i.load, rest_sec: i.rest_sec, notes: i.notes, ...Object.fromEntries(TRAINING_FIELDS.filter(k => i[k] !== undefined).map(k => [k, i[k]])) }));
       if (its.length) await DB.insert('routine_items', its);
     }
   }
@@ -483,15 +558,17 @@
     modal('Copiar plan desde otro cliente', `<p class="muted">Se añadirán todas sus rutinas a ${esc(target.name)}. Las que ya tenga se mantienen.</p><label>Cliente de origen<select name="from">${clients.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`, {
       submitLabel: 'Copiar', onSubmit: async (f, fd) => {
         const fromId = fd.get('from');
-        const [rs, its] = await Promise.all([DB.list('routines', { eq: { client_id: fromId } }), DB.list('routine_items', { eq: { client_id: fromId } })]);
+        const [rs0, its] = await Promise.all([DB.list('routines', { eq: { client_id: fromId } }), DB.list('routine_items', { eq: { client_id: fromId } })]);
+        const rs = rs0.filter(r => !r.program_week_id);
         await safe(() => copyRoutinesTo(target, rs, its), `${rs.length} rutinas copiadas`); render();
       }
     });
   }
 
-  function routineEditor(c, r, items) {
+  function routineEditor(c, r, items, { week = null, laterDrafts = 0 } = {}) {
     const isNew = !r; r = r || { name: '', day: null, notes: '' };
     const rows = items.map(i => legacyLoad(Object.assign({}, i)));
+    rows.forEach(i => { i.prog = progKey(i.progression); });
     const intensOf = i => i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
     rows.forEach(i => { i.intens = intensOf(i); });
     const INTENS = [['', '—'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
@@ -506,6 +583,7 @@
           <label>Intensidad<select name="int">${(() => { const cur = i.intens || intensOf(i); const opts = INTENS.some(o => o[0] === cur) ? INTENS : [...INTENS, [cur, cur.replace(':', ' ').toUpperCase()]]; return opts.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join(''); })()}</select></label>
           <label>Tempo<input name="tempo" value="${esc(i.tempo || '')}" placeholder="3-1-1-0" pattern="[0-9Xx]-[0-9Xx]-[0-9Xx]-[0-9Xx]" title="Excéntrica-pausa-concéntrica-pausa, p. ej. 3-1-1-0 (X = explosivo)"></label>
           <label>Descanso (s)<input name="rest" type="number" min="0" step="15" value="${i.rest_sec != null ? i.rest_sec : 90}"></label>
+          <label>Progresión<select name="prog">${(PROG_RULES.some(p => p[0] === i.prog) ? PROG_RULES : [...PROG_RULES, [i.prog, i.prog]]).map(([v, l]) => `<option value="${v}" ${v === (i.prog || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, superserie…"></label>
           <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
         </div></div>`;
@@ -516,9 +594,10 @@
         <label>Día<select name="day"><option value="">Libre (sin día fijo)</option>${[1, 2, 3, 4, 5, 6, 7].map(d => `<option value="${d}" ${r.day === d ? 'selected' : ''}>${DIAS[d]}</option>`).join('')}</select></label>
         <label class="full">Notas de la sesión<textarea name="rnotes" rows="2" placeholder="Calentamiento, objetivo del día…">${esc(r.notes)}</textarea></label>
       </div>
-      <h4>Ejercicios</h4>
+      <h4>Ejercicios${week ? ` <small class="muted">· ${esc(weekLabel(week))}</small>` : ''}</h4>
       <div data-rows></div>
-      <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>`, {
+      <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>
+      ${week && laterDrafts && !isNew ? `<label class="check"><input type="checkbox" name="propagate"> Aplicar también los cambios a las ${laterDrafts} semana${laterDrafts > 1 ? 's' : ''} siguiente${laterDrafts > 1 ? 's' : ''} en borrador <small class="muted">(series, reps, descanso, tempo, RIR, indicaciones, vídeo y progresión; no cargas)</small></label>` : ''}`, {
       wide: true, submitLabel: 'Guardar rutina',
       danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
       onSubmit: async (f, fd) => {
@@ -527,7 +606,7 @@
         const head = { name: fd.get('name').trim() || 'Rutina', day: fd.get('day') ? Number(fd.get('day')) : null, notes: fd.get('rnotes') };
         await safe(async () => {
           let rid = r.id;
-          if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, head)); rid = nr.id; }
+          if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, week ? { program_week_id: week.id } : {}, head)); rid = nr.id; }
           else await DB.update('routines', rid, head);
           // Actualiza en su sitio los ejercicios que ya existían (así conservan su linaje y su historial de cargas),
           // crea los nuevos y borra solo los que se han quitado
@@ -540,7 +619,7 @@
               exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i,
               sets: Number(x.sets) || 1, reps: String(x.reps || '').trim(), rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '',
               load_kg: num(x.load_kg), target_rir: kind === 'rir' ? Number(val) : null, target_rpe: kind === 'rpe' ? Number(val) : null,
-              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, ...repsRange(x.reps)
+              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, progression: progVal(x.prog), ...repsRange(x.reps)
             };
             d.load = loadLabel(d); // texto resumen para versiones antiguas de la app
             return d;
@@ -549,7 +628,13 @@
           for (const o of old) if (!keep.has(o.id)) await DB.remove('routine_items', o.id);
           const news = [];
           for (const [i, x] of valid.entries()) {
-            if (x.id && old.some(o => o.id === x.id)) await DB.update('routine_items', x.id, payload(x, i));
+            if (x.id && old.some(o => o.id === x.id)) {
+              const d = payload(x, i); await DB.update('routine_items', x.id, d);
+              if (fd.get('propagate')) {
+                const ch = {}; ['sets', 'reps', 'rest_sec', 'tempo', 'target_rir', 'notes', 'media_url', 'progression'].forEach(k => { if (d[k] != null) ch[k] = d[k]; });
+                await DB.rpc('propagate_item_change', { p_item_id: x.id, p_changes: ch });
+              }
+            }
             else news.push(Object.assign({ routine_id: rid, client_id: c.id }, crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}, payload(x, i)));
           }
           if (news.length) await DB.insert('routine_items', news);
@@ -561,7 +646,7 @@
     function sync() {
       box.querySelectorAll('.ex-row').forEach(el => {
         const i = rows[+el.dataset.idx]; const v = n => el.querySelector(`[name=${n}]`).value;
-        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media') });
+        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media'), prog: v('prog') });
       });
     }
     function draw() {
@@ -574,7 +659,7 @@
         el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
       });
     }
-    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
+    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '', prog: prev ? prev.prog : 'none' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
     draw();
   }
 
@@ -830,13 +915,19 @@
   const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
   async function coachPrograms() {
     shell(COACH_NAV, 'programas', loading(), { title: 'Programas' });
-    const [clients, routines] = await Promise.all([loadClients(), DB.list('routines', { order: ['position', 'asc'] })]);
+    const [clients, allR, programs, weeks] = await Promise.all([loadClients(), DB.list('routines', { order: ['position', 'asc'] }), DB.list('programs', {}), DB.list('program_weeks', {})]);
+    const routines = allR.filter(r => !r.program_week_id);
     const byClient = {}; routines.forEach(r => { (byClient[r.client_id] = byClient[r.client_id] || []).push(r); });
+    const progInfo = c => {
+      const p = programs.filter(x => x.client_id === c.id && x.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]; if (!p) return '';
+      const ws = weeks.filter(w => w.program_id === p.id), cur = currentWeek(ws, [p]), last = ws.sort((a, b) => b.week_no - a.week_no)[0];
+      return ` · ${esc(p.name)}: ${cur ? 'en ' + esc(weekLabel(cur)) : 'sin semana en curso'}${last && !last.published ? ` (S${last.week_no} en borrador)` : ''}`;
+    };
     const active = clients.filter(c => c.active !== false);
-    const row = c => { const rs = byClient[c.id] || []; const days = rs.filter(r => r.day).map(r => DIAS[r.day].slice(0, 3)); return `<li><a class="lrow" href="#/cliente/${c.id}/rutinas"><span class="grow"><b>${esc(c.name)}</b><small>${rs.length ? `${rs.length} rutina${rs.length > 1 ? 's' : ''}${days.length ? ' · ' + days.join(', ') : ''}` : 'Sin rutinas todavía'}</small></span>${rs.length ? '' : '<span class="pill">Pendiente</span>'}</a></li>`; };
+    const row = c => { const rs = byClient[c.id] || []; const days = rs.filter(r => r.day).map(r => DIAS[r.day].slice(0, 3)); return `<li><a class="lrow" href="#/cliente/${c.id}/rutinas"><span class="grow"><b>${esc(c.name)}</b><small>${rs.length ? `${rs.length} rutina${rs.length > 1 ? 's' : ''}${days.length ? ' · ' + days.join(', ') : ''}` : 'Sin rutinas todavía'}${progInfo(c)}</small></span>${rs.length ? '' : '<span class="pill">Pendiente</span>'}</a></li>`; };
     const sin = active.filter(c => !(byClient[c.id] || []).length), con = active.filter(c => (byClient[c.id] || []).length);
     $app.querySelector('.content').innerHTML = `${PROGRAM_TABS('rutinas')}
-      <p class="muted small">Toca un cliente para editar su semana de entrenamiento. Pronto podrás crear programas por semanas y clonarlos con progresión automática.</p>
+      <p class="muted small">Toca un cliente para editar sus rutinas. Dentro puedes convertirlas en un programa por semanas y crear cada semana nueva con progresión automática o descarga.</p>
       ${active.length ? `${sin.length ? `<section class="card flush"><h3 class="pad">Sin rutinas (${sin.length})</h3><ul class="list">${sin.map(row).join('')}</ul></section>` : ''}
       ${con.length ? `<section class="card flush"><h3 class="pad">Con rutinas (${con.length})</h3><ul class="list">${con.map(row).join('')}</ul></section>` : ''}`
       : `<div class="hero-empty">${ic('dumbbell', 'xl')}<h2>Aún no tienes clientes activos</h2><a class="btn primary" href="#/clientes">Ir a Clientes</a></div>`}`;
@@ -926,11 +1017,15 @@
   async function clientToday() {
     const c = S.client;
     shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}` });
-    const [routines, items, sessions] = await Promise.all([
+    const [allRoutines, items, sessions, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 30 })
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 30 }),
+      DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => [])
     ]);
+    const cw = currentWeek(weeks, programs);
+    const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
     routines.sort((a, b) => (a.day || 9) - (b.day || 9));
     const d = isoDay();
     const todays = routines.filter(r => r.day === d);
@@ -949,7 +1044,7 @@
     $app.querySelector('.content').innerHTML = `
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
       <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()); return `<div class="${n === d ? 'today' : ''} ${has ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
-      <p class="muted small center">${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
+      <p class="muted small center">${cw ? esc(weekLabel(cw)) + ' · ' : ''}${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
       ${todays.length ? todays.map(r => card(r, true)).join('') : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
       ${routines.filter(r => r.day !== d).length ? `<h3 class="sub">Todas mis rutinas</h3>${routines.filter(r => r.day !== d).map(r => card(r, false)).join('')}` : ''}
       ${!routines.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}`;
