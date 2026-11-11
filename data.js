@@ -75,6 +75,19 @@
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
         return path;
       },
+      // Verificación en dos pasos (código de una app como Google Authenticator)
+      mfa: {
+        async level() { const { data, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); if (error) throw error; return data; },
+        async factors() { const { data, error } = await sb.auth.mfa.listFactors(); if (error) throw error; return data.all || []; },
+        async enroll() {
+          const all = await this.factors();
+          for (const f of all.filter(f => f.status !== 'verified')) await sb.auth.mfa.unenroll({ factorId: f.id });
+          const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'TEAM JMFIT ' + new Date().toISOString().slice(0, 10) });
+          if (error) throw error; return data;
+        },
+        async verify(factorId, code) { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code }); if (error) throw error; drop(); },
+        async unenroll(factorId) { const { error } = await sb.auth.mfa.unenroll({ factorId }); if (error) throw error; drop(); }
+      },
       async removePhotos(paths) { if (paths.length) await sb.storage.from('checkins').remove(paths); },
       async photoUrl(path) {
         const d = ok(await sb.storage.from('checkins').createSignedUrl(path, 3600));
@@ -248,6 +261,7 @@
       },
       async photoUrl(path) { return path; },
       async removePhotos() {},
+      mfa: { async level() { return { currentLevel: 'aal1', nextLevel: 'aal1' }; }, async factors() { return []; }, async enroll() { throw new Error('No disponible en modo demo'); }, async verify() {}, async unenroll() {} },
       async getSetting(key) { const r = T('settings').find(s => s.key === key); return r ? r.value : ''; },
       async setSetting(key, value) { await this.upsert('settings', { key, value }, 'key'); },
       // Versiones locales de las funciones de la migración 002 (mismas reglas que en Supabase)
@@ -378,7 +392,7 @@
                 its.forEach(i => { const f = F.get(i.food_id); if (!f) return; const g = gramsOf(i, f); m.kcal += g * f.kcal / 100; m.protein += g * f.protein / 100; m.carbs += g * f.carbs / 100; m.fat += g * f.fat / 100; m.fiber += g * (f.fiber || 0) / 100; });
                 return { id: o.id, label: o.label, name: o.name, notes: o.notes,
                   macros: show ? { kcal: Math.round(m.kcal), protein: r1(m.protein), carbs: r1(m.carbs), fat: r1(m.fat), fiber: r1(m.fiber) } : null,
-                  items: its.map(i => { const f = F.get(i.food_id); const g = gramsOf(i, f); return { food: f ? f.name : i.food_name, grams: Math.round(g), unit: f && f.unit_name, units: i.units != null ? i.units : (f && f.unit_g > 0 ? r1(i.grams / f.unit_g) : null), kcal: show && f ? Math.round(g * f.kcal / 100) : null }; }) };
+                  items: its.map(i => { const f = F.get(i.food_id); const g = gramsOf(i, f); return { food: f ? f.name : i.food_name, grams: Math.round(g), unit: f && f.unit_name, category: (f && f.category) || 'Otros', units: i.units != null ? i.units : (f && f.unit_g > 0 ? r1(i.grams / f.unit_g) : null), kcal: show && f ? Math.round(g * f.kcal / 100) : null }; }) };
               })
             }))
           };

@@ -458,7 +458,7 @@
     const loose = plans.length ? blocks.filter(b => !plans.some(p => p.id === b.plan_id)) : [];
     if (loose.length) groups[0].bs = groups[0].bs.concat(loose);
     const tot = bs => { const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 }; bs.forEach(b => { const o = (b.options || [])[0]; if (o && o.macros) for (const k in t) t[k] += Number(o.macros[k]) || 0; }); return t; };
-    return `<section class="card np-client"><h3>Mis comidas</h3>
+    return `<section class="card np-client"><div class="row gap wrap"><h3>Mis comidas</h3><span class="grow"></span><button type="button" class="btn small" data-compra>🛒 Lista de la compra</button></div>
       ${groups.length > 1 ? `<div class="np-opts np-cplans">${groups.map((g, k) => `<button type="button" class="chip ${k === 0 ? 'on' : ''}" data-cplan="${k}">${esc(g.p.name)}</button>`).join('')}</div>
         <p class="muted small">Elige el plan del día: cada uno tiene sus propias calorías.</p>` : ''}
       ${groups.map((g, gk) => { const t = tot(g.bs); return `<div class="np-cg" data-cg="${gk}" ${gk ? 'hidden' : ''}>
@@ -476,7 +476,58 @@
       <p class="muted small">Puedes elegir cualquier opción de cada comida: están pensadas para que sumen parecido.</p>
     </section>`;
   }
-  function wireClient(root) {
+  // Lista de la compra: suma lo que lleva la opción elegida de cada comida × los días de cada plan
+  function shoppingModal(root, d, cid) {
+    const { esc, modal, toast } = U();
+    const blocks = (d && d.blocks) || [];
+    const plans = (d.plans || []).filter(p => blocks.some(b => b.plan_id === p.id));
+    const groups = plans.length ? plans.map(p => ({ id: p.id, name: p.name, bs: blocks.filter(b => b.plan_id === p.id) })) : [{ id: '_', name: 'Mi plan', bs: blocks }];
+    const KEY = 'jmfit-compra-' + (cid || 'yo');
+    let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+    const defDays = (g, i) => (saved.days && saved.days[g.id] != null ? saved.days[g.id] : groups.length === 1 ? 7 : i === 0 ? 4 : i === 1 ? 3 : 0);
+    // opción elegida en pantalla para cada comida (si no, la primera)
+    const optIdx = b => { const on = root.querySelector(`[data-cb="${b.id}"] [data-copt].on`); return on ? Number(on.dataset.copt) : 0; };
+    const m = modal('Lista de la compra', `
+      <p class="muted small">Cuenta la opción que tienes elegida en cada comida. Pon cuántos días vas a hacer cada plan.</p>
+      <div class="sl-days">${groups.map((g, i) => `<label>${esc(g.name)}<input type="number" min="0" max="31" inputmode="numeric" value="${defDays(g, i)}" data-days="${esc(g.id)}"> días</label>`).join('')}</div>
+      <div data-list></div>
+      <div class="row gap wrap"><button type="button" class="btn small" data-copy>Copiar lista</button><button type="button" class="btn small ghost" data-clear>Desmarcar todo</button></div>`, { wide: true });
+    const box = m.querySelector('[data-list]');
+    const draw = () => {
+      const days = {}; m.querySelectorAll('[data-days]').forEach(inp => { days[inp.dataset.days] = Math.max(0, Math.min(31, Number(inp.value) || 0)); });
+      saved.days = days; saved.checked = saved.checked || {};
+      const tot = {};
+      groups.forEach(g => g.bs.forEach(b => {
+        const o = (b.options || [])[optIdx(b)] || (b.options || [])[0]; if (!o) return;
+        (o.items || []).forEach(it => {
+          const k = it.food; const t = tot[k] = tot[k] || { food: it.food, cat: it.category || 'Otros', g: 0, u: 0, unit: it.unit, hasU: false };
+          t.g += (Number(it.grams) || 0) * days[g.id];
+          if (it.units != null && it.unit) { t.u += Number(it.units) * days[g.id]; t.hasU = true; }
+        });
+      }));
+      const list = Object.values(tot).filter(t => t.g > 0);
+      const cats = [...new Set(list.map(t => t.cat))].sort((a, b) => a.localeCompare(b, 'es'));
+      const pl = (w, n) => { w = String(w).toLowerCase(); return n === 1 ? w : /[aeiou]$/.test(w) ? w + 's' : w + 'es'; };
+      const qty = t => (t.hasU ? `${Math.ceil(t.u * 10) / 10} ${esc(pl(t.unit, Math.ceil(t.u * 10) / 10))} · ` : '') + (t.g >= 1000 ? `${f1(t.g / 1000)} kg` : `${r0(t.g)} g`);
+      box.innerHTML = list.length ? cats.map(c => `<div class="sl-cat"><h4>${esc(c)}</h4>${list.filter(t => t.cat === c).sort((a, b) => a.food.localeCompare(b.food, 'es')).map(t => `
+          <label class="sl-item ${saved.checked[t.food] ? 'done' : ''}"><input type="checkbox" data-it="${esc(t.food)}" ${saved.checked[t.food] ? 'checked' : ''}><span>${esc(t.food)}</span><b>${qty(t)}</b></label>`).join('')}</div>`).join('')
+        : '<p class="empty">Pon al menos un día para ver la lista.</p>';
+      box.querySelectorAll('[data-it]').forEach(cb => cb.onchange = () => { saved.checked[cb.dataset.it] = cb.checked; cb.closest('.sl-item').classList.toggle('done', cb.checked); store(); });
+      m._text = cats.map(c => `${c}\n` + list.filter(t => t.cat === c).map(t => `- ${t.food}: ${qty(t).replace(/&[^;]+;/g, '')}`).join('\n')).join('\n\n');
+      store();
+    };
+    const store = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} };
+    m.querySelectorAll('[data-days]').forEach(inp => inp.oninput = draw);
+    m.querySelector('[data-copy]').onclick = () => {
+      const txt = 'Lista de la compra · TEAM JMFIT\n\n' + (m._text || '');
+      if (navigator.share && window.innerWidth < 700) navigator.share({ title: 'Lista de la compra', text: txt }).catch(() => {});
+      else navigator.clipboard.writeText(txt).then(() => toast('Lista copiada', 'ok')).catch(() => toast('No se pudo copiar', 'err'));
+    };
+    m.querySelector('[data-clear]').onclick = () => { saved.checked = {}; draw(); };
+    draw();
+  }
+  function wireClient(root, d, cid) {
+    const sb = root.querySelector('[data-compra]'); if (sb && d) sb.onclick = () => shoppingModal(root, d, cid);
     root.querySelectorAll('[data-cplan]').forEach(btn => btn.onclick = () => {
       root.querySelectorAll('[data-cplan]').forEach(b => b.classList.toggle('on', b === btn));
       root.querySelectorAll('[data-cg]').forEach(g => { g.hidden = g.dataset.cg !== btn.dataset.cplan; });
