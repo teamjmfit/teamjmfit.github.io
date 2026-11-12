@@ -654,3 +654,33 @@ label.sl-item span, label.sl-item b { color: var(--text); }
 .fr-ans dd { margin: 0; font-size: 14px; }
 .fr-home { border-color: var(--accent); }
 @media (min-width: 700px) { .fr-ans { grid-template-columns: 220px 1fr; column-gap: 14px; } .fr-ans dt { margin-top: 6px; } .fr-ans dd { margin-top: 6px; } }
+
+/* v6 · carga, bienestar y series por músculo */
+.pill.blue { background: color-mix(in srgb, #5aa7ff 18%, transparent); color: #5aa7ff; }
+.chart .band { fill: color-mix(in srgb, var(--green) 12%, transparent); }
+.chart .bar { fill: color-mix(in srgb, var(--accent) 55%, transparent); } .chart .bar.partial { fill: color-mix(in srgb, var(--accent) 25%, transparent); }
+.chart .zone-a { fill: color-mix(in srgb, var(--amber) 14%, transparent); } .chart .zone-r { fill: color-mix(in srgb, var(--red) 12%, transparent); }
+.chart .pt.amber { stroke: var(--amber); fill: var(--amber); } .chart .pt.red { stroke: var(--red); fill: var(--red); } .chart .pt.green { stroke: var(--green); }
+.legend i.bar { height: 10px; width: 10px; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.legend i.band { height: 10px; width: 10px; background: color-mix(in srgb, var(--green) 25%, transparent); }
+.wb-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.wb-chips small { opacity: .75; font-weight: 500; }
+.sug-dl { border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent); }
+.sug-dl ul { margin: 6px 0 10px 18px; }
+.vol .vrow { display: grid; grid-template-columns: minmax(90px, 30%) 1fr auto; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+.vol .vname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vol .vbar { position: relative; height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.vol .vzone { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--muted) 30%, transparent); }
+.vol .vbar b { position: absolute; left: 0; top: 3px; bottom: 3px; border-radius: 4px; background: var(--muted); }
+.vol .vbar b.ok { background: var(--green); } .vol .vbar b.lo { background: var(--amber); } .vol .vbar b.hi { background: var(--red); }
+.vol .vnum { font-weight: 700; min-width: 52px; text-align: right; } .vol .vnum small { font-weight: 500; color: var(--muted); } .vol .vnum small.up { color: var(--amber); }
+.heat { border-collapse: separate; border-spacing: 3px; font-size: 13px; }
+.heat th { font-weight: 600; color: var(--muted); padding: 2px 6px; white-space: nowrap; text-align: left; }
+.heat td { min-width: 40px; height: 28px; text-align: center; border-radius: 6px; font-weight: 700; }
+.heat td.z { background: color-mix(in srgb, var(--line) 60%, transparent); }
+.heat td.lo, .hl.lo { background: color-mix(in srgb, var(--amber) 25%, transparent); }
+.heat td.ok, .hl.ok { background: color-mix(in srgb, var(--green) 28%, transparent); }
+.heat td.hi, .hl.hi { background: color-mix(in srgb, var(--red) 25%, transparent); }
+.heat td.na { background: color-mix(in srgb, var(--muted) 20%, transparent); }
+.heat td.cur { outline: 1px dashed var(--muted); }
+.hl { padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
