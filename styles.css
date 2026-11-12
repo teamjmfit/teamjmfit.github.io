@@ -894,3 +894,20 @@ fieldset.smart legend { padding: 0 6px; font-weight: 600; } fieldset.smart legen
   .cal2 .cal-top [data-filt] .lbl { display: none; }
   .cal-kpi span { padding: 5px 8px; }
 }
+
+/* Tipos de serie en el entreno */
+.wk-scheme { display: block; margin-top: 2px; font-size: 11px; font-weight: 700; color: var(--accent); }
+.set.tag-TOP .sn, .set.tag-BO .sn { font-size: 10px; letter-spacing: .02em; }
+.set.tag-TOP .sn { color: var(--accent); font-weight: 800; }
+.set.tag-BO .sn { color: var(--muted); font-weight: 700; }
+.set.tag-D { opacity: .92; } .set.tag-D .sn { color: var(--red); font-weight: 800; }
+.set.tag-D input { border-style: dashed; }
+/* Ajuste por semana del mesociclo */
+.meso-table tr.adj td { padding: 4px 6px; } .meso-table tr.adj select { width: 100%; min-width: 70px; padding: 4px 6px; font-size: 12px; }
+.meso-table tr.adj td:first-child small { display: block; font-weight: 400; color: var(--muted); }
+/* Plantillas */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.tpl header { display: grid; gap: 2px; margin-bottom: 8px; }
+.tpl-days { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
+.tpl-days li { display: grid; grid-template-columns: 42px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--card2); font-size: 13px; }
+.tpl-days li span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; } .tpl-days li small { color: var(--muted); }

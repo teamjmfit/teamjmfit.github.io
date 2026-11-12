@@ -48,15 +48,21 @@
       }
       return v;
     };
-    if (k < A) return Object.assign(acc(k), { kind: 'normal', base: null });
+    // Ajuste manual de cada semana: RIR fijo y/o series de más o de menos (opts.weeks[k] = { rir, sets })
+    const ov = (o.weeks || [])[k] || {}, fix = v => {
+      if (ov.rir != null && ov.rir !== '') v.target_rir = Math.max(0, Math.min(10, +ov.rir));
+      if (+ov.sets) v.sets = Math.max(1, v.sets + Math.round(+ov.sets));
+      return v;
+    };
+    if (k < A) return fix(Object.assign(acc(k), { kind: 'normal', base: null }));
     const p = acc(A - 1);   // la descarga parte de la última semana de carga
-    return Object.assign({}, p, {
+    return fix(Object.assign({}, p, {
       kind: 'deload',
       sets: Math.max(1, Math.round(p.sets * (1 - o.deload_vol))),
       load_kg: p.load_kg == null ? null : roundLoad(p.load_kg * (1 - o.deload_int)),
       target_rir: Math.min((p.target_rir ?? 2) + 2, 5),
       base: { sets: p.sets, target_rir: p.target_rir, load_kg: p.load_kg }
-    });
+    }));
   }
 
   // Volumen relativo de cada semana (series × carga o series) para la mini gráfica del bloque
