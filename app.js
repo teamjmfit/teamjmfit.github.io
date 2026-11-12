@@ -617,6 +617,9 @@
     const week = [1, 2, 3, 4, 5, 6, 7].map(d => { const r = routines.filter(x => x.day === d); return `<div class="wday ${r.length ? 'has' : ''}"><small>${DIAS_C[d]}</small>${r.map(x => `<span>${esc(x.name)}</span>`).join('') || '<em>—</em>'}</div>`; }).join('');
     box.innerHTML = `${progBox}
       <div class="week">${week}</div>
+      ${window.JMLoad ? (() => { const ids = new Set(routines.map(r => r.id)); const pw = view ? pweeks.find(w => w.week_no === view.week_no - 1) : null;
+        const prevIds = pw ? new Set(allRoutines.filter(r => r.program_week_id === pw.id).map(r => r.id)) : null;
+        return JMLoad.weekVolume(items.filter(i => ids.has(i.routine_id)), prevIds ? items.filter(i => prevIds.has(i.routine_id)) : null, S.exercises, { label: view ? weekLabel(view) : 'rutinas fijas' }); })() : ''}
       <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button>${view ? '' : `<button class="btn ghost" data-copyall>${ic('copy')} Copiar plan desde otro cliente</button>`}</div>
       <div class="routines">${routines.map(r => {
         const its = items.filter(i => i.routine_id === r.id);
@@ -1092,6 +1095,18 @@
     const best = {};
     logs.forEach(l => { if (l.weight && l.reps) { const e1 = l.weight * (1 + l.reps / 30); if (!best[l.exercise_name] || e1 > best[l.exercise_name].e1) best[l.exercise_name] = { e1, w: l.weight, r: l.reps }; } });
     const prs = Object.entries(best).sort((a, b) => b[1].e1 - a[1].e1).slice(0, 8);
+    // Carga, bienestar y sugerencia de descarga (solo entrenador)
+    let LP = null, volHtml = '';
+    if (asCoach && window.JMLoad) {
+      if (!S.exercises.length) await loadExercises().catch(() => []);
+      const prog = progs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+      const ws = prog ? pweeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
+      const t = today(), past = ws.filter(w => w.start_date <= t), lastDl = past.filter(w => w.kind === 'deload').pop();
+      LP = JMLoad.panel({ sessions, checkins, nStall: perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length,
+        sinceDl: prog && past.length ? (lastDl ? past.filter(w => w.week_no > lastDl.week_no).length : past.length) : null,
+        nextWeek: ws.find(w => w.start_date > t) || null, hasProgram: !!prog });
+      volHtml = JMLoad.doneVolume(logs, S.exercises);
+    }
 
     const rows = weeklyRows(checkins, daily), wrows = rows.filter(r => r.avg != null);
     const last = wrows[wrows.length - 1], first = wrows[0];
@@ -1113,6 +1128,7 @@
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
+      ${LP ? LP.html : ''}
       ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
       ${hasFat ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
@@ -1122,6 +1138,7 @@
         ${rows.slice().reverse().slice(0, 16).map(r => `<tr><td>${fmtDate(r.wk)}</td><td><b>${r.avg != null ? fmtKg(r.avg) : '–'}</b>${r.n > 1 ? `<small class="muted"> (${r.n})</small>` : ''}</td><td class="${r.delta == null ? '' : r.delta < 0 ? 'dn' : 'up'}">${sgn(r.delta)}</td>${target != null ? `<td><span class="pill ${vsT(r.delta) === 'ok' ? 'green' : vsT(r.delta) ? 'amber' : ''}">${r.delta == null ? '–' : sgn(r.delta - target)}</span></td>` : ''}<td>${r.fatigue != null ? fmtKg(r.fatigue) : '–'}</td><td>${r.energy != null ? fmtKg(r.energy) : '–'}</td><td>${r.diet != null ? fmtKg(r.diet) : '–'}</td><td>${r.steps != null ? Math.round(r.steps).toLocaleString('es-ES') : '–'}</td></tr>`).join('')}
       </tbody></table></div>${target != null ? '<p class="muted small pad">«vs objetivo»: diferencia entre lo que ha cambiado y lo que se buscaba esa semana (verde = dentro de ±0,2 kg).</p>' : ''}</section>` : ''}
       ${perfHtml()}
+      ${volHtml}
       ${weeksHtml()}
       ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="grid2">
@@ -1129,6 +1146,12 @@
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
+    if (LP) LP.wire(box, async wid => {
+      const w = pweeks.find(x => x.id === wid);
+      if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
+      await safe(() => DB.rpc('set_week_kind', { p_week: wid, p_kind: 'deload' }), `Semana ${w.week_no}: descarga`);
+      tabProgress(c, box, asCoach);
+    });
     // Check-ins en lista compacta: solo se abre (y se cargan sus fotos) el que tocas
     const ckBox = box.querySelector('[data-cks]');
     let ckShown = 6;
