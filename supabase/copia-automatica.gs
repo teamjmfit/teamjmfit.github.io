@@ -18,8 +18,14 @@ const NOMBRES = {
   nutrition_plans: 'Nutrición', meal_plans: 'Planes', meal_blocks: 'Comidas', meal_options: 'Opciones',
   option_items: 'Alimentos del plan', meal_choices: 'Elecciones', foods: 'Base de alimentos', programs: 'Programas',
   program_weeks: 'Semanas', routines: 'Rutinas', routine_items: 'Ejercicios rutina', sessions: 'Entrenos',
-  set_logs: 'Series', messages: 'Mensajes', exercises: 'Ejercicios', profiles: 'Perfiles', settings: 'Ajustes'
+  set_logs: 'Series', messages: 'Mensajes', exercises: 'Ejercicios', profiles: 'Perfiles', form_responses: 'Formularios', settings: 'Ajustes'
 };
+
+// Formularios de Google: sus respuestas llegan a la app (al enviarse y cada noche)
+const FORMULARIOS = [
+  { id: '1t7djBhZGSXae3dP-ePu9-DnJucLqFJW4jyOTBomRvQM', form: 'plan' },    // Plan 1:1 Jmfit (respuestas)
+  { id: '1IaPE6zaeBTW69IOPZTZ8W4uQHOgCJuBMMDVCHrXlmjQ', form: 'salud' }    // Datos Base y Salud (respuestas)
+];
 
 function instalar() {
   const props = PropertiesService.getScriptProperties();
@@ -27,10 +33,36 @@ function instalar() {
   if (!props.getProperty('CLAVE')) throw new Error('Falta la clave de copia: pégala en CLAVE_INICIAL');
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'copiaJMFIT').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('copiaJMFIT').timeBased().everyDays(1).atHour(3).create();
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'syncFormularios').forEach(t => ScriptApp.deleteTrigger(t));
+  FORMULARIOS.forEach(f => ScriptApp.newTrigger('syncFormularios').forSpreadsheet(f.id).onFormSubmit().create());
+  syncFormularios();
   copiaJMFIT();
 }
 
+function syncFormularios() {
+  const clave = PropertiesService.getScriptProperties().getProperty('CLAVE');
+  const tz = Session.getScriptTimeZone();
+  FORMULARIOS.forEach(f => {
+    const vals = SpreadsheetApp.openById(f.id).getSheets()[0].getDataRange().getValues();
+    if (vals.length < 2) return;
+    const head = vals[0].map(h => String(h).trim());
+    const iName = head.findIndex(h => /^nombre/i.test(h)), iMail = head.findIndex(h => /correo/i.test(h));
+    const txt = v => v instanceof Date ? (v.getHours() || v.getMinutes() ? Utilities.formatDate(v, tz, 'dd/MM/yyyy HH:mm') : Utilities.formatDate(v, tz, 'dd/MM/yyyy')) : String(v);
+    const rows = vals.slice(1).filter(r => r[0] instanceof Date).map(r => ({
+      ts: r[0].toISOString(), name: iName >= 0 ? String(r[iName]).trim() : '', email: iMail >= 0 ? String(r[iMail]).trim() : '',
+      answers: head.map((h, i) => [h, txt(r[i])]).filter((x, i) => i > 0)
+    }));
+    const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/ingest_forms', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      payload: JSON.stringify({ p_key: clave, p_form: f.form, p_rows: rows })
+    });
+    if (res.getResponseCode() !== 200) throw new Error('Formularios (' + f.form + '): ' + res.getContentText().slice(0, 300));
+  });
+}
+
 function copiaJMFIT() {
+  try { syncFormularios(); } catch (e) { console.error(e); }
   const props = PropertiesService.getScriptProperties();
   const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/backup_dump', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,

@@ -38,7 +38,34 @@
   const progKey = p => (!p || !p.type || p.type === 'none' ? 'none' : p.type === 'reps' ? 'reps:' + Number(p.inc || 1) : 'load:' + Number(p.inc_kg || p.inc || 2.5));
   const progVal = k => { const [t, v] = String(k || 'none').split(':'); return t === 'reps' ? { type: 'reps', inc: Number(v) || 1 } : t === 'load' ? { type: 'load', inc_kg: Number(v) || 2.5 } : { type: 'none' }; };
   const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
-  const weekLabel = w => `Semana ${w.week_no}${w.kind === 'deload' ? ' · Descarga' : w.kind === 'test' ? ' · Test' : ''}`;
+  const KINDS = { normal: ['Normal', ''], maintenance: ['Mantenimiento', '='], deload: ['Descarga', '↓'], intensity: ['Intensidad', '↑'], test: ['Test', 'T'] };
+  const weekLabel = w => `Semana ${w.week_no}${w.kind && w.kind !== 'normal' && KINDS[w.kind] ? ' · ' + KINDS[w.kind][0] : ''}`;
+  // Historial de cada ejercicio: mejor serie de cada sesión (1RM estimado) para ver progreso o estancamiento
+  const e1rm = (w, r) => (w && r ? w * (1 + r / 30) : 0);
+  function exHistory(logs, sessions) {
+    const sd = {}; (sessions || []).forEach(x => { sd[x.id] = x.started_at; });
+    const by = {};
+    logs.forEach(l => {
+      if (!l.weight || !l.reps) return;
+      const k = String(l.exercise_name || '').trim().toLowerCase(); if (!k) return;
+      const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0 });
+      ss.n++; const e = e1rm(Number(l.weight), Number(l.reps));
+      if (e > ss.e1) Object.assign(ss, { e1: e, w: Number(l.weight), r: Number(l.reps) });
+    });
+    const out = {}; for (const k in by) out[k] = Object.values(by[k]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return out;
+  }
+  // Estado: récord en la última sesión, estancado (3+ sesiones sin superar la mejor marca) o bajando
+  function stallOf(h) {
+    if (!h || h.length < 2) return { st: 'new', since: 0 };
+    let mi = 0; h.forEach((x, i) => { if (x.e1 >= h[mi].e1 * 1.005) mi = i; });
+    const since = h.length - 1 - mi, last = h[h.length - 1].e1, max = h[mi].e1;
+    if (since === 0) return { st: 'up', since };
+    if (last < max * 0.95 && since >= 2) return { st: 'down', since };
+    if (since >= 3) return { st: 'stall', since };
+    return { st: 'ok', since };
+  }
+  const STALL_TXT = { up: ['green', 'Mejorando'], ok: ['', 'Normal'], stall: ['amber', 'Estancado'], down: ['red', 'Bajando'], new: ['', 'Pocos datos'] };
   // Repetición automática: crea (y publica) las semanas que falten hasta hoy. Una vez por programa y día.
   async function rollWeeks(programs) {
     if (!S.rolled) { try { S.rolled = JSON.parse(localStorage.getItem('jmfit-rolled') || '{}'); } catch (e) { S.rolled = {}; } }
@@ -378,6 +405,7 @@
     if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
     if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : coachPrograms(); }
     if (r0 === 'revisiones') return coachReviews(r1);
+    if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     go('#/');
   }
@@ -432,7 +460,11 @@
         </div>
       </div>`;
     $app.querySelector('.content').innerHTML = html;
-    if (window.JMBackup) window.JMBackup.remind($app.querySelector('.content .stack'));
+    {
+      const stack = $app.querySelector('.content .stack');
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); };
+      if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
+    }
     // cobros (no bloquea)
     const box = $app.querySelector('#venc');
     try {
@@ -566,7 +598,7 @@
     const fixed = allRoutines.filter(r => !r.program_week_id);
     const routines = allRoutines.filter(r => (view ? r.program_week_id === view.id : !r.program_week_id));
     const live = currentWeek(pweeks, prog ? [prog] : []);
-    const laterDrafts = view ? pweeks.filter(w => w.week_no > view.week_no && !w.published).length : 0;
+    const laterDrafts = view ? pweeks.filter(w => w.week_no > view.week_no).length : 0;
     routines.sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
     const progBox = !prog
       ? `<section class="card prog-card"><div class="row gap"><span class="grow"><b>Programa por semanas</b><small class="muted">Convierte estas rutinas en la semana 1. Luego creas cada semana nueva con un clic (copia, progresión automática o descarga) y la publicas cuando esté lista.</small></span>
@@ -574,8 +606,9 @@
       : `<section class="card prog-card">
           <div class="row gap"><span class="grow"><b>${esc(prog.name)}</b><small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span></div>
           <label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>
-          <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'}">S${w.week_no}${w.kind === 'deload' ? ' ↓' : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
+          <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} k-${w.kind || 'normal'} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'} · ${(KINDS[w.kind] || KINDS.normal)[0]}">S${w.week_no}${KINDS[w.kind] && KINDS[w.kind][1] ? ' ' + KINDS[w.kind][1] : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
           ${view ? `<div class="row gap wrap wkbar"><span class="grow"><b>${esc(weekLabel(view))}</b> <small class="muted">${fmtDate(view.start_date)} – ${fmtDate(addDays(view.start_date, 6))}</small> <span class="pill ${view.published ? 'green' : 'amber'}">${view.published ? 'Publicada' : 'Borrador'}</span></span>
+              <label class="wkkind">Tipo<select data-kind>${['normal', 'maintenance', 'deload', 'intensity'].map(k => `<option value="${k}" ${(view.kind || 'normal') === k ? 'selected' : ''}>${KINDS[k][0]}</option>`).join('')}</select></label>
               <button class="btn small ${view.published ? 'ghost' : 'primary'}" data-pub>${view.published ? 'Ocultar al cliente' : 'Publicar'}</button>
               <button class="btn small" data-clone>${ic('copy')} Crear semana ${Math.max(...pweeks.map(w => w.week_no)) + 1}</button>
               ${!view.published && view.week_no === pweeks[pweeks.length - 1].week_no && pweeks.length > 1 ? `<button class="icon-btn danger" data-delwk title="Eliminar esta semana">${ic('trash')}</button>` : ''}</div>`
@@ -614,6 +647,16 @@
         tabRoutines(c, box);
       };
       box.querySelector('[data-clone]').onclick = () => cloneWeek(c, view, () => tabRoutines(c, box));
+      const kd = box.querySelector('[data-kind]');
+      kd.onchange = async () => {
+        const k = kd.value;
+        const msg = { normal: 'Vuelve a lo pautado (series, RIR y cargas originales).', maintenance: 'Se mantiene lo pautado, sin subir cargas ni apretar el RIR.',
+          deload: 'Baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos (máx. 5). Puedes volver atrás cuando quieras.',
+          intensity: 'Acerca el RIR 1 punto al fallo y sube la carga en los ejercicios donde la semana anterior llegó al tope del rango con el RIR pedido.' }[k];
+        if (!(await confirmBox(`${weekLabel(view)} → ${KINDS[k][0]}. ${msg}`, 'Aplicar'))) { kd.value = view.kind || 'normal'; return; }
+        await safe(() => DB.rpc('set_week_kind', { p_week: view.id, p_kind: k }), `Semana ${view.week_no}: ${KINDS[k][0].toLowerCase()}`);
+        tabRoutines(c, box);
+      };
       const dw = box.querySelector('[data-delwk]');
       if (dw) dw.onclick = async () => {
         if (!(await confirmBox(`Se eliminará la ${weekLabel(view)} (borrador) con sus rutinas.`))) return;
@@ -638,11 +681,17 @@
   function cloneWeek(c, w, done) {
     const modes = [['progress', 'Progresión automática', 'Sube carga o reps en los ejercicios con regla de progresión si el cliente cumplió el objetivo en esta semana (todas las series en el tope del rango y con el RIR pedido). Lo demás se copia igual.'],
       ['repeat', 'Repetir con los pesos que hizo', 'Misma semana; cada ejercicio parte de la carga que registró el cliente (y sube si tiene regla de progresión y la cumplió).'],
-      ['copy', 'Copia exacta', 'Mismas series, reps y cargas.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR +2.']];
+      ['copy', 'Copia exacta', 'Mismas series, reps y cargas.'], ['maintenance', 'Mantenimiento', 'Lo mismo que esta semana, sin subir cargas.'],
+      ['intensity', 'Intensidad', 'RIR 1 punto más cerca del fallo y +carga donde esta semana llegó al tope del rango.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR +2.']];
     modal('Crear la semana siguiente', `<p class="muted">A partir de la ${esc(weekLabel(w))}. Se crea en borrador para que la revises antes de publicarla.</p>
       <div class="choices">${modes.map(([v, t, d], i) => `<label class="choice"><input type="radio" name="mode" value="${v}" ${i ? '' : 'checked'}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>`, {
       submitLabel: 'Crear semana', onSubmit: async (f, fd) => {
-        const id = await safe(() => DB.rpc('clone_program_week', { p_week_id: w.id, p_mode: fd.get('mode') }), 'Semana creada en borrador');
+        const mode = fd.get('mode'), base = mode === 'maintenance' || mode === 'intensity' ? 'copy' : mode;
+        const id = await safe(async () => {
+          const nid = await DB.rpc('clone_program_week', { p_week_id: w.id, p_mode: base });
+          if (base !== mode) await DB.rpc('set_week_kind', { p_week: nid, p_kind: mode });
+          return nid;
+        }, 'Semana creada en borrador');
         S.weekSel[c.id] = id; done();
       }
     });
@@ -751,6 +800,14 @@
     rows.forEach(i => { i.intens = intensOf(i); });
     const INTENS = [['', '—'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
     const exOpts = S.exercises.map(e => `<option value="${esc(e.name)}">${esc(e.muscle || '')}</option>`).join('');
+    let H = null;   // marcas anteriores del cliente (se cargan al abrir)
+    const histHtml = name => {
+      if (!H || !name) return '';
+      const h = H[String(name).trim().toLowerCase()]; if (!h || !h.length) return '<p class="ex-hist muted">Sin marcas todavía en este ejercicio.</p>';
+      const st = stallOf(h), [cls, txt] = STALL_TXT[st.st], best = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]);
+      return `<p class="ex-hist"><span class="muted">Últimas:</span> ${h.slice(-4).reverse().map(x => `<b>${fmtKg(x.w)}×${x.r}</b> <small class="muted">${fmtDate(x.date, { day: 'numeric', month: 'short' })}</small>`).join(' · ')}
+        <span class="muted">· mejor 1RM est. ${Math.round(best.e1)} kg</span> <span class="pill ${cls}">${txt}${st.st === 'stall' || st.st === 'down' ? ` · ${st.since} ses.` : ''}</span></p>`;
+    };
     const rowHtml = (i, idx) => `<div class="ex-row" data-idx="${idx}">
         <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>
           <button type="button" class="icon-btn" data-up title="Subir">${ic('up')}</button><button type="button" class="icon-btn" data-down title="Bajar">${ic('down')}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${ic('trash')}</button></div>
@@ -764,7 +821,7 @@
           <label>Progresión<select name="prog">${(PROG_RULES.some(p => p[0] === i.prog) ? PROG_RULES : [...PROG_RULES, [i.prog, i.prog]]).map(([v, l]) => `<option value="${v}" ${v === (i.prog || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, superserie…"></label>
           <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
-        </div></div>`;
+        </div>${histHtml(i.exercise_name)}</div>`;
     const form = modal(isNew ? 'Nueva rutina para ' + c.name : 'Editar rutina', `
       <datalist id="exlist">${exOpts}</datalist>
       <div class="form-grid">
@@ -775,7 +832,7 @@
       <h4>Ejercicios${week ? ` <small class="muted">· ${esc(weekLabel(week))}</small>` : ''}</h4>
       <div data-rows></div>
       <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>
-      ${week && laterDrafts && !isNew ? `<label class="check"><input type="checkbox" name="propagate"> Aplicar también los cambios a las ${laterDrafts} semana${laterDrafts > 1 ? 's' : ''} siguiente${laterDrafts > 1 ? 's' : ''} en borrador <small class="muted">(series, reps, descanso, tempo, RIR, indicaciones, vídeo y progresión; no cargas)</small></label>` : ''}`, {
+      ${week && laterDrafts ? `<label class="check"><input type="checkbox" name="propagate" checked> Aplicar también a las ${laterDrafts} semana${laterDrafts > 1 ? 's' : ''} siguiente${laterDrafts > 1 ? 's' : ''} <small class="muted">(no cambia las semanas pasadas ni las sesiones que ya haya entrenado; cada semana conserva sus cargas y su tipo: descarga, intensidad…)</small></label>` : ''}`, {
       wide: true, submitLabel: 'Guardar rutina',
       danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
       onSubmit: async (f, fd) => {
@@ -807,15 +864,12 @@
           const news = [];
           for (const [i, x] of valid.entries()) {
             if (x.id && old.some(o => o.id === x.id)) {
-              const d = payload(x, i); await DB.update('routine_items', x.id, d);
-              if (fd.get('propagate')) {
-                const ch = {}; ['sets', 'reps', 'rest_sec', 'tempo', 'target_rir', 'notes', 'media_url', 'progression'].forEach(k => { if (d[k] != null) ch[k] = d[k]; });
-                await DB.rpc('propagate_item_change', { p_item_id: x.id, p_changes: ch });
-              }
+              const d = payload(x, i); d.base = null; await DB.update('routine_items', x.id, d);
             }
             else news.push(Object.assign({ routine_id: rid, client_id: c.id }, crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}, payload(x, i)));
           }
           if (news.length) await DB.insert('routine_items', news);
+          if (week && fd.get('propagate')) { const n = await DB.rpc('propagate_routine', { p_routine: rid }); if (n) toast(`Cambios aplicados a ${n} semana${n > 1 ? 's' : ''} siguiente${n > 1 ? 's' : ''}`, 'ok'); }
         }, 'Rutina guardada');
         render();
       }
@@ -837,6 +891,8 @@
         el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
       });
     }
+    Promise.all([DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }), DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 })])
+      .then(([lg, ss]) => { H = exHistory(lg, ss); if (document.body.contains(box)) { sync(); draw(); } }).catch(() => {});
     form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '', prog: prev ? prev.prog : 'none' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
     draw();
   }
@@ -1019,13 +1075,19 @@
   }
 
   async function tabProgress(c, box, asCoach) {
-    const [checkins, sessions, logs, daily, photos] = await Promise.all([
+    const [checkins, sessions, logs, daily, photos, progs, pweeks] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
-      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 60 }),
-      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1500 }),
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 120 }),
+      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }),
       DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
-      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => [])
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
     ]);
+    const H = exHistory(logs, sessions);
+    const perf = Object.entries(H).map(([k, h]) => ({ name: (logs.find(l => String(l.exercise_name).trim().toLowerCase() === k) || {}).exercise_name || k, h, st: stallOf(h), lastDate: h[h.length - 1].date }))
+      .sort((a, b) => String(b.lastDate).localeCompare(String(a.lastDate))).slice(0, 14);
+    const chg4 = h => { const cut = Date.now() - 28 * 864e5; const old = h.filter(x => new Date(x.date) <= cut).pop() || h[0]; const lst = h[h.length - 1]; return old && lst !== old && old.e1 ? (lst.e1 - old.e1) / old.e1 * 100 : null; };
     const done = sessions.filter(s => s.finished_at);
     const best = {};
     logs.forEach(l => { if (l.weight && l.reps) { const e1 = l.weight * (1 + l.reps / 30); if (!best[l.exercise_name] || e1 > best[l.exercise_name].e1) best[l.exercise_name] = { e1, w: l.weight, r: l.reps }; } });
@@ -1059,27 +1121,104 @@
       ${wrows.length ? `<section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t"><thead><tr><th>Semana</th><th>Media</th><th>Cambio</th>${target != null ? '<th>vs objetivo</th>' : ''}<th>Fatiga</th><th>Energía</th><th>Nutrición</th><th>Pasos</th></tr></thead><tbody>
         ${rows.slice().reverse().slice(0, 16).map(r => `<tr><td>${fmtDate(r.wk)}</td><td><b>${r.avg != null ? fmtKg(r.avg) : '–'}</b>${r.n > 1 ? `<small class="muted"> (${r.n})</small>` : ''}</td><td class="${r.delta == null ? '' : r.delta < 0 ? 'dn' : 'up'}">${sgn(r.delta)}</td>${target != null ? `<td><span class="pill ${vsT(r.delta) === 'ok' ? 'green' : vsT(r.delta) ? 'amber' : ''}">${r.delta == null ? '–' : sgn(r.delta - target)}</span></td>` : ''}<td>${r.fatigue != null ? fmtKg(r.fatigue) : '–'}</td><td>${r.energy != null ? fmtKg(r.energy) : '–'}</td><td>${r.diet != null ? fmtKg(r.diet) : '–'}</td><td>${r.steps != null ? Math.round(r.steps).toLocaleString('es-ES') : '–'}</td></tr>`).join('')}
       </tbody></table></div>${target != null ? '<p class="muted small pad">«vs objetivo»: diferencia entre lo que ha cambiado y lo que se buscaba esa semana (verde = dentro de ±0,2 kg).</p>' : ''}</section>` : ''}
+      ${perfHtml()}
+      ${weeksHtml()}
       ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="grid2">
-        <section class="card"><h3>Check-ins</h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
-        <section class="card"><h3>Entrenos</h3>${done.length ? `<ul class="sessions">${done.map(s => `<li data-s="${s.id}" class="${asCoach && !s.coach_seen ? 'unseen' : ''}"><button type="button" class="srow"><b>${esc(s.routine_name || 'Entreno')}</b><small>${fmtDate(s.started_at, { weekday: 'short', day: 'numeric', month: 'short' })} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</small></button><div class="sdetail" hidden></div></li>`).join('')}</ul>` : '<p class="empty">Aún no hay entrenos registrados.</p>'}</section>
+        <section class="card"><h3>Check-ins <small class="muted">${checkins.length}</small></h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
+        <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
+    // Check-ins en lista compacta: solo se abre (y se cargan sus fotos) el que tocas
     const ckBox = box.querySelector('[data-cks]');
-    checkins.forEach((k, i) => ckBox.appendChild(checkinCard(k, asCoach, { prev: checkins.slice(i + 1).find(x => x.weight), photos: photos.filter(p => p.checkin_id === k.id) })));
-    // detalle de sesiones
-    box.querySelectorAll('.sessions li').forEach(li => {
-      li.querySelector('.srow').onclick = async () => {
-        const d = li.querySelector('.sdetail');
-        if (!d.hidden) { d.hidden = true; return; }
-        const s = byId(done, li.dataset.s);
-        const sets = logs.filter(l => l.session_id === s.id).sort((a, b) => a.set_no - b.set_no);
-        const groups = {}; sets.forEach(l => { (groups[l.exercise_name] = groups[l.exercise_name] || []).push(l); });
-        d.innerHTML = Object.entries(groups).map(([n, ls]) => `<div class="sx"><b>${esc(n)}</b><span>${ls.map(l => `${fmtKg(l.weight)}×${l.reps ?? '–'}${l.rir != null ? ' @RIR ' + fmtKg(l.rir) : l.rpe != null ? ' @RPE ' + fmtKg(l.rpe) : ''}`).join(' · ')}</span></div>`).join('') + (s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : '') || '<p class="empty">Sin series registradas</p>';
-        d.hidden = false;
-        if (asCoach && !s.coach_seen) { s.coach_seen = true; li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
-      };
-    });
+    let ckShown = 6;
+    const drawCks = () => {
+      ckBox.innerHTML = checkins.slice(0, ckShown).map((k, i) => {
+        const prev = checkins.slice(i + 1).find(x => x.weight), dw = prev && k.weight ? Number(k.weight) - Number(prev.weight) : null;
+        const np = photos.filter(p => p.checkin_id === k.id).length || (k.photo_path ? 1 : 0);
+        return `<div class="ck-item" data-ck-i="${i}"><button type="button" class="ck-row ${asCoach && !k.coach_seen ? 'unseen' : ''}">
+            <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short' })}</span>
+            <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
+            <span class="ck-m">${k.fatigue != null ? `Fat ${k.fatigue}` : ''}${k.energy10 != null ? ` · En ${k.energy10}` : ''}${k.diet_adh != null ? ` · Nut ${k.diet_adh}` : ''}</span>
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${k.pains ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+      }).join('') + (checkins.length > ckShown ? `<button type="button" class="btn small ghost block" data-ckmore>Ver más (${checkins.length - ckShown})</button>` : '');
+      ckBox.querySelectorAll('.ck-item').forEach(el => {
+        el.querySelector('.ck-row').onclick = () => {
+          const o = el.querySelector('.ck-open'), i = +el.dataset.ckI;
+          if (!o.hidden) { o.hidden = true; o.innerHTML = ''; el.classList.remove('open'); return; }
+          const k = checkins[i];
+          o.appendChild(checkinCard(k, asCoach, { prev: checkins.slice(i + 1).find(x => x.weight), photos: photos.filter(p => p.checkin_id === k.id) }));
+          o.hidden = false; el.classList.add('open');
+        };
+      });
+      const mb = ckBox.querySelector('[data-ckmore]'); if (mb) mb.onclick = () => { ckShown += 10; drawCks(); };
+    };
+    if (checkins.length) drawCks();
+    // Entrenos: los últimos; cada uno se abre en su propio apartado
+    const sBox = box.querySelector('[data-ses]');
+    let sShown = 8;
+    const drawSes = () => {
+      sBox.innerHTML = `<ul class="sessions">${done.slice(0, sShown).map(s => `<li class="${asCoach && !s.coach_seen ? 'unseen' : ''}"><button type="button" class="srow" data-s="${s.id}"><b>${esc(s.routine_name || 'Entreno')}</b><small>${fmtDate(s.started_at, { weekday: 'short', day: 'numeric', month: 'short' })} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</small></button></li>`).join('')}</ul>`
+        + (done.length > sShown ? `<button type="button" class="btn small ghost block" data-smore>Ver más (${done.length - sShown})</button>` : '');
+      sBox.querySelectorAll('[data-s]').forEach(b => b.onclick = () => sessionModal(byId(done, b.dataset.s), b.closest('li')));
+      const mb = sBox.querySelector('[data-smore]'); if (mb) mb.onclick = () => { sShown += 10; drawSes(); };
+    };
+    if (done.length) drawSes();
+    function sessionModal(s, li) {
+      const sets = logs.filter(l => l.session_id === s.id).sort((a, b) => a.set_no - b.set_no);
+      const prevS = done.find(x => x.routine_name === s.routine_name && x.started_at < s.started_at);
+      const prevSets = prevS ? logs.filter(l => l.session_id === prevS.id) : [];
+      const groups = {}; sets.forEach(l => { (groups[l.exercise_name] = groups[l.exercise_name] || []).push(l); });
+      const top = ls => ls.reduce((m, l) => (e1rm(+l.weight, +l.reps) > e1rm(+m.weight, +m.reps) ? l : m), ls[0]);
+      const body = Object.entries(groups).map(([n, ls]) => {
+        const pv = prevSets.filter(l => l.exercise_name === n), t = top(ls), tp = pv.length ? top(pv) : null;
+        const d = tp ? e1rm(+t.weight, +t.reps) - e1rm(+tp.weight, +tp.reps) : null;
+        const st = stallOf((H[String(n).trim().toLowerCase()] || []).filter(x => String(x.date) <= String(s.started_at)));
+        return `<div class="sx2"><div class="row gap"><b class="grow">${esc(n)}</b><span class="pill ${STALL_TXT[st.st][0]}">${STALL_TXT[st.st][1]}</span></div>
+          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
+          ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
+      }).join('') || '<p class="empty">Sin series registradas</p>';
+      modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}`, { wide: true });
+      if (asCoach && !s.coach_seen) { s.coach_seen = true; li && li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
+    }
+    function perfHtml() {
+      if (!perf.length) return '';
+      const w4 = (() => { const r = wrows.slice(-5); return r.length > 1 ? r[r.length - 1].avg - r[0].avg : null; })();
+      const ch = perf.map(p => chg4(p.h)).filter(v => v != null), mch = ch.length ? ch.sort((a, b) => a - b)[Math.floor(ch.length / 2)] : null;
+      const nSt = perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length;
+      let tip = '';
+      if (w4 != null && mch != null) {
+        if (w4 < -0.3 && mch >= -1) tip = `👍 Ha bajado ${fmtKg(Math.abs(w4))} kg en 4 semanas manteniendo o subiendo la fuerza (${mch >= 0 ? '+' : ''}${fmtKg(mch)} %).`;
+        else if (w4 < -0.3) tip = `⚠️ Baja peso (${sgn(w4)} kg) y también rendimiento (${fmtKg(mch)} %): revisa calorías, sueño o mete una descarga.`;
+        else if (w4 > 0.3 && mch > 1) tip = `👍 Sube peso (${sgn(w4)} kg) y fuerza (+${fmtKg(mch)} %).`;
+        else if (w4 > 0.3) tip = `⚠️ Sube peso (${sgn(w4)} kg) sin mejorar la fuerza (${fmtKg(mch)} %).`;
+        else tip = `Peso estable (${sgn(w4)} kg) · fuerza ${mch >= 0 ? '+' : ''}${fmtKg(mch)} % en 4 semanas.`;
+      }
+      return `<section class="card flush"><h3 class="pad">Rendimiento por ejercicio</h3>
+        ${tip || nSt ? `<p class="small pad">${tip}${nSt ? `${tip ? '<br>' : ''}${nSt >= 2 ? '⚠️ ' : ''}${nSt} ejercicio${nSt > 1 ? 's' : ''} sin mejorar en 3+ sesiones${nSt >= 2 ? ': valora una descarga o cambiar el estímulo' : ''}.` : ''}</p>` : ''}
+        <div class="tscroll"><table class="wk-t"><thead><tr><th>Ejercicio</th><th>Última</th><th>Mejor 1RM est.</th><th>4 sem.</th><th>Estado</th></tr></thead><tbody>
+        ${perf.map(p => { const l = p.h[p.h.length - 1], b = p.h.reduce((m, x) => (x.e1 > m.e1 ? x : m), p.h[0]), c4 = chg4(p.h), [cls, txt] = STALL_TXT[p.st.st];
+          return `<tr><td>${esc(p.name)}</td><td><b>${fmtKg(l.w)}×${l.r}</b> <small class="muted">${fmtDate(l.date, { day: 'numeric', month: 'short' })}</small></td><td>${Math.round(b.e1)} kg</td><td class="${c4 == null ? '' : c4 > 0.5 ? 'dn' : c4 < -0.5 ? 'up' : ''}">${c4 == null ? '–' : (c4 > 0 ? '+' : '') + fmtKg(c4) + ' %'}</td><td><span class="pill ${cls}">${txt}${p.st.st === 'stall' || p.st.st === 'down' ? ' · ' + p.st.since + ' ses.' : ''}</span></td></tr>`; }).join('')}
+        </tbody></table></div><p class="muted small pad">1RM estimado con la mejor serie de cada sesión. «Estancado»: 3 o más sesiones sin superar su mejor marca.</p></section>`;
+    }
+    function weeksHtml() {
+      const prog = progs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+      if (!prog) return '';
+      const ws = pweeks.filter(w => w.program_id === prog.id && (asCoach || w.published)).sort((a, b) => a.week_no - b.week_no);
+      if (!ws.length) return '';
+      const t = today(), cur = ws.filter(w => w.start_date <= t).pop();
+      const cnt = k => ws.filter(w => (w.kind || 'normal') === k).length;
+      const past = ws.filter(w => w.start_date <= t), lastDl = past.filter(w => w.kind === 'deload').pop();
+      const sinceDl = lastDl ? past.filter(w => w.week_no > lastDl.week_no).length : past.length;
+      return `<section class="card"><h3>Semanas del programa <small class="muted">${esc(prog.name)}</small></h3>
+        <div class="wkline">${ws.map(w => `<span class="wkb k-${w.kind || 'normal'} ${cur && cur.id === w.id ? 'cur' : ''}" title="${esc(weekLabel(w))} · ${fmtDate(w.start_date)}">S${w.week_no}<small>${(KINDS[w.kind] || KINDS.normal)[0]}</small></span>`).join('')}</div>
+        <div class="kpis small">
+          <div class="kpi"><small>Normales</small><b>${cnt('normal')}</b></div><div class="kpi"><small>Mantenimiento</small><b>${cnt('maintenance')}</b></div>
+          <div class="kpi"><small>Intensidad</small><b>${cnt('intensity')}</b></div><div class="kpi"><small>Descargas</small><b>${cnt('deload')}</b><span>${lastDl ? 'última: S' + lastDl.week_no : ws.some(w => w.kind === 'deload' && w.start_date > t) ? 'próxima: S' + ws.find(w => w.kind === 'deload' && w.start_date > t).week_no : 'ninguna aún'}</span></div>
+        </div>
+        <p class="small ${sinceDl >= 6 ? '' : 'muted'}">${sinceDl >= 6 ? '⚠️ ' : ''}${sinceDl} semana${sinceDl === 1 ? '' : 's'} desde la última descarga${sinceDl >= 6 ? ': suele tocar descarga cada 4-8 semanas, mira la fatiga y si hay ejercicios estancados.' : '.'}</p></section>`;
+    }
   }
 
   // ----- Ficha del cliente (entrenador)
@@ -1120,6 +1259,7 @@
         <p class="muted small">El peso objetivo y el ritmo semanal se usan en Progreso para ver si va bien cada semana (el cliente también lo ve).</p>
         <div class="row gap"><span class="grow"></span><button class="btn primary">Guardar ficha</button></div>
       </form>`;
+    if (window.JMForms) window.JMForms.clientBlock(c, box);
     const f = box.querySelector('[data-ficha]');
     f.onsubmit = async e => {
       e.preventDefault();
