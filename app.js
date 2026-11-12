@@ -1880,15 +1880,17 @@
     const realMin = Math.max(1, Math.round((Date.now() - new Date(w.started_at)) / 6e4)), longMin = realMin > 150;
     modal('¡Entreno terminado! 🎉', `
       <p>${done} series completadas.</p>
-      <label>¿Cuánto duró el entreno? (minutos)<input name="dur" type="number" inputmode="numeric" min="5" max="300" step="1" required value="${longMin ? '' : realMin}" placeholder="Ej: 75"></label>
+      <fieldset class="dur"><legend>¿Cuánto duró el entreno?</legend>
+        <label><input name="dur_h" type="number" inputmode="numeric" min="0" max="3" step="1" value="${longMin ? '' : Math.floor(realMin / 60)}" placeholder="1"><span>h</span></label>
+        <label><input name="dur_m" type="number" inputmode="numeric" min="0" max="59" step="1" value="${longMin ? '' : realMin % 60}" placeholder="15"><span>min</span></label></fieldset>
       <p class="small ${longMin ? 'note' : 'muted'}" data-durhint>${longMin ? `⏱️ El contador marca ${Math.floor(realMin / 60)} h ${realMin % 60} min: si se te olvidó pararlo, pon lo que duró de verdad.` : 'Se rellena con el tiempo del contador. Si se te olvidó pararlo, corrígelo.'}</p>
       <fieldset class="scale wide"><legend>¿Qué tan duro fue? (RPE 1–10)</legend>${[5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="rpe" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
       <label>Comentario para tu entrenador (opcional)<textarea name="notes" rows="3" placeholder="Molestias, sensaciones, cambios…"></textarea></label>`, {
       submitLabel: 'Guardar entreno',
       onSubmit: async (f, fd) => {
         const c = S.client;
-        const dur = parseInt(fd.get('dur'), 10);
-        if (!(dur >= 5 && dur <= 300)) { toast('Pon cuántos minutos duró (entre 5 y 300)', 'err'); throw new Error('dur'); }
+        const hh = parseInt(fd.get('dur_h'), 10) || 0, mm = parseInt(fd.get('dur_m'), 10) || 0, dur = hh * 60 + mm;
+        if (mm > 59 || hh < 0 || mm < 0 || !(dur >= 5 && dur <= 180)) { toast('Pon cuánto duró: entre 5 minutos y 3 horas', 'err'); throw new Error('dur'); }
         const finished = new Date(Math.min(Date.now(), new Date(w.started_at).getTime() + dur * 6e4)).toISOString();
         const logs = []; let vol = 0;
         const inRange = (v, a, b) => (v != null && v >= a && v <= b ? Math.round(v * 2) / 2 : null);

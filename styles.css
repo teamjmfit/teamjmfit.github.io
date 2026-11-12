@@ -684,3 +684,7 @@ label.sl-item span, label.sl-item b { color: var(--text); }
 .heat td.na { background: color-mix(in srgb, var(--muted) 20%, transparent); }
 .heat td.cur { outline: 1px dashed var(--muted); }
 .hl { padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.dur { display: flex; gap: 12px; flex-wrap: wrap; border: 0; padding: 0; margin: 0 0 4px; }
+.dur legend { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; width: 100%; }
+.dur label { display: flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.dur input { width: 84px; text-align: center; }
