@@ -103,12 +103,15 @@
   }
 
   // ---------- Series por grupo muscular (la 2.ª parte del nombre cuenta media serie: «Pecho / Tríceps»)
+  // Se compara sin tildes ni mayúsculas («Extensión de rodilla» = «Extension de rodilla»)
+  const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const NOVOL = new Set(['movilidad', 'cardio', 'estiramiento', 'calentamiento']);   // no cuentan como series de fuerza
   function muscleOf(name, exercises) {
-    const e = exercises.find(x => x.name.trim().toLowerCase() === String(name || '').trim().toLowerCase());
+    const k = norm(name), e = exercises.find(x => norm(x.name) === k);
     const m = e && e.muscle ? e.muscle : 'Sin grupo';
     return m.split('/').map(s => s.trim()).filter(Boolean);
   }
-  function addSets(acc, name, n, exercises) { muscleOf(name, exercises).forEach((m, i) => { acc[m] = (acc[m] || 0) + n * (i ? 0.5 : 1); }); }
+  function addSets(acc, name, n, exercises) { const ms = muscleOf(name, exercises); if (NOVOL.has(norm(ms[0]))) return; ms.forEach((m, i) => { acc[m] = (acc[m] || 0) + n * (i ? 0.5 : 1); }); }
   function plannedSets(items, exercises) { const acc = {}; items.forEach(i => addSets(acc, i.exercise_name, Number(i.sets) || 0, exercises)); return acc; }
   const vClass = v => (v < 10 ? 'lo' : v > 20 ? 'hi' : 'ok');
 
@@ -128,7 +131,7 @@
     }).join('');
     const warn = keys.filter(k => k !== 'Sin grupo' && prev && prev[k] && (cur[k] - prev[k]) / prev[k] > 0.25);
     return `<section class="card vol"><h3>Series por músculo <small class="muted">${esc(label)} · ${r1(tot)} en total${ch != null ? ` · ${ch > 0 ? '+' : ''}${Math.round(ch)} % vs la anterior` : ''}</small></h3>${rows}
-      <p class="muted small">Franja gris: 10–20 series a la semana, el rango habitual para hipertrofia (en fuerza suele bastar con 10–15). El 2.º grupo de un ejercicio («Pecho / Tríceps») cuenta media serie.${warn.length ? `<br>⚠️ Sube más de un 25 % en ${warn.map(esc).join(', ')}: mejor subir el volumen poco a poco (≈20 % cada vez).` : ''}${cur['Sin grupo'] ? '<br>«Sin grupo»: ejercicios que no están en tu catálogo o no tienen grupo muscular.' : ''}</p></section>`;
+      <p class="muted small">Franja gris: 10–20 series a la semana, el rango habitual para hipertrofia (en fuerza suele bastar con 10–15). El 2.º grupo de un ejercicio («Pecho / Tríceps») cuenta media serie; la movilidad y el cardio no cuentan.${warn.length ? `<br>⚠️ Sube más de un 25 % en ${warn.map(esc).join(', ')}: mejor subir el volumen poco a poco (≈20 % cada vez).` : ''}${cur['Sin grupo'] ? '<br>«Sin grupo»: ejercicios que no están en tu catálogo o no tienen grupo muscular.' : ''}</p></section>`;
   }
 
   // Series realizadas por músculo en las últimas semanas (tabla de calor)
