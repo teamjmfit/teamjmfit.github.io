@@ -27,7 +27,7 @@
   async function page(box) {
     const { esc, toast, safe, ago } = U();
     let rows, clients;
-    try { [rows, clients] = await Promise.all([DB.list('form_responses', { order: ['submitted_at', 'desc'] }), DB.list('clients', { order: ['name', 'asc'] })]); }
+    try { [rows, clients] = await Promise.all([DB.list('form_responses', { order: ['submitted_at', 'desc'] }), DB.list('clients', { order: ['name', 'asc'] }).then(cs => cs.filter(c => !c.is_template))]); }
     catch (e) { box.innerHTML = '<p class="empty">Aún no está activado. Falta ejecutar la migración 009 y actualizar el script de Google.</p>'; return; }
     let tab = 'all';
     const name = id => (clients.find(c => c.id === id) || {}).name;

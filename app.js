@@ -37,6 +37,21 @@
   const PROG_RULES = [['none', 'Sin progresión'], ['load:1.25', '+1,25 kg'], ['load:2.5', '+2,5 kg'], ['load:5', '+5 kg'], ['reps:1', '+1 rep'], ['reps:2', '+2 reps']];
   const progKey = p => (!p || !p.type || p.type === 'none' ? 'none' : p.type === 'reps' ? 'reps:' + Number(p.inc || 1) : 'load:' + Number(p.inc_kg || p.inc || 2.5));
   const progVal = k => { const [t, v] = String(k || 'none').split(':'); return t === 'reps' ? { type: 'reps', inc: Number(v) || 1 } : t === 'load' ? { type: 'load', inc_kg: Number(v) || 2.5 } : { type: 'none' }; };
+  // Tipo de serie de cada ejercicio (se guarda en progression.scheme para que viaje con las semanas y los mesociclos)
+  const SET_SCHEMES = [['straight', 'Lineal (series iguales)'], ['topset:10', 'Top set + back-off −10 %'], ['topset:15', 'Top set + back-off −15 %'], ['topset:20', 'Top set + back-off −20 %'],
+    ['drop:1', 'Dropset: 1 bajada en la última serie'], ['drop:2', 'Dropset: 2 bajadas en la última serie'], ['drop:3', 'Dropset: 3 bajadas en la última serie'], ['dropall:1', 'Dropset en todas las series']];
+  const schemeKey = p => { const x = p && p.scheme; return !x || !x.type ? 'straight' : x.type === 'topset' ? 'topset:' + (x.pct || 10) : x.type === 'drop' ? (x.all ? 'dropall:' : 'drop:') + (x.n || 1) : 'straight'; };
+  const schemeVal = k => { const [t, v] = String(k || 'straight').split(':'); return t === 'topset' ? { type: 'topset', pct: +v || 10 } : t === 'drop' ? { type: 'drop', n: +v || 1, pct: 20 } : t === 'dropall' ? { type: 'drop', n: +v || 1, pct: 20, all: true } : null; };
+  const schemeLabel = p => { const k = schemeKey(p); return k === 'straight' ? '' : (SET_SCHEMES.find(x => x[0] === k) || [0, ''])[1]; };
+  // Filas de series del entreno según el tipo: TOP / BO (back-off) / ↓ (bajadas del dropset)
+  const schemeSets = (n, p) => {
+    const x = (p && p.scheme) || {}, out = [];
+    for (let k = 0; k < n; k++) {
+      out.push({ w: '', r: '', x: '', done: false, tag: x.type === 'topset' ? (k ? 'BO' : 'TOP') : '', pct: x.type === 'topset' && k ? x.pct || 10 : null });
+      if (x.type === 'drop' && (x.all || k === n - 1)) for (let d = 0; d < (x.n || 1); d++) out.push({ w: '', r: '', x: '', done: false, tag: 'D', pct: x.pct || 20 });
+    }
+    return out;
+  };
   const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
   const KINDS = { normal: ['Normal', ''], maintenance: ['Mantenimiento', '='], deload: ['Descarga', '↓'], intensity: ['Intensidad', '↑'], test: ['Test', 'T'] };
   const weekLabel = w => `Semana ${w.week_no}${w.kind && w.kind !== 'normal' && KINDS[w.kind] ? ' · ' + KINDS[w.kind][0] : ''}`;
@@ -407,14 +422,15 @@
     if (!r0) return coachHome();
     if (r0 === 'clientes') return coachClients();
     if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
-    if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : coachPrograms(); }
+    if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : r1 === 'plantillas' ? coachTemplates() : coachPrograms(); }
     if (r0 === 'revisiones') return coachReviews(r1);
     if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     go('#/');
   }
 
-  async function loadClients() { S.clients = await DB.list('clients', { order: ['name', 'asc'] }); return S.clients; }
+  // Las plantillas de Programas son «clientes» internos (is_template) para reutilizar todos los editores de rutinas
+  async function loadClients() { const all = await DB.list('clients', { order: ['name', 'asc'] }); S.templates = all.filter(c => c.is_template); S.clients = all.filter(c => !c.is_template); return S.clients; }
   async function loadExercises() { S.exercises = await DB.list('exercises', { order: ['name', 'asc'] }); return S.exercises; }
 
   // ---------- Inicio
@@ -484,7 +500,24 @@
   }
 
   function dropSheet() { S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) {} }
-  async function getSheet(force) {
+  // La hoja puede mandar fechas como texto largo («Fri Nov 06 2026 08:00:00 GMT…»): se pasan a AAAA-MM-DD
+  const sheetDay = v => {
+    if (v == null || v === '') return '';
+    const t = String(v); if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+    // «Fri Nov 06 2026 …»: se toma el día tal cual lo escribió la hoja (sin pasar por la zona horaria del móvil)
+    const m = t.match(/^[A-Za-z]{3},? ([A-Za-z]{3}) (\d{1,2}) (\d{4})/), M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (m && M.includes(m[1])) return `${m[3]}-${String(M.indexOf(m[1]) + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+    const e = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (e) return `${e[3]}-${e[2].padStart(2, '0')}-${e[1].padStart(2, '0')}`;
+    const d = new Date(t.replace(/\s*\(.*\)\s*$/, '')); return isNaN(d) ? t : ymd(d);
+  };
+  const normSheet = d => {
+    if (!d || d._norm) return d;
+    (d.pagos || []).forEach(p => { p.fecha = sheetDay(p.fecha); p.vence = sheetDay(p.vence); p.importe = typeof p.importe === 'number' ? p.importe : Number(String(p.importe || '').replace(/[^\d,.-]/g, '').replace(',', '.')) || 0; });
+    (d.clientes || []).forEach(c => { ['alta', 'ultimoPago', 'vence'].forEach(k => { c[k] = sheetDay(c[k]); }); });
+    d._norm = true; return d;
+  };
+  async function getSheet(force) { return normSheet(await getSheetRaw(force)); }
+  async function getSheetRaw(force) {
     if (!S.sheet && !force) { try { const c = JSON.parse(localStorage.getItem('jmfit-sheet') || 'null'); if (c && c.data) S.sheet = c; } catch (e) {} }
     if (S.sheet && !force && Date.now() - S.sheet.at < 120000) return S.sheet.data;
     // hay copia (aunque sea vieja): se usa ya y se refresca en segundo plano
@@ -563,6 +596,7 @@
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
     const c = await DB.get('clients', id);
     if (!c) { toast('Cliente no encontrado', 'err'); return go('#/clientes'); }
+    if (c.is_template) return templateClient(c);
     $app.querySelector('.top h1').textContent = c.name;
     const actions = document.createElement('div'); actions.className = 'row gap';
     actions.innerHTML = `<button class="btn ghost small" data-inv>${c.user_id ? '' : 'Invitar'}</button><button class="btn small" data-edit>${ic('edit')}<span>Editar</span></button>`;
@@ -586,6 +620,21 @@
     if (tab === 'revisiones') return tabReviews(c, box);
     if (tab === 'mensajes') return tabMessages(c, box, 'coach');
     if (tab === 'cobros') return tabClientPayments(c, box);
+  }
+
+  // Una plantilla se edita con la misma pestaña Rutinas que un cliente
+  function templateClient(c) {
+    shell(COACH_NAV, 'programas', loading(), { title: '', back: 'programas/plantillas' });
+    $app.querySelector('.top h1').textContent = c.name;
+    const actions = document.createElement('div'); actions.className = 'row gap';
+    actions.innerHTML = `<button class="btn small" data-copyto>${ic('copy')}<span>Copiar a cliente</span></button><button class="btn small ghost" data-ren>${ic('edit')}<span>Renombrar</span></button>`;
+    $app.querySelector('.top .grow').after(actions);
+    actions.querySelector('[data-copyto]').onclick = async () => { if (!S.clients.length) await loadClients(); copyTemplateForm(c); };
+    actions.querySelector('[data-ren]').onclick = () => modal('Renombrar plantilla', `<label>Nombre<input name="name" required maxlength="80" value="${esc(c.name)}"></label><label>Descripción<input name="notes" maxlength="200" value="${esc(c.notes || '')}"></label>`, {
+      submitLabel: 'Guardar', onSubmit: async (f, fd) => { await safe(() => DB.update('clients', c.id, { name: String(fd.get('name')).trim() || c.name, notes: String(fd.get('notes') || '').trim() || null }), 'Guardado'); render(); } });
+    const content = $app.querySelector('.content');
+    content.innerHTML = `<p class="note small">📚 Plantilla de Programas${c.notes ? ' · ' + esc(String(c.notes).replace(/\.\s*$/, '')) : ''}. Edita aquí las rutinas base; al copiarla a un cliente se crean sus rutinas fijas para adaptarlas.</p><div data-tab>${loading()}</div>`;
+    return tabRoutines(c, content.querySelector('[data-tab]'));
   }
 
   // ----- Rutinas (entrenador)
@@ -633,12 +682,12 @@
             : `<p class="muted small">Rutinas fijas: el cliente solo las ve mientras no haya ninguna semana publicada en curso.</p>`}
         </section>`;
     const week = [1, 2, 3, 4, 5, 6, 7].map(d => { const r = routines.filter(x => x.day === d); return `<div class="wday ${r.length ? 'has' : ''}"><small>${DIAS_C[d]}</small>${r.map(x => `<span>${esc(x.name)}</span>`).join('') || '<em>—</em>'}</div>`; }).join('');
-    box.innerHTML = `${focusBox}${progBox}
+    box.innerHTML = `${c.is_template ? '' : focusBox + progBox}
       <div class="week">${week}</div>
       ${window.JMLoad ? (() => { const ids = new Set(routines.map(r => r.id)); const pw = view ? pweeks.find(w => w.week_no === view.week_no - 1) : null;
         const prevIds = pw ? new Set(allRoutines.filter(r => r.program_week_id === pw.id).map(r => r.id)) : null;
         return JMLoad.weekVolume(items.filter(i => ids.has(i.routine_id)), prevIds ? items.filter(i => prevIds.has(i.routine_id)) : null, S.exercises, { label: view ? weekLabel(view) : 'rutinas fijas' }); })() : ''}
-      <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button>${view ? '' : `<button class="btn ghost" data-copyall>${ic('copy')} Copiar plan desde otro cliente</button>`}</div>
+      <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button>${view || c.is_template ? '' : `<button class="btn ghost" data-copyall>${ic('copy')} Copiar plan o plantilla</button>`}${!c.is_template && routines.length ? `<button class="btn ghost" data-savetpl>${ic('copy')} Guardar como plantilla</button>` : ''}</div>
       <div class="routines">${routines.map(r => {
         const its = items.filter(i => i.routine_id === r.id);
         return `<section class="card routine">
@@ -646,7 +695,7 @@
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
             <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></header>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
-          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.${progKey(i.progression) !== 'none' ? ' · ↑ ' + esc((PROG_RULES.find(p => p[0] === progKey(i.progression)) || [0, progKey(i.progression)])[1]) : ''}</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
+          <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.${progKey(i.progression) !== 'none' ? ' · ↑ ' + esc((PROG_RULES.find(p => p[0] === progKey(i.progression)) || [0, progKey(i.progression)])[1]) : ''}${schemeLabel(i.progression) ? ' · ' + esc(schemeLabel(i.progression)) : ''}</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
         </section>`;
       }).join('') || `<p class="empty">${view ? 'Esta semana no tiene rutinas.' : 'Este cliente aún no tiene rutinas. Crea la primera.'}</p>`}</div>`;
     const opts = { week: view, laterDrafts };
@@ -654,6 +703,7 @@
     box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = byId(routines, b.dataset.edit); routineEditor(c, r, items.filter(i => i.routine_id === r.id), opts); });
     box.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => duplicateRoutines(c, [byId(routines, b.dataset.dup)], items));
     const ca = box.querySelector('[data-copyall]'); if (ca) ca.onclick = () => copyPlanFrom(c);
+    const st = box.querySelector('[data-savetpl]'); if (st) st.onclick = () => saveAsTemplate(c, routines, items);
     const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
     const ms = box.querySelector('[data-meso]'); if (ms) ms.onclick = () => mesoForm(c, { after: () => tabRoutines(c, box) });
     box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
@@ -874,7 +924,8 @@
     function opts(fd) {
       const pct = (v, mx) => Math.max(0, Math.min(mx, +v || 0)) / 100;
       return { offset: +fd.get('offset') || 0, prog: fd.get('prog'), inc_kg: Math.max(0, +fd.get('inc_kg') || 0), inc_reps: Math.max(0, Math.round(+fd.get('inc_reps') || 0)),
-        rir_ramp: !!fd.get('rir_ramp'), deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish') };
+        rir_ramp: !!fd.get('rir_ramp'), deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish'),
+        weeks: Array.from({ length: +fd.get('weeks') || 4 }, (_, k) => { const r = fd.get('wr' + k), z = +fd.get('ws' + k) || 0; return Object.assign({}, r != null && r !== '' ? { rir: +r } : {}, z ? { sets: z } : {}); }) };
     }
     const draw = () => {
       const fd = new FormData(f), o = opts(fd), n = +fd.get('weeks'), src = fd.get('src') || null;
@@ -889,7 +940,10 @@
         <div class="meso-bars" aria-hidden="true">${ld.map((x, k) => `<span class="${k === n - 1 ? 'dl' : ''}" style="height:${Math.max(8, Math.round(x / mx * 100))}%"><i>S${k + 1}</i></span>`).join('')}</div>
         <div class="table-wrap"><table class="meso-table"><thead><tr><th>Ejercicio</th>${Array.from({ length: n }, (_, k) => `<th class="${k === n - 1 ? 'dl' : ''}">S${k + 1}${k === n - 1 ? ' ↓' : ''}<small>${fmtDate(addDays(mon(sd), 7 * k), { day: 'numeric', month: 'short' })}</small></th>`).join('')}</tr></thead>
         <tbody>${show.map(it => `<tr><td>${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
-        <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr></tbody></table></div>
+        <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr>
+        <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>RIR ${v}</option>`).join('')}</select></td>`; }).join('')}</tr>
+        <tr class="adj"><td>Series <small>de más o de menos por ejercicio</small></td>${Array.from({ length: n }, (_, k) => { const cur = +(fd.get('ws' + k) || 0); return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="ws${k}" aria-label="Ajuste de series de la semana ${k + 1}">${[-2, -1, 0, 1, 2, 3].map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v > 0 ? '+' + v : v === 0 ? '±0' : v}</option>`).join('')}</select></td>`; }).join('')}</tr></tbody></table></div>
+        <p class="muted small">Cambia el RIR o las series de cualquier semana y la tabla se recalcula. Después también puedes editar cada ejercicio de cada semana en Rutinas.</p>
         ${its.length > show.length ? `<p class="muted small">Y ${its.length - show.length} ejercicios más con la misma lógica.</p>` : ''}`;
       const w = f.querySelector('[data-warn]'), past = (fd.get('start') || '') < mon(today());
       w.hidden = !past; w.textContent = past ? 'La fecha de inicio es de una semana ya pasada: las semanas sin entrenar desde esa fecha se sustituyen.' : '';
@@ -1198,9 +1252,9 @@
     });
   }
   async function copyPlanFrom(target) {
-    const clients = (await loadClients()).filter(x => x.id !== target.id);
-    if (!clients.length) return toast('No hay otros clientes de los que copiar', 'err');
-    modal('Copiar plan desde otro cliente', `<p class="muted">Se añadirán todas sus rutinas a ${esc(target.name)}. Las que ya tenga se mantienen.</p><label>Cliente de origen<select name="from">${clients.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`, {
+    const clients = (await loadClients()).filter(x => x.id !== target.id), tpls = (S.templates || []).filter(x => x.id !== target.id);
+    if (!clients.length && !tpls.length) return toast('No hay otros clientes ni plantillas de los que copiar', 'err');
+    modal('Copiar plan o plantilla', `<p class="muted">Se añadirán sus rutinas fijas a ${esc(target.name)}. Las que ya tenga se mantienen.</p><label>Origen<select name="from">${tpls.length ? `<optgroup label="Plantillas">${tpls.map(x => `<option value="${x.id}">📚 ${esc(x.name)}</option>`).join('')}</optgroup>` : ''}<optgroup label="Clientes">${clients.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</optgroup></select></label>`, {
       submitLabel: 'Copiar', onSubmit: async (f, fd) => {
         const fromId = fd.get('from');
         const [rs0, its] = await Promise.all([DB.list('routines', { eq: { client_id: fromId } }), DB.list('routine_items', { eq: { client_id: fromId } })]);
@@ -1215,7 +1269,7 @@
     // En semanas de descarga / intensidad se editan los valores FIJOS (base); al guardar se vuelve a aplicar el tipo
     const adj = !!(week && (week.kind === 'deload' || week.kind === 'intensity'));
     const rows = items.map(i => { const x = Object.assign({}, i); if (adj && x.base) { const b = x.base; if (b.sets != null) x.sets = b.sets; x.target_rir = b.target_rir ?? null; if (b.load_kg !== undefined) x.load_kg = b.load_kg; } return legacyLoad(x); });
-    rows.forEach(i => { i.prog = progKey(i.progression); });
+    rows.forEach(i => { i.prog = progKey(i.progression); i.scheme = schemeKey(i.progression); });
     const intensOf = i => i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
     rows.forEach(i => { i.intens = intensOf(i); });
     const INTENS = [['', '—'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
@@ -1252,6 +1306,7 @@
           <label>Intensidad<select name="int">${(() => { const cur = i.intens || intensOf(i); const opts = INTENS.some(o => o[0] === cur) ? INTENS : [...INTENS, [cur, cur.replace(':', ' ').toUpperCase()]]; return opts.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join(''); })()}</select></label>
           <label>Tempo<input name="tempo" value="${esc(i.tempo || '')}" placeholder="3-1-1-0" pattern="[0-9Xx]-[0-9Xx]-[0-9Xx]-[0-9Xx]" title="Excéntrica-pausa-concéntrica-pausa, p. ej. 3-1-1-0 (X = explosivo)"></label>
           <label>Descanso (s)<input name="rest" type="number" min="0" step="15" value="${i.rest_sec != null ? i.rest_sec : 90}"></label>
+          <label>Tipo de serie<select name="scheme">${SET_SCHEMES.map(([v, l]) => `<option value="${v}" ${v === (i.scheme || 'straight') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Progresión<select name="prog">${(PROG_RULES.some(p => p[0] === i.prog) ? PROG_RULES : [...PROG_RULES, [i.prog, i.prog]]).map(([v, l]) => `<option value="${v}" ${v === (i.prog || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, superserie…"></label>
           <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
@@ -1289,7 +1344,7 @@
               exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i,
               sets: Number(x.sets) || 1, reps: String(x.reps || '').trim(), rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '',
               load_kg: num(x.load_kg), target_rir: kind === 'rir' ? Number(val) : null, target_rpe: kind === 'rpe' ? Number(val) : null,
-              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, progression: progVal(x.prog), ...repsRange(x.reps)
+              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, progression: Object.assign(progVal(x.prog), schemeVal(x.scheme) ? { scheme: schemeVal(x.scheme) } : {}), ...repsRange(x.reps)
             };
             d.load = loadLabel(d); // texto resumen para versiones antiguas de la app
             return d;
@@ -1314,7 +1369,7 @@
     function sync() {
       box.querySelectorAll('.ex-row').forEach(el => {
         const i = rows[+el.dataset.idx]; const v = n => el.querySelector(`[name=${n}]`).value;
-        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media'), prog: v('prog') });
+        Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media'), prog: v('prog'), scheme: v('scheme') });
       });
     }
     function draw() {
@@ -1329,7 +1384,7 @@
     }
     Promise.all([DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }), DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 })])
       .then(([lg, ss]) => { H = exHistory(lg, ss); if (document.body.contains(box)) { sync(); draw(); } }).catch(() => {});
-    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '', prog: prev ? prev.prog : 'none' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
+    form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '', prog: prev ? prev.prog : 'none', scheme: 'straight' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
     draw();
   }
 
@@ -1573,7 +1628,7 @@
       ${VZ.map(v => v.html).join('')}
       ${LP ? LP.html : ''}
       ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
-      ${hasFat ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
+      ${hasFat && !asCoach ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
         { name: 'Estrés', cls: 's4', vals: rows.map(r => r.stress) },
         { name: 'Energía', cls: 's2', vals: rows.map(r => r.energy) }], { min: 1, max: 10, label: 'Fatiga, estrés y energía (1-10)' })}<p class="muted small">Escala 1-10 de cada check-in semanal.</p></section>` : ''}
@@ -1584,9 +1639,9 @@
       ${perfHtml()}
       ${volHtml}
       ${weeksHtml()}
-      ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
-      <div class="grid2">
-        <section class="card"><h3>Check-ins <small class="muted">${checkins.length}</small>${asCoach && checkins.length ? ` <a class="small" href="#/cliente/${c.id}/revisiones">Ver todas las revisiones</a>` : ''}</h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
+      ${prs.length && !asCoach ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
+      <div class="${asCoach ? '' : 'grid2'}">
+        ${asCoach ? '' : `<section class="card"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>`}
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
@@ -1622,7 +1677,7 @@
       });
       const mb = ckBox.querySelector('[data-ckmore]'); if (mb) mb.onclick = () => { ckShown += 10; drawCks(); };
     };
-    if (checkins.length) drawCks();
+    if (checkins.length && ckBox) drawCks();
     // Entrenos: los últimos; cada uno se abre en su propio apartado
     const sBox = box.querySelector('[data-ses]');
     let sShown = 8;
@@ -1986,7 +2041,100 @@
   }
 
   // ---------- Programas (por ahora: rutinas de cada cliente + catálogo)
-  const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
+  const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/plantillas" class="${on === 'plantillas' ? 'on' : ''}">Plantillas</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
+
+  // ---------- Plantillas: semanas base (PPL, torso/pierna, anterior/posterior…) para copiar a un cliente y adaptarlas
+  const TPL = (name, sets, reps, rest, rir) => ({ exercise_name: name, sets, reps, rest_sec: rest, target_rir: rir });
+  const TEMPLATE_PRESETS = [
+    { name: 'Push · Pull · Legs (3 días)', notes: 'Empuje, tirón y pierna. Repetible en 6 días para más frecuencia.', routines: [
+      { name: 'PUSH', day: 1, items: [TPL('Press de banca', 4, '6-8', 150, 2), TPL('Press inclinado con mancuernas', 3, '8-10', 120, 2), TPL('Press militar', 3, '6-8', 150, 2), TPL('Elevaciones laterales', 3, '12-15', 60, 1), TPL('Fondos en paralelas', 3, '8-12', 90, 2), TPL('Extensión de tríceps en polea', 3, '10-12', 60, 1)] },
+      { name: 'PULL', day: 3, items: [TPL('Dominadas', 4, '6-8', 150, 2), TPL('Remo con barra', 3, '8-10', 120, 2), TPL('Jalón al pecho', 3, '10-12', 90, 2), TPL('Face pull', 3, '12-15', 60, 1), TPL('Curl de bíceps con barra', 3, '8-10', 60, 1), TPL('Curl martillo', 3, '10-12', 60, 1)] },
+      { name: 'LEGS', day: 5, items: [TPL('Sentadilla trasera', 4, '5-8', 180, 2), TPL('Peso muerto rumano', 3, '8-10', 150, 2), TPL('Prensa de piernas', 3, '10-12', 120, 2), TPL('Curl femoral tumbado', 3, '10-12', 90, 1), TPL('Extensión de cuádriceps', 3, '12-15', 60, 1), TPL('Elevación de gemelos de pie', 4, '10-15', 60, 1)] }] },
+    { name: 'Torso / Pierna (4 días)', notes: 'Dos torsos y dos piernas por semana, A y B.', routines: [
+      { name: 'Torso A', day: 1, items: [TPL('Press de banca', 4, '6-8', 150, 2), TPL('Remo con barra', 4, '6-8', 150, 2), TPL('Press de hombro con mancuernas', 3, '8-10', 90, 2), TPL('Jalón al pecho', 3, '10-12', 90, 2), TPL('Curl de bíceps con barra', 2, '10-12', 60, 1), TPL('Extensión de tríceps en polea', 2, '10-12', 60, 1)] },
+      { name: 'Pierna A', day: 2, items: [TPL('Sentadilla trasera', 4, '5-8', 180, 2), TPL('Peso muerto rumano', 3, '8-10', 150, 2), TPL('Extensión de cuádriceps', 3, '12-15', 60, 1), TPL('Curl femoral tumbado', 3, '10-12', 60, 1), TPL('Elevación de gemelos de pie', 3, '10-15', 60, 1)] },
+      { name: 'Torso B', day: 4, items: [TPL('Press inclinado con mancuernas', 4, '8-10', 120, 2), TPL('Dominadas', 4, '6-10', 150, 2), TPL('Remo en polea baja', 3, '10-12', 90, 2), TPL('Elevaciones laterales', 3, '12-15', 60, 1), TPL('Face pull', 3, '12-15', 60, 1), TPL('Curl martillo', 2, '10-12', 60, 1)] },
+      { name: 'Pierna B', day: 5, items: [TPL('Peso muerto convencional', 3, '4-6', 180, 2), TPL('Prensa de piernas', 3, '10-12', 120, 2), TPL('Sentadilla búlgara', 3, '8-10', 90, 2), TPL('Hip thrust', 3, '8-12', 90, 1), TPL('Crunch abdominal en polea alta', 3, '12-15', 60, 1)] }] },
+    { name: 'Anterior / Posterior (4 días)', notes: 'Cadena anterior (empujes y cuádriceps) y posterior (tirones, isquios y glúteo).', routines: [
+      { name: 'Anterior A', day: 1, items: [TPL('Sentadilla trasera', 4, '5-8', 180, 2), TPL('Press de banca', 4, '6-8', 150, 2), TPL('Press militar', 3, '8-10', 120, 2), TPL('Extensión de cuádriceps', 3, '12-15', 60, 1), TPL('Elevaciones laterales', 3, '12-15', 60, 1), TPL('Plancha', 3, '30-45 s', 45, null)] },
+      { name: 'Posterior A', day: 2, items: [TPL('Peso muerto rumano', 4, '6-8', 150, 2), TPL('Dominadas', 4, '6-8', 150, 2), TPL('Remo con barra', 3, '8-10', 120, 2), TPL('Curl femoral tumbado', 3, '10-12', 60, 1), TPL('Face pull', 3, '12-15', 60, 1), TPL('Curl de bíceps con barra', 3, '10-12', 60, 1)] },
+      { name: 'Anterior B', day: 4, items: [TPL('Prensa de piernas', 4, '8-10', 120, 2), TPL('Press inclinado con mancuernas', 4, '8-10', 120, 2), TPL('Fondos en paralelas', 3, '8-12', 90, 2), TPL('Sentadilla búlgara', 3, '8-10', 90, 2), TPL('Extensión de tríceps en polea', 3, '10-12', 60, 1)] },
+      { name: 'Posterior B', day: 5, items: [TPL('Hip thrust', 4, '8-10', 120, 2), TPL('Jalón al pecho', 4, '8-10', 120, 2), TPL('Remo en polea baja', 3, '10-12', 90, 2), TPL('Peso muerto rumano', 3, '10-12', 120, 2), TPL('Curl martillo', 3, '10-12', 60, 1), TPL('Elevación de gemelos de pie', 3, '10-15', 60, 1)] }] },
+    { name: 'Full body (3 días)', notes: 'Todo el cuerpo en cada sesión; ideal para principiantes o poco tiempo.', routines: [
+      { name: 'Full body A', day: 1, items: [TPL('Sentadilla trasera', 3, '6-8', 150, 2), TPL('Press de banca', 3, '6-8', 150, 2), TPL('Remo con barra', 3, '8-10', 120, 2), TPL('Elevaciones laterales', 2, '12-15', 60, 1), TPL('Plancha', 3, '30-45 s', 45, null)] },
+      { name: 'Full body B', day: 3, items: [TPL('Peso muerto rumano', 3, '8-10', 150, 2), TPL('Press militar', 3, '6-8', 150, 2), TPL('Jalón al pecho', 3, '10-12', 90, 2), TPL('Sentadilla búlgara', 2, '8-10', 90, 2), TPL('Curl de bíceps con barra', 2, '10-12', 60, 1)] },
+      { name: 'Full body C', day: 5, items: [TPL('Prensa de piernas', 3, '10-12', 120, 2), TPL('Press inclinado con mancuernas', 3, '8-10', 120, 2), TPL('Dominadas', 3, '6-10', 120, 2), TPL('Hip thrust', 3, '8-12', 90, 1), TPL('Extensión de tríceps en polea', 2, '10-12', 60, 1)] }] }
+  ];
+  const tplEmail = () => `plantilla-${crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : Date.now()}@plantillas.invalid`;
+  async function createTemplate(name, notes, routines) {
+    if (!S.exercises.length) await loadExercises().catch(() => []);
+    const [c] = await DB.insert('clients', { name, email: tplEmail(), notes: notes || null, active: false, is_template: true });
+    for (const [pos, r] of (routines || []).entries()) {
+      const [nr] = await DB.insert('routines', { client_id: c.id, name: r.name, day: r.day || null, position: pos, notes: r.notes || '' });
+      const its = r.items.map((i, k) => { const e = S.exercises.find(x => x.name.toLowerCase() === String(i.exercise_name).toLowerCase());
+        const d = Object.assign({ routine_id: nr.id, client_id: c.id, position: k, exercise_id: e ? e.id : null, media_url: (e && e.media_url) || '', notes: '', progression: { type: 'none' } }, crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}, i, repsRange(i.reps));
+        d.load = loadLabel(d); return d; });
+      if (its.length) await DB.insert('routine_items', its);
+    }
+    return c;
+  }
+  async function copyTemplateTo(tpl, target, replace) {
+    const [rs0, its] = await Promise.all([DB.list('routines', { eq: { client_id: tpl.id } }), DB.list('routine_items', { eq: { client_id: tpl.id } })]);
+    const rs = rs0.filter(r => !r.program_week_id).sort((a, b) => a.position - b.position);
+    if (replace) { const cur = (await DB.list('routines', { eq: { client_id: target.id } })).filter(r => !r.program_week_id); for (const r of cur) await DB.remove('routines', r.id); }
+    await copyRoutinesTo(target, rs, its); return rs.length;
+  }
+  function copyTemplateForm(tpl, after) {
+    const cl = S.clients.filter(c => c.active !== false);
+    if (!cl.length) return toast('No tienes clientes activos', 'err');
+    modal('Copiar «' + tpl.name + '» a un cliente', `<label>Cliente<select name="to">${cl.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+      <div class="choices"><label class="choice"><input type="radio" name="mode" value="add" checked><span><b>Añadir a sus rutinas fijas</b><small>Lo que ya tiene se mantiene.</small></span></label>
+      <label class="choice"><input type="radio" name="mode" value="replace"><span><b>Sustituir sus rutinas fijas</b><small>Borra sus rutinas fijas (no las semanas de programa ni lo entrenado) y pone las de la plantilla.</small></span></label></div>
+      <p class="muted small">Después las adaptas al cliente en su ficha y, si quieres, creas un mesociclo a partir de ellas.</p>`, {
+      submitLabel: 'Copiar', onSubmit: async (f, fd) => {
+        const to = S.clients.find(c => c.id === fd.get('to')), rep = fd.get('mode') === 'replace';
+        if (rep && !(await confirmBox(`Se borrarán las rutinas fijas actuales de ${to.name}.`, 'Sustituir'))) return false;
+        const n = await safe(() => copyTemplateTo(tpl, to, rep), 'Plantilla copiada');
+        if (n != null) { go('#/cliente/' + to.id + '/rutinas'); }
+        return after && after();
+      }
+    });
+  }
+  function saveAsTemplate(c, routines, items) {
+    if (!routines.length) return toast('No hay rutinas que guardar', 'err');
+    modal('Guardar como plantilla', `<label>Nombre<input name="name" required maxlength="80" value="${esc(routines.map(r => r.name).join(' · ').slice(0, 60))}"></label><label>Descripción <small class="muted">opcional</small><input name="notes" maxlength="200"></label>
+      <p class="muted small">Se guardan ${routines.length} rutina${routines.length === 1 ? '' : 's'} con sus ejercicios, series, reps, RIR y tipo de serie. Las cargas no se copian (son de ${esc(c.name)}).</p>`, {
+      submitLabel: 'Guardar plantilla', onSubmit: async (f, fd) => {
+        const rs = routines.map(r => ({ name: r.name, day: r.day, notes: r.notes, items: items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position)
+          .map(i => ({ exercise_name: i.exercise_name, sets: i.base && i.base.sets != null ? i.base.sets : i.sets, reps: i.reps, rest_sec: i.rest_sec, target_rir: i.base && i.base.target_rir !== undefined ? i.base.target_rir : i.target_rir, target_rpe: i.target_rpe, tempo: i.tempo, notes: i.notes, media_url: i.media_url, progression: i.progression || { type: 'none' } })) }));
+        await safe(() => createTemplate(String(fd.get('name')).trim() || 'Plantilla', String(fd.get('notes') || '').trim(), rs), 'Plantilla guardada en Programas');
+      }
+    });
+  }
+  async function coachTemplates() {
+    shell(COACH_NAV, 'programas', loading(), { title: 'Programas', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nueva plantilla</span></button>` });
+    await loadClients();
+    const tpls = S.templates || [];
+    const [rs, its] = tpls.length ? await Promise.all([DB.list('routines', { in: { client_id: tpls.map(t => t.id) } }), DB.list('routine_items', { in: { client_id: tpls.map(t => t.id) } })]) : [[], []];
+    const box = $app.querySelector('.content');
+    const missing = TEMPLATE_PRESETS.filter(p => !tpls.some(t => t.name === p.name));
+    box.innerHTML = `${PROGRAM_TABS('plantillas')}
+      <p class="muted small">Semanas base para no empezar de cero: ábrelas para ajustarlas, cópialas a un cliente y adáptalas a él. También puedes guardar como plantilla las rutinas de cualquier cliente (botón en su pestaña Rutinas).</p>
+      ${missing.length ? `<section class="card"><div class="row gap wrap"><span class="grow"><b>Plantillas base</b><small class="muted">${missing.map(p => esc(p.name)).join(' · ')}</small></span><button class="btn small primary" data-seed>${ic('plus')} Añadir ${missing.length === TEMPLATE_PRESETS.length ? 'las plantillas base' : 'las que faltan'}</button></div></section>` : ''}
+      <div class="tpl-grid">${tpls.map(t => { const r = rs.filter(x => x.client_id === t.id && !x.program_week_id).sort((a, b) => (a.day || 9) - (b.day || 9));
+        return `<section class="card tpl"><header><b>${esc(t.name)}</b><small class="muted">${r.length} rutina${r.length === 1 ? '' : 's'}${t.notes ? ' · ' + esc(t.notes) : ''}</small></header>
+          <ul class="tpl-days">${r.map(x => `<li><span>${x.day ? DIAS[x.day].slice(0, 3) : 'Libre'}</span><b>${esc(x.name)}</b><small>${its.filter(i => i.routine_id === x.id).length} ej.</small></li>`).join('') || '<li class="muted">Sin rutinas</li>'}</ul>
+          <div class="row gap wrap"><button class="btn small primary" data-copy="${t.id}">${ic('copy')} Copiar a cliente</button><a class="btn small" href="#/cliente/${t.id}/rutinas">${ic('edit')} Editar</a><button class="btn small ghost" data-dup="${t.id}">Duplicar</button><button class="icon-btn danger" data-del="${t.id}" title="Borrar plantilla">${ic('trash')}</button></div></section>`; }).join('')}</div>
+      ${!tpls.length && !missing.length ? '<p class="empty">Sin plantillas.</p>' : ''}`;
+    const byT = id => tpls.find(t => t.id === id);
+    $app.querySelector('[data-new]').onclick = () => modal('Nueva plantilla', '<label>Nombre<input name="name" required maxlength="80" placeholder="Ej: Torso / Pierna 5 días"></label><label>Descripción <small class="muted">opcional</small><input name="notes" maxlength="200"></label>', {
+      submitLabel: 'Crear y editar', onSubmit: async (f, fd) => { const t = await safe(() => createTemplate(String(fd.get('name')).trim() || 'Plantilla', String(fd.get('notes') || '').trim(), []), 'Plantilla creada'); if (t) go('#/cliente/' + t.id + '/rutinas'); } });
+    const sd = box.querySelector('[data-seed]'); if (sd) sd.onclick = async () => { sd.disabled = true; await safe(async () => { for (const p of missing) await createTemplate(p.name, p.notes, p.routines); }, 'Plantillas base añadidas'); coachTemplates(); };
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyTemplateForm(byT(b.dataset.copy)));
+    box.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => { const t = byT(b.dataset.dup);
+      await safe(async () => { const [c] = await DB.insert('clients', { name: t.name + ' (copia)', email: tplEmail(), notes: t.notes, active: false, is_template: true }); await copyTemplateTo(t, c, false); }, 'Plantilla duplicada'); coachTemplates(); });
+    box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const t = byT(b.dataset.del); if (!(await confirmBox(`Se borrará la plantilla «${t.name}». Los clientes a los que ya la copiaste no cambian.`))) return; await safe(() => DB.remove('clients', t.id), 'Plantilla borrada'); coachTemplates(); });
+  }
   async function coachPrograms() {
     shell(COACH_NAV, 'programas', loading(), { title: 'Programas' });
     const [clients, allR, programs, weeks] = await Promise.all([loadClients(), DB.list('routines', { order: ['position', 'asc'] }), DB.list('programs', {}), DB.list('program_weeks', {})]);
@@ -2282,7 +2430,7 @@
           id: i.id, lin: i.lineage_id || null, name: i.exercise_name, media: i.media_url, reps: i.reps, load: loadLabel(i), rest: i.rest_sec, notes: i.notes,
           it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe,
           prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.rir != null ? l.rir : l.rpe })), prevAt: prev[i.id] ? prev[i.id].at : null,
-          sets: Array.from({ length: i.sets }, () => ({ w: "", r: "", x: "", done: false }))
+          scheme: schemeLabel(i.progression), sets: schemeSets(i.sets, i.progression)
         }))
       };
       saveWorkout(w);
@@ -2301,15 +2449,15 @@
       ${w.notes ? `<p class="note wk-note">${nl2br(w.notes)}</p>` : ''}
       <div class="wk-list">${w.ex.map((e, ei) => `
         <section class="card wk-ex ${e.sets.every(s => s.done) ? 'complete' : ''}" data-ei="${ei}">
-          <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small></div>
+          <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.filter(x => x.tag !== 'D').length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small>${e.scheme ? `<small class="wk-scheme">${esc(e.scheme)}</small>` : ''}</div>
             ${mediaInfo(e.media) ? `<button type="button" class="icon-btn ${openMedia.has(ei) ? 'on' : ''}" data-media title="Ver técnica" aria-label="Ver técnica">${ic('video')}</button>` : ''}</header>
           ${openMedia.has(ei) ? mediaFacade(e.media) : ''}
           ${e.prevAt ? `<p class="muted small last">Última vez ${esc(ago(e.prevAt))}: ${e.prev.map(p => `${p.w != null ? fmtKg(p.w) + ' kg' : '–'} × ${p.r ?? '–'} reps`).join(' · ')}</p>` : ''}
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
-          ${e.sets.map((s, si) => `<div class="set ${s.done ? 'done' : ''}" data-si="${si}"><span class="sn">${si + 1}</span>
+          ${(() => { let n = 0; return e.sets.map(s => (s.tag === 'D' ? '' : String(++n))); })().map((lbl, si) => [lbl, e.sets[si], si]).map(([lbl, s, si]) => `<div class="set ${s.done ? 'done' : ''} ${s.tag ? 'tag-' + s.tag : ''}" data-si="${si}"><span class="sn">${s.tag === 'TOP' ? 'TOP' : s.tag === 'BO' ? 'BO' : s.tag === 'D' ? '↓' : lbl}</span>
             <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
-            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="–" aria-label="Kilos serie ${si + 1}">
+            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="${s.pct ? '−' + s.pct + ' %' : '–'}" aria-label="Kilos serie ${si + 1}${s.tag === 'D' ? ' (bajada)' : s.tag === 'BO' ? ' (back-off)' : s.tag === 'TOP' ? ' (top set)' : ''}">
             <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="–" aria-label="Repeticiones serie ${si + 1}">
             ${e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>`).join('')}</div>
@@ -2338,15 +2486,25 @@
           s.done = !s.done;
           if (s.done) {
             if (s.r === '' || s.r == null) { const def = parseInt(String(e.reps).split(/[-–]/).pop(), 10); if (!isNaN(def)) s.r = String(def); }
-            // propaga el peso a las series siguientes vacías
-            e.sets.slice(si + 1).forEach(n => { if (n.w === '' && s.w !== '') n.w = s.w; });
+            // propaga el peso a las series siguientes vacías: back-off = top set − %, bajadas del dropset en cadena
+            if (s.w !== '' && !isNaN(+s.w)) {
+              const r05 = x => String(Math.round(x * 2) / 2);
+              let chain = true, ref = +s.w;
+              e.sets.slice(si + 1).forEach(n => {
+                if (n.tag === 'D') { if (chain) { ref = ref * (1 - (n.pct || 20) / 100); if (n.w === '') n.w = r05(ref); } return; }
+                chain = false;
+                if (n.w !== '' || s.tag === 'D') return;
+                if (s.tag === 'TOP' && n.tag === 'BO') n.w = r05(+s.w * (1 - (n.pct || 10) / 100));
+                else if ((n.tag || '') === (s.tag || '')) n.w = s.w;
+              });
+            }
             if (navigator.vibrate) navigator.vibrate(30);
             if (e.rest > 0) startRest(e.rest);
           }
           saveWorkout(w); drawWorkout(w);
         };
       });
-      sec.querySelector('[data-addset]').onclick = () => { const l = e.sets[e.sets.length - 1]; e.sets.push({ w: l ? l.w : '', r: '', done: false }); saveWorkout(w); drawWorkout(w); };
+      sec.querySelector('[data-addset]').onclick = () => { const l = [...e.sets].reverse().find(x => x.tag !== 'D'); e.sets.push({ w: l ? l.w : '', r: '', done: false, tag: l && l.tag === 'TOP' ? 'BO' : (l && l.tag) || '', pct: l && (l.tag === 'BO' || l.tag === 'TOP') ? (l.pct || 10) : null }); saveWorkout(w); drawWorkout(w); };
       const ds = sec.querySelector('[data-delset]'); if (ds) ds.onclick = () => { e.sets.pop(); saveWorkout(w); drawWorkout(w); };
     });
     $app.querySelector('[data-exit]').onclick = async () => {
