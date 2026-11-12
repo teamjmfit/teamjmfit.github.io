@@ -1877,13 +1877,21 @@
 
   function finishWorkout(w, done) {
     if (!done) return toast('Marca al menos una serie como hecha', 'err');
+    const realMin = Math.max(1, Math.round((Date.now() - new Date(w.started_at)) / 6e4)), longMin = realMin > 150;
     modal('¡Entreno terminado! 🎉', `
-      <p>${done} series completadas en ${Math.max(1, Math.round((Date.now() - new Date(w.started_at)) / 6e4))} minutos.</p>
+      <p>${done} series completadas.</p>
+      <fieldset class="dur"><legend>¿Cuánto duró el entreno?</legend>
+        <label><input name="dur_h" type="number" inputmode="numeric" min="0" max="3" step="1" value="${longMin ? '' : Math.floor(realMin / 60)}" placeholder="1"><span>h</span></label>
+        <label><input name="dur_m" type="number" inputmode="numeric" min="0" max="59" step="1" value="${longMin ? '' : realMin % 60}" placeholder="15"><span>min</span></label></fieldset>
+      <p class="small ${longMin ? 'note' : 'muted'}" data-durhint>${longMin ? `⏱️ El contador marca ${Math.floor(realMin / 60)} h ${realMin % 60} min: si se te olvidó pararlo, pon lo que duró de verdad.` : 'Se rellena con el tiempo del contador. Si se te olvidó pararlo, corrígelo.'}</p>
       <fieldset class="scale wide"><legend>¿Qué tan duro fue? (RPE 1–10)</legend>${[5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="rpe" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
       <label>Comentario para tu entrenador (opcional)<textarea name="notes" rows="3" placeholder="Molestias, sensaciones, cambios…"></textarea></label>`, {
       submitLabel: 'Guardar entreno',
       onSubmit: async (f, fd) => {
         const c = S.client;
+        const hh = parseInt(fd.get('dur_h'), 10) || 0, mm = parseInt(fd.get('dur_m'), 10) || 0, dur = hh * 60 + mm;
+        if (mm > 59 || hh < 0 || mm < 0 || !(dur >= 5 && dur <= 180)) { toast('Pon cuánto duró: entre 5 minutos y 3 horas', 'err'); throw new Error('dur'); }
+        const finished = new Date(Math.min(Date.now(), new Date(w.started_at).getTime() + dur * 6e4)).toISOString();
         const logs = []; let vol = 0;
         const inRange = (v, a, b) => (v != null && v >= a && v <= b ? Math.round(v * 2) / 2 : null);
         w.ex.forEach(e => { let n = 0; e.sets.forEach(s => {
@@ -1893,7 +1901,7 @@
           if (e.it === 'rir') l.rir = inRange(x, 0, 10); if (e.it === 'rpe') l.rpe = inRange(x, 1, 10);
           logs.push(l); if (kg && !isNaN(r)) vol += kg * r; }); });
         await safe(async () => {
-          const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: new Date().toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
+          const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: finished, rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
           if (logs.length) await DB.insert('set_logs', logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l)));
         }, 'Entreno guardado 💪');
         clearWorkout(); stopRest(); openMedia.clear(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
