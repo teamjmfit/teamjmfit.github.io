@@ -1777,7 +1777,7 @@
           id: i.id, lin: i.lineage_id || null, name: i.exercise_name, media: i.media_url, reps: i.reps, load: loadLabel(i), rest: i.rest_sec, notes: i.notes,
           it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe,
           prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.rir != null ? l.rir : l.rpe })), prevAt: prev[i.id] ? prev[i.id].at : null,
-          sets: Array.from({ length: i.sets }, (_, k) => { const p = (prev[i.id] || [])[k]; return { w: i.load_kg != null ? i.load_kg : (p && p.weight != null ? p.weight : ''), r: '', x: '', done: false }; })
+          sets: Array.from({ length: i.sets }, () => ({ w: "", r: "", x: "", done: false }))
         }))
       };
       saveWorkout(w);
@@ -1799,13 +1799,13 @@
           <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b><small>${e.sets.length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small></div>
             ${mediaInfo(e.media) ? `<button type="button" class="icon-btn ${openMedia.has(ei) ? 'on' : ''}" data-media title="Ver técnica" aria-label="Ver técnica">${ic('video')}</button>` : ''}</header>
           ${openMedia.has(ei) ? mediaFacade(e.media) : ''}
-          ${e.prevAt ? `<p class="muted small last">Última vez ${esc(ago(e.prevAt))}: ${e.prev.map(p => `${fmtKg(p.w)}×${p.r ?? '–'}`).join(' · ')}</p>` : ''}
+          ${e.prevAt ? `<p class="muted small last">Última vez ${esc(ago(e.prevAt))}: ${e.prev.map(p => `${p.w != null ? fmtKg(p.w) + ' kg' : '–'} × ${p.r ?? '–'} reps`).join(' · ')}</p>` : ''}
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
           ${e.sets.map((s, si) => `<div class="set ${s.done ? 'done' : ''}" data-si="${si}"><span class="sn">${si + 1}</span>
-            <span class="prev">${e.prev[si] ? `${fmtKg(e.prev[si].w)}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? ' @' + fmtKg(e.prev[si].x) : ''}` : '–'}</span>
-            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="kg" aria-label="Kilos serie ${si + 1}">
-            <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="${esc(String(e.reps).split(/[-–]/).pop())}" aria-label="Repeticiones serie ${si + 1}">
+            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
+            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="–" aria-label="Kilos serie ${si + 1}">
+            <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="–" aria-label="Repeticiones serie ${si + 1}">
             ${e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>`).join('')}</div>
           <div class="row gap"><button class="btn ghost small" data-addset>${ic('plus')} Serie</button>${e.sets.length > 1 ? '<button class="btn ghost small" data-delset>Quitar serie</button>' : ''}</div>
