@@ -114,6 +114,7 @@
   const fmtKg = v => (v == null ? '–' : (Math.round(v * 10) / 10).toString().replace('.', ','));
   const eur = v => (v === '' || v == null || isNaN(Number(v)) ? (v || '–') : Number(v).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }));
   const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+  const cap1 = x => String(x || '').charAt(0).toUpperCase() + String(x || '').slice(1);
   const isoDay = () => { const d = new Date().getDay(); return d === 0 ? 7 : d; };
   const fmtDate = (s, opts) => { if (!s) return '–'; const d = new Date(s.length === 10 ? s + 'T12:00:00' : s); return isNaN(d) ? s : d.toLocaleDateString('es-ES', opts || { day: 'numeric', month: 'short' }); };
   const ago = s => {
@@ -671,10 +672,10 @@
     }
   }
 
-  function newProgram(c, n) {
+  function newProgram(c, n, start) {
     modal('Nuevo programa por semanas', `<p class="muted">Se copiarán las ${n} rutinas fijas de ${esc(c.name)} a la semana 1, en borrador. Las fijas no se borran: el cliente las seguirá viendo hasta que publiques la semana 1.</p>
       <label>Nombre<input name="name" required value="Bloque 1" placeholder="Ej: Hipertrofia otoño"></label>
-      <label>Empieza la semana del<input name="start" type="date" required value="${today()}"></label>
+      <label>Empieza la semana del<input name="start" type="date" required value="${start || today()}"></label>
       <p class="muted small">Tip: en cada ejercicio elige su «Progresión» (p. ej. +2,5 kg) para que las semanas siguientes suban solas.</p>`, {
       submitLabel: 'Crear programa', onSubmit: async (f, fd) => {
         if (!fd.get('start')) { toast('Elige la fecha de inicio', 'err'); return false; }
@@ -703,6 +704,100 @@
     });
   }
 
+  // ----- Eventos del calendario: se añaden pinchando un día (entreno puntual, cardio, movilidad, revisión, fotos, nota)
+  const EV_KINDS = {
+    workout: ['Entreno', 'dumbbell', 'Un entreno extra o puntual ese día'],
+    cardio: ['Cardio', 'clock', 'Caminar, bici, carrera… con minutos y zona'],
+    mobility: ['Movilidad', 'refresh', 'Movilidad o estiramientos'],
+    checkin: ['Revisión', 'inbox', 'Pedir la valoración semanal ese día'],
+    photos: ['Fotos', 'camera', 'Pedir fotos de progreso'],
+    note: ['Nota', 'chat', 'Un recordatorio o indicación']
+  };
+  const evTitle = e => e.title || (EV_KINDS[e.kind] || ['Evento'])[0];
+  async function loadEvents(cid, from, to) {
+    try { return (await DB.list('calendar_events', { eq: { client_id: cid }, gte: { date: from }, order: ['date', 'asc'] })).filter(e => e.date <= to); }
+    catch (e) { return null; } // tabla aún no creada (migración 011)
+  }
+  // Hecho: marcado a mano, o cumplido por un entreno / una revisión del cliente
+  function evDone(e, sessions, checkins) {
+    if (e.done_at) return true;
+    if (e.kind === 'workout' || (e.kind === 'mobility' && e.routine_id)) return !!e.routine_id && sessions.some(s => s.finished_at && s.routine_id === e.routine_id && ymd(new Date(s.started_at)) === e.date);
+    if (e.kind === 'checkin' || e.kind === 'photos') return (checkins || []).some(k => k.date >= addDays(e.date, -1) && k.date <= addDays(e.date, 3) && (e.kind === 'checkin' || k.photo_path));
+    return false;
+  }
+  function evDetail(e, routines) {
+    const r = e.routine_id && byId(routines || [], e.routine_id);
+    return [EV_KINDS[e.kind] ? EV_KINDS[e.kind][0] : '', r ? r.name : '', e.minutes ? e.minutes + ' min' : '', e.visible === false ? 'privada' : '', e.series_id ? 'semanal' : ''].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i && x !== evTitle(e)).join(' · ');
+  }
+  function eventForm(c, { date, ev = null, routines = [], weeks = [], fixedCount = 0, after }) {
+    const pubW = new Map(weeks.map(w => [w.id, w]));
+    // solo rutinas que el cliente puede abrir: fijas o de la semana publicada de ese día (o la última publicada)
+    const pub = weeks.filter(w => w.published).sort((a, b) => a.week_no - b.week_no);
+    const d1 = ev ? ev.date : date, wk = pub.find(w => w.start_date <= d1 && d1 <= addDays(w.start_date, 6)) || pub[pub.length - 1];
+    const opts = routines.filter(r => !r.program_week_id || (wk && r.program_week_id === wk.id) || (ev && r.id === ev.routine_id && pubW.has(r.program_week_id)))
+      .map(r => { const w = pubW.get(r.program_week_id); return `<option value="${r.id}" ${ev && ev.routine_id === r.id ? 'selected' : ''}>${esc(r.name)}${w ? ' · ' + esc(weekLabel(w)) : ' · fija'}</option>`; }).join('');
+    const k0 = ev ? ev.kind : 'workout';
+    const f = modal(ev ? 'Editar' : 'Añadir · ' + fmtDate(date, { weekday: 'long', day: 'numeric', month: 'long' }), `
+      ${ev ? '' : `<div class="evkinds">${Object.entries(EV_KINDS).map(([k, [l, icn, d]]) => `<label class="evkind k-${k}"><input type="radio" name="kind" value="${k}" ${k === k0 ? 'checked' : ''}><span>${ic(icn)}<b>${l}</b><small>${d}</small></span></label>`).join('')}
+        <button type="button" class="evkind k-program" data-newprog><span>${ic('copy')}<b>Programa</b><small>Empezar un programa por semanas desde este día</small></span></button></div>`}
+      <div class="form-grid">
+        <label>Fecha<input name="date" type="date" required value="${esc(ev ? ev.date : date)}"></label>
+        <label data-for="workout mobility">Rutina<select name="routine_id"><option value="">${'(sin rutina)'}</option>${opts}</select></label>
+        <label data-for="cardio mobility">Minutos<input name="minutes" type="number" min="1" max="600" inputmode="numeric" value="${ev && ev.minutes ? ev.minutes : ''}" placeholder="Ej: 30"></label>
+      </div>
+      <label>Título <small class="muted">opcional</small><input name="title" maxlength="120" value="${esc(ev ? ev.title : '')}" data-ph></label>
+      <label>Indicaciones<textarea name="notes" rows="2" maxlength="2000" data-phn>${esc(ev ? ev.notes || '' : '')}</textarea></label>
+      <label class="check" data-for="note"><input type="checkbox" name="private" ${ev && ev.visible === false ? 'checked' : ''}> Nota privada (solo la ves tú)</label>
+      ${ev ? '' : `<div class="form-grid"><label class="check"><input type="checkbox" name="repeat"> Repetir cada semana</label><label data-rep hidden>Hasta<input name="until" type="date" value="${addDays(date, 27)}"></label></div>`}`, {
+      submitLabel: ev ? 'Guardar' : 'Añadir',
+      onSubmit: async (form, fd) => {
+        const kind = ev ? ev.kind : fd.get('kind');
+        const d0 = fd.get('date'); if (!d0) { toast('Pon la fecha', 'err'); return false; }
+        const uses = s => (EV_KINDS[kind] && form.querySelector(`[data-for~="${kind}"] [name="${s}"]`));
+        const row = {
+          client_id: c.id, date: d0, kind,
+          title: String(fd.get('title') || '').trim(),
+          notes: String(fd.get('notes') || '').trim() || null,
+          routine_id: uses('routine_id') ? fd.get('routine_id') || null : null,
+          minutes: uses('minutes') ? num(fd.get('minutes')) : null,
+          visible: !(kind === 'note' && fd.get('private'))
+        };
+        if (!row.title && row.routine_id) row.title = (byId(routines, row.routine_id) || {}).name || '';
+        if (row.minutes != null) row.minutes = Math.max(1, Math.min(600, Math.round(row.minutes)));
+        if (kind === 'workout' && !row.routine_id && !row.title) { toast('Elige una rutina o pon un título', 'err'); return false; }
+        if (kind === 'note' && !row.title && !row.notes) { toast('Escribe la nota', 'err'); return false; }
+        if (ev) { await safe(() => DB.update('calendar_events', ev.id, row), 'Guardado'); return after && after(row.date); }
+        let rows = [row];
+        if (fd.get('repeat')) {
+          const until = fd.get('until') || addDays(d0, 27), sid = crypto.randomUUID();
+          rows = [];
+          for (let d = d0, n = 0; d <= until && n < 26; d = addDays(d, 7), n++) rows.push(Object.assign({}, row, { date: d, series_id: sid }));
+        }
+        await safe(() => DB.insert('calendar_events', rows), rows.length > 1 ? `${rows.length} semanas añadidas` : 'Añadido');
+        return after && after(row.date);
+      }
+    });
+    const sync = () => {
+      const k = ev ? ev.kind : (f.querySelector('[name=kind]:checked') || {}).value;
+      f.querySelectorAll('[data-for]').forEach(el => { el.hidden = !el.dataset.for.split(' ').includes(k); });
+      const ph = { workout: 'Ej: Full body extra', cardio: 'Ej: Caminar inclinado', mobility: 'Ej: Movilidad cadera y tobillo', checkin: 'Valoración semanal', photos: 'Fotos de frente, perfil y espalda', note: 'Ej: Hoy come un poco más de carbos' }[k] || '';
+      f.querySelector('[data-ph]').placeholder = ph;
+      f.querySelector('[data-phn]').placeholder = { cardio: 'Ej: zona 2, 130–140 ppm, que puedas hablar', checkin: 'Ej: con medidas esta vez', note: 'Lo que verá el cliente ese día' }[k] || '';
+    };
+    f.querySelectorAll('[name=kind]').forEach(x => x.onchange = sync); sync();
+    const rep = f.querySelector('[name=repeat]'); if (rep) rep.onchange = () => { f.querySelector('[data-rep]').hidden = !rep.checked; };
+    const np = f.querySelector('[data-newprog]'); if (np) np.onclick = () => { closeModal(); newProgram(c, fixedCount, f.querySelector('[name=date]').value || date); };
+  }
+  async function deleteEvent(ev, after) {
+    if (!ev.series_id) { if (await confirmBox(`Se borrará «${evTitle(ev)}» del ${fmtDate(ev.date)}.`)) { await safe(() => DB.remove('calendar_events', ev.id), 'Borrado'); after(); } return; }
+    const next = await DB.list('calendar_events', { eq: { client_id: ev.client_id, series_id: ev.series_id }, gte: { date: ev.date }, fresh: true });
+    modal('Borrar evento semanal', `<p>«${esc(evTitle(ev))}» se repite cada semana.</p>`, {
+      submitLabel: 'Solo este día',
+      danger: { label: `Este y los siguientes (${next.length})`, run: async () => { closeModal(); await safe(async () => { for (const x of next) await DB.remove('calendar_events', x.id); }, 'Serie borrada'); after(); } },
+      onSubmit: async () => { await safe(() => DB.remove('calendar_events', ev.id), 'Borrado'); after(); }
+    });
+  }
+
   // ----- Calendario mensual del cliente (entrenador)
   async function tabCalendar(c, box) {
     S.calMonth = S.calMonth || {};
@@ -722,6 +817,11 @@
     const t = today();
     const first = new Date(y, m - 1, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
     const lastDay = new Date(y, m, 0), end = new Date(lastDay); end.setDate(lastDay.getDate() + (7 - ((lastDay.getDay() + 6) % 7)) - 1);
+    const [events0, checkins] = await Promise.all([loadEvents(c.id, ymd(start), ymd(end)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 200 }).catch(() => [])]);
+    const events = events0 || [];
+    const evOn = iso => events.filter(e => e.date === iso);
+    const reload = iso => { if (iso) { S.calSel = iso; S.calMonth[c.id] = iso.slice(0, 7); } tabCalendar(c, box); };
+    const addOn = iso => events0 === null ? toast('Falta ejecutar la migración 011 en Supabase', 'err') : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload });
     const plan = iso => {
       const dow = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
       const w = pweeks.find(x => x.start_date <= iso && iso <= addDays(x.start_date, 6));
@@ -744,29 +844,39 @@
       cells.push(`<button type="button" class="cday ${d.getMonth() !== m - 1 ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''}" data-day="${iso}">
         <span class="cnum">${d.getDate()}${monday && p.week ? `<i class="cwk">S${p.week.week_no + (p.kind === 'auto' ? Math.floor((new Date(iso) - new Date(lastW.start_date)) / 6048e5) : 0)}</i>` : ''}</span>
         ${p.rs.map(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name); return `<span class="cev ${p.kind} ${dn ? 'done' : doneInWeek(r, iso) ? 'moved' : iso < t ? 'missed' : ''}">${esc(r.name)}</span>`; }).join('')}
-        ${done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name)).map(s => `<span class="cev done">${esc(s.routine_name || 'Entreno')}</span>`).join('')}
+        ${done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id)).map(s => `<span class="cev done">${esc(s.routine_name || 'Entreno')}</span>`).join('')}
+        ${evOn(iso).map(e => `<span class="cev k-${e.kind} ${evDone(e, sessions, checkins) ? 'done' : ''}">${esc(evTitle(e))}</span>`).join('')}
       </button>`);
     }
     const mName = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
     const monthDone = sessions.filter(s => s.finished_at && s.started_at.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}`).length;
     box.innerHTML = `<section class="card cal">
-        <header class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><h3 class="grow center">${esc(mName)}</h3><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button></header>
+        <header class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><h3 class="grow center">${esc(mName)}</h3><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button><button class="btn small primary" data-addev>${ic('plus')} Añadir</button></header>
         <p class="muted small center">${monthDone} entreno${monthDone === 1 ? '' : 's'} hecho${monthDone === 1 ? '' : 's'} este mes${prog ? ` · ${esc(prog.name)}${prog.auto_repeat !== false ? ' · se repite sola cada semana' : ''}` : ' · rutinas fijas (se repiten cada semana)'}</p>
         <div class="cgrid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<small class="chead">${x}</small>`).join('')}${cells.join('')}</div>
-        <div class="clegend"><span class="cev pub">Planificado</span><span class="cev done">Hecho</span><span class="cev moved pub">Hecho otro día</span><span class="cev missed pub">No hecho</span>${prog ? '<span class="cev auto">Se repetirá</span><span class="cev draft">Borrador</span>' : ''}</div>
+        <div class="clegend"><span class="cev pub">Planificado</span><span class="cev done">Hecho</span><span class="cev moved pub">Hecho otro día</span><span class="cev missed pub">No hecho</span>${prog ? '<span class="cev auto">Se repetirá</span><span class="cev draft">Borrador</span>' : ''}${Object.entries(EV_KINDS).map(([k, [l]]) => `<span class="cev k-${k}">${l}</span>`).join('')}</div>
+        <p class="muted small center">Pincha un día para ver lo que tiene y añadir entrenos, cardio, revisiones o notas.</p>
       </section><div data-dayinfo></div>`;
     box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const d = new Date(y, m - 1 + Number(b.dataset.mv), 1); S.calMonth[c.id] = ymd(d).slice(0, 7); tabCalendar(c, box); });
     const info = box.querySelector('[data-dayinfo]');
     const showDay = iso => {
       S.calSel = iso; box.querySelectorAll('.cday').forEach(x => x.classList.toggle('sel', x.dataset.day === iso));
-      const p = plan(iso), done = doneOn(iso);
-      info.innerHTML = `<section class="card"><h3>${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
-        ${p.rs.map(r => `<div class="routine-mini"><b>${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length ? '' : '<p class="empty">Descanso</p>')}
+      const p = plan(iso), done = doneOn(iso), evs = evOn(iso);
+      info.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3><button class="btn small primary" data-addday>${ic('plus')} Añadir</button></header>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
+        ${evs.length ? `<ul class="evlist">${evs.map(e => { const dn = evDone(e, sessions, checkins); return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${esc(evDetail(e, routines))}${dn ? ' · ✓ hecho' : ''}</small>${e.notes ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>
+          <button class="icon-btn" data-evdone="${e.id}" aria-label="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}" title="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}">${ic('check')}</button><button class="icon-btn" data-evedit="${e.id}" aria-label="Editar o mover" title="Editar o mover">${ic('edit')}</button><button class="icon-btn danger" data-evdel="${e.id}" aria-label="Borrar" title="Borrar">${ic('trash')}</button></li>`; }).join('')}</ul>` : ''}
+        ${p.rs.map(r => `<div class="routine-mini"><b>${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
         ${done.map(s => `<p class="pill green">✓ ${esc(s.routine_name || 'Entreno')} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}</p>`).join('')}
         ${p.rs.length ? `<button class="btn small" data-goweek>${ic('edit')} Editar ${p.week && p.kind !== 'auto' ? esc(weekLabel(p.week)) : p.kind === 'auto' ? 'la última semana' : 'rutinas fijas'}</button>` : ''}</section>`;
       const g = info.querySelector('[data-goweek]');
       if (g) g.onclick = () => { S.weekSel = S.weekSel || {}; S.weekSel[c.id] = p.week ? p.week.id : 'fixed'; go('#/cliente/' + c.id + '/rutinas'); };
+      info.querySelector('[data-addday]').onclick = () => addOn(iso);
+      const ev = id => byId(evs, id);
+      info.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { const e = ev(b.dataset.evdone); await safe(() => DB.rpc('set_event_done', { p_id: e.id, p_done: !e.done_at })); reload(iso); });
+      info.querySelectorAll('[data-evedit]').forEach(b => b.onclick = () => eventForm(c, { date: iso, ev: ev(b.dataset.evedit), routines, weeks: pweeks, fixedCount: fixed.length, after: reload }));
+      info.querySelectorAll('[data-evdel]').forEach(b => b.onclick = () => deleteEvent(ev(b.dataset.evdel), () => reload(iso)));
     };
+    box.querySelector('[data-addev]').onclick = () => addOn(S.calSel || t);
     box.querySelectorAll('[data-day]').forEach(b => b.onclick = () => showDay(b.dataset.day));
     const inMonth = S.calSel && S.calSel.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? S.calSel : (t.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? t : null);
     if (inMonth) showDay(inMonth);
@@ -1681,6 +1791,8 @@
       DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
       DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => [])
     ]);
+    const t0 = today();
+    const [events, ckins] = await Promise.all([loadEvents(c.id, addDays(t0, -7), addDays(t0, 13)).then(x => (x || []).filter(e => e.visible !== false)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 10 }).catch(() => [])]);
     const cw = currentWeek(weeks, programs);
     const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
     routines.sort((a, b) => (a.day || 9) - (b.day || 9));
@@ -1698,13 +1810,29 @@
         <a class="btn ${hero ? 'primary big block' : 'small'}" href="#/entreno/${r.id}">${ic('play')} ${hero ? 'Empezar entreno' : 'Empezar'}</a></section>`;
     };
     const pending = getActiveWorkout();
+    const wkS = ymd(weekStart), wkE = addDays(wkS, 6);
+    const evToday = events.filter(e => e.date === t0), evNext = events.filter(e => e.date > t0 && e.date <= addDays(t0, 6));
+    // revisiones o fotos pendientes de días anteriores de esta semana también se muestran hoy
+    const evLate = events.filter(e => e.date < t0 && e.date >= wkS && ['checkin', 'photos'].includes(e.kind) && !evDone(e, sessions, ckins));
+    const evRow = (e, big) => {
+      const dn = evDone(e, sessions, ckins), r = e.routine_id && byId(allRoutines, e.routine_id);
+      const act = r ? `<a class="btn small ${big && !dn ? 'primary' : ''}" href="#/entreno/${r.id}">${ic('play')} Empezar</a>`
+        : ['checkin', 'photos'].includes(e.kind) ? (dn ? '' : `<button class="btn small primary" data-evck>${ic(e.kind === 'photos' ? 'camera' : 'inbox')} ${e.kind === 'photos' ? 'Subir fotos' : 'Hacer revisión'}</button>`)
+        : e.kind === 'note' ? '' : `<button class="btn small ${dn ? '' : 'primary'}" data-evdone="${e.id}" data-on="${dn ? 0 : 1}">${ic('check')} ${dn ? 'Hecho ✓' : 'Marcar hecho'}</button>`;
+      return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${big ? '' : esc(cap1(fmtDate(e.date, { weekday: 'long', day: 'numeric' }))) + ' · '}${esc([EV_KINDS[e.kind][0], r ? r.name : '', e.minutes ? e.minutes + ' min' : ''].filter((x, i, a) => x && a.indexOf(x) === i && x !== evTitle(e)).join(' · '))}${e.date < t0 && big ? ' · pendiente' : ''}</small>${e.notes && big ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>${big ? act : ''}</li>`;
+    };
     $app.querySelector('.content').innerHTML = `
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
-      <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()); return `<div class="${n === d ? 'today' : ''} ${has ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
+      <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()) || events.some(e => e.date === ymd(dd) && e.kind !== 'note' && evDone(e, sessions, ckins)); const hasEv = events.some(e => e.date === ymd(dd) && e.kind !== 'note'); return `<div class="${n === d ? 'today' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
       <p class="muted small center">${cw ? esc(weekLabel(cw)) + ' · ' : ''}${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
-      ${todays.length ? todays.map(r => card(r, true)).join('') : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
+      ${todays.length ? todays.map(r => card(r, true)).join('') : evToday.some(e => e.kind !== 'note') ? '' : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
+      ${evLate.length + evToday.length ? `<section class="card"><h3>${todays.length ? 'Hoy también' : 'Hoy'}</h3><ul class="evlist">${[...evLate, ...evToday].map(e => evRow(e, true)).join('')}</ul></section>` : ''}
+      ${evNext.length ? `<h3 class="sub">Próximos días</h3><section class="card"><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
       ${routines.filter(r => r.day !== d).length ? `<h3 class="sub">Todas mis rutinas</h3>${routines.filter(r => r.day !== d).map(r => card(r, false)).join('')}` : ''}
-      ${!routines.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}`;
+      ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}`;
+    const box = $app.querySelector('.content');
+    box.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
+    box.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { b.disabled = true; try { await safe(() => DB.rpc('set_event_done', { p_id: b.dataset.evdone, p_done: b.dataset.on === '1' }), b.dataset.on === '1' ? '¡Hecho! 💪' : ''); } catch (e) { b.disabled = false; return; } clientToday(); });
   }
 
   async function clientNutrition() {
