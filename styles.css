@@ -790,3 +790,35 @@ label.sl-item span, label.sl-item b { color: var(--text); }
 .legend i.vz-k-d, .vz-k-d { background: var(--muted); opacity: .5; } .legend i.vz-k-dl, .vz-k-dl { background: #2ec4b6; opacity: .45; } .legend i.vz-k-ok, .vz-k-ok { background: var(--green); opacity: .4; }
 .vz-k-e1 { background: var(--accent); } .vz-k-top { background: #6fb3ff; } .vz-k-ton { background: var(--muted); } .vz-k-eff { background: #b48cff; }
 @media (max-width: 520px) { .vz-sel, .vz-sel select { width: 100%; max-width: none; } .vz .kpis.small { grid-template-columns: 1fr 1fr; } }
+
+/* Objetivos S.M.A.R.T. */
+.smart-steps { display: flex; gap: 4px; margin-bottom: 10px; }
+.smart-steps span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); padding: 6px 2px; border-radius: 8px; background: var(--card2); }
+.smart-steps b { color: var(--accent); font-size: 14px; }
+fieldset.smart { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 12px 10px; margin: 0 0 10px; }
+fieldset.smart legend { padding: 0 6px; font-weight: 600; } fieldset.smart legend b { color: var(--accent); }
+.smart-a { padding: 10px 12px; border-radius: var(--r-sm); background: var(--card2); margin-bottom: 10px; }
+.smart-a ul { margin: 6px 0 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.smart-a li { padding-left: 22px; position: relative; } .smart-a li::before { position: absolute; left: 0; }
+.smart-a li.ok::before { content: '✓'; color: var(--green); } .smart-a li.warn::before { content: '!'; color: var(--amber); font-weight: 700; left: 6px; }
+.smart-a li.bad { color: var(--red); } .smart-a li.bad::before { content: '✕'; } .smart-a li.info { color: var(--muted); } .smart-a li.info::before { content: 'i'; left: 6px; }
+.smart-prev p { margin: 4px 0; }
+.gl-blocks { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.gl-blocks li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--card2); }
+.gl-blocks li small { color: var(--muted); min-width: 52px; text-align: right; }
+.gl-blocks li.now { outline: 2px solid var(--accent); } .gl-blocks li.hit small { color: var(--green); } .gl-blocks li.miss small { color: var(--red); }
+.gl-card { border-top: 1px solid var(--line); padding: 12px 0; } .gl-card:first-of-type { border-top: 0; }
+.gl-card.big { border: 0; padding: 0; }
+.gl-top { display: flex; gap: 14px; align-items: center; } .gl-top b { display: block; } .gl-top small { color: var(--muted); } .gl-top p { margin: 4px 0 0; }
+.gl-ring { flex: none; } .gl-ring .bg { fill: none; stroke: var(--card2); stroke-width: 10; }
+.gl-ring .fg { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+.gl-ring.st-done .fg, .gl-ring.st-ahead .fg { stroke: var(--green); } .gl-ring.st-behind .fg, .gl-ring.st-late .fg { stroke: var(--amber); }
+.gl-ring .exp { fill: var(--text); stroke: var(--card); stroke-width: 2; } .gl-ring .pc { font: 700 20px var(--body); fill: var(--text); }
+.gl-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.gl-badge { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--card2); color: var(--muted); }
+.gl-badge.on { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); font-weight: 600; }
+.gl-head { margin: 4px 0 0; }
+.focus-card b .pill { margin-left: 6px; } .focus-card p { margin: 4px 0; }
+.cev.k-goal { background: color-mix(in srgb, var(--green) 18%, transparent); box-shadow: inset 2px 0 0 var(--green); }
+@media (prefers-reduced-motion: reduce) { .gl-ring .fg { transition: none; } }
+@media (max-width: 520px) { .smart-steps span { font-size: 0; } .smart-steps b { font-size: 14px; } .gl-top { align-items: flex-start; } }
