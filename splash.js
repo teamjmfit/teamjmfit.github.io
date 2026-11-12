@@ -23,7 +23,7 @@
   ];
   const el = document.getElementById('splash'); if (!el) return;
   const f = el.querySelector('[data-frase]'); if (f) f.textContent = FRASES[Math.floor(Math.random() * FRASES.length)];
-  const t0 = Date.now(), MIN = 1100, MAX = 4000;
+  const t0 = Date.now(), MIN = 2800, MAX = 6000;
   let done = false;
   const hide = () => {
     if (done) return; done = true;

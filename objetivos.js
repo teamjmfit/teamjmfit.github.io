@@ -159,5 +159,51 @@
   // Escalada: hitos de 25 en 25 % como medallas
   const badges = pct => [[0.25, 'Arranque'], [0.5, 'Mitad'], [0.75, 'Recta final'], [1, 'Meta']].map(([p, l]) => `<span class="gl-badge ${pct >= p ? 'on' : ''}" title="${Math.round(p * 100)} %">${pct >= p ? '★' : '☆'} ${l}</span>`).join('');
 
-  window.JMGoals = { METRICS, FOCUS, autoFocus, title, series, valueAt, blocks, progress, validate, ring, badges, nf, fd, addD, days };
+  // Objetivos sugeridos a partir de sus datos (ficha, tendencia de peso, ejercicios que más entrena, cintura)
+  const slopeW = pts => { // kg (o cm) por semana con regresión lineal
+    if (pts.length < 3) return null;
+    const xs = pts.map(p => new Date(p.date + 'T12:00:00') / DAY / 7), mx = xs.reduce((a, x) => a + x, 0) / xs.length, my = pts.reduce((a, p) => a + p.v, 0) / pts.length;
+    const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0); return den ? xs.reduce((a, x, i) => a + (x - mx) * (pts[i].v - my), 0) / den : null;
+  };
+  const r05 = x => Math.round(x * 2) / 2, r25 = x => Math.round(x / 2.5) * 2.5;
+  function suggest(data, c = {}, goals = [], blockW = 4) {
+    const t = ymd(new Date()), act = (goals || []).filter(g => g.status === 'active'), out = [];
+    const has = (m, ex) => act.some(g => g.metric === m && (m !== 'e1rm' || keyOf(g.exercise_name) === keyOf(ex)));
+    const until = wk => addD(t, Math.max(blockW, Math.ceil(wk / blockW) * blockW) * 7);
+    const mk = (o, why) => { const g = Object.assign({ start_date: t, block_weeks: blockW }, o); g.focus = autoFocus(g.metric, g.start_value, g.target_value); g.why = why; g.title = title(g); return validate(g).some(x => x.lv === 'bad') ? null : g; };
+    // Peso: hacia el peso objetivo de la ficha o siguiendo la tendencia de las últimas 6 semanas
+    const ws = series('weight', data);
+    if (!has('weight') && ws.length >= 2) {
+      const cur = valueAt('weight', ws, t), gw = +c.goal_weight;
+      if (cur && gw && Math.abs(gw - cur) >= 1) {
+        const rate = Math.min(Math.abs(+c.weekly_target) || cur * 0.005, cur * (gw < cur ? 0.0075 : 0.004));
+        out.push(mk({ metric: 'weight', start_value: Math.round(cur * 10) / 10, target_value: r05(gw), deadline: until(Math.abs(gw - cur) / rate) }, `Peso objetivo de su ficha (${nf(gw)} kg) a un ritmo de ${nf(rate, 2)} kg/semana`));
+      } else if (cur) {
+        const sl = slopeW(ws.filter(x => x.date >= addD(t, -42)));
+        if (sl != null && Math.abs(sl) >= 0.1) {
+          const rate = Math.sign(sl) * Math.min(Math.abs(sl), cur * (sl < 0 ? 0.0075 : 0.004)), wk = Math.max(blockW, 8), tg = r05(cur + rate * wk);
+          if (Math.abs(tg - cur) >= 0.5) out.push(mk({ metric: 'weight', start_value: Math.round(cur * 10) / 10, target_value: tg, deadline: until(wk) }, `Viene ${sl < 0 ? 'bajando' : 'subiendo'} ${nf(Math.abs(sl), 2)} kg/semana: consolidarlo`));
+        }
+      }
+    }
+    // Fuerza: los ejercicios que más repite en las últimas 8 semanas → +5 % de 1RM estimado en 6–8 semanas
+    const sd = {}; (data.sessions || []).forEach(x => { sd[x.id] = x.started_at; });
+    const cnt = {}; (data.logs || []).forEach(l => { const d = String(sd[l.session_id] || l.created_at || '').slice(0, 10); if (d >= addD(t, -56) && +l.weight > 0) { const k = keyOf(l.exercise_name); (cnt[k] = cnt[k] || { n: new Set(), name: l.exercise_name }).n.add(l.session_id); } });
+    Object.values(cnt).filter(x => x.n.size >= 4).sort((a, b) => b.n.size - a.n.size).slice(0, 4).forEach(x => {
+      if (has('e1rm', x.name) || out.filter(o => o && o.metric === 'e1rm').length >= 2) return;
+      const se = series('e1rm', data, x.name), cur = valueAt('e1rm', se, t); if (!cur || cur < 10) return;
+      const sl = slopeW(se.filter(p => p.date >= addD(t, -56))), wk = Math.max(blockW, 6), tg = r25(cur * 1.05);
+      if (tg <= cur) return;
+      out.push(mk({ metric: 'e1rm', exercise_name: x.name, start_value: Math.round(cur * 10) / 10, target_value: tg, deadline: until(wk) }, `Lo entrena a menudo (${x.n.size} sesiones en 8 semanas)${sl != null ? `; su 1RM estimado ${sl > 0.2 ? 'sube ' + nf(sl, 1) + ' kg/semana' : sl < -0.2 ? 'ha bajado un poco' : 'está estable'}` : ''}`));
+    });
+    // Cintura: si se mide y va bajando
+    const wa = series('waist', data);
+    if (!has('waist') && wa.length >= 2) {
+      const cur = valueAt('waist', wa, t), sl = slopeW(wa.filter(x => x.date >= addD(t, -84)));
+      if (cur && (sl == null || sl <= 0)) out.push(mk({ metric: 'waist', start_value: cur, target_value: r05(cur - 2), deadline: until(8) }, sl != null && sl < -0.1 ? `La cintura baja ${nf(-sl, 2)} cm/semana` : 'Mide la cintura en los check-ins: buen indicador de grasa'));
+    }
+    return out.filter(Boolean).slice(0, 4);
+  }
+
+  window.JMGoals = { METRICS, FOCUS, autoFocus, title, series, valueAt, blocks, progress, validate, ring, badges, suggest, nf, fd, addD, days };
 })();
