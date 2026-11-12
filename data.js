@@ -348,6 +348,10 @@
           });
         };
         const prevOf = w => (T('program_weeks').filter(x => x.program_id === w.program_id && x.week_no < w.week_no).sort((x, y) => y.week_no - x.week_no)[0] || {}).id || null;
+        if (fn === 'set_event_done') {
+          const e = T('calendar_events').find(x => x.id === a.p_id); if (!e) throw new Error('Evento no encontrado');
+          e.done_at = a.p_done ? (e.done_at || now()) : null; save(); return null;
+        }
         if (fn === 'set_week_kind') {
           const w = T('program_weeks').find(x => x.id === a.p_week); if (!w) throw new Error('Semana no encontrada');
           T('routines').filter(r => r.program_week_id === w.id).forEach(r => applyKind(r.id, a.p_kind, prevOf(w)));

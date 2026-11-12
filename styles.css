@@ -705,3 +705,27 @@ label.sl-item span, label.sl-item b { color: var(--text); }
 #splash.out { opacity: 0; visibility: hidden; }
 @keyframes splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #splash img, #splash p { animation: none; } #splash { transition: none; } }
+
+/* Calendario interactivo: eventos por día */
+.k-workout { --k: var(--accent); } .k-cardio { --k: var(--red); } .k-mobility { --k: #2ec4b6; }
+.k-checkin { --k: #6fb3ff; } .k-photos { --k: #b48cff; } .k-note { --k: var(--muted); } .k-program { --k: var(--amber); }
+.cev[class*="k-"] { background: color-mix(in srgb, var(--k) 20%, transparent); box-shadow: inset 2px 0 0 var(--k); }
+.cev[class*="k-"].done { color: var(--green); }
+.cal header .btn { margin-left: 4px; }
+.evkinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.evkind { position: relative; display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: var(--text); }
+.evkind input { position: absolute; opacity: 0; pointer-events: none; }
+.evkind > span { display: grid; grid-template-columns: 22px 1fr; column-gap: 8px; align-items: center; height: 100%; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--card2); }
+.evkind > span .ic { color: var(--k); grid-row: span 2; }
+.evkind b { font-size: 14px; } .evkind small { color: var(--muted); font-size: 11px; line-height: 1.3; }
+.evkind input:checked + span { border-color: var(--k); box-shadow: 0 0 0 1px var(--k) inset; background: color-mix(in srgb, var(--k) 12%, var(--card2)); }
+.evkind input:focus-visible + span, .evkind:focus-visible > span { outline: 2px solid var(--k); outline-offset: 2px; }
+.k-program > span { border-style: dashed; }
+.evlist { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.ev { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--k) 9%, var(--card2)); border-left: 3px solid var(--k); }
+.ev .grow { min-width: 0; } .ev b { display: block; } .ev small { color: var(--muted); } .ev p { margin: 4px 0 0; }
+.evic { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--k) 22%, transparent); color: var(--k); }
+.ev.done { opacity: .75; } .ev.done b { text-decoration: line-through; text-decoration-color: var(--green); }
+.ev.done .evic { background: color-mix(in srgb, var(--green) 22%, transparent); color: var(--green); }
+.ev .icon-btn { flex: none; }
+@media (max-width: 520px) { .evkinds { grid-template-columns: 1fr 1fr; } .evkind small { display: none; } .ev { flex-wrap: wrap; } .ev .btn { margin-left: 42px; } }
