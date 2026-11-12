@@ -293,13 +293,14 @@
           if (!src) throw new Error('Semana no encontrada');
           const weeks = T('program_weeks').filter(w => w.program_id === src.program_id);
           let base = src;
-          if (src.kind === 'deload' && mode !== 'deload') base = weeks.filter(w => w.week_no < src.week_no && w.kind === 'normal').sort((x, y) => y.week_no - x.week_no)[0] || src;
+          if ((src.kind === 'deload' || src.kind === 'intensity') && mode !== 'deload') base = weeks.filter(w => w.week_no < src.week_no && (w.kind === 'normal' || w.kind === 'maintenance')).sort((x, y) => y.week_no - x.week_no)[0] || src;
           const nw = { id: uuid(), program_id: src.program_id, client_id: src.client_id, week_no: Math.max(...weeks.map(w => w.week_no)) + 1, start_date: plus(weeks.map(w => w.start_date).sort().pop(), 7), kind: mode === 'deload' ? 'deload' : 'normal', source_week_id: src.id, published: false, created_at: now() };
           T('program_weeks').push(nw);
           const srcR = new Set(T('routines').filter(r => r.program_week_id === src.id).map(r => r.id));
           const done = new Set(T('sessions').filter(x => x.finished_at && srcR.has(x.routine_id)).map(x => x.id));
           copyWeek(T('routines').filter(r => r.program_week_id === base.id).sort((x, y) => (x.position - y.position) || ((x.day || 0) - (y.day || 0))), nw.id, it => {
-            const o = {}; const pr = it.progression || {}; const rule = pr.type || 'none';
+            const fb = it.base || { sets: it.sets, target_rir: it.target_rir, load_kg: it.load_kg };   // lo fijo
+            const o = { sets: fb.sets, target_rir: fb.target_rir ?? null, load_kg: fb.load_kg ?? null, base: null }; it = Object.assign({}, it, o); const pr = it.progression || {}; const rule = pr.type || 'none';
             const inc = Number(pr.inc_kg ?? pr.inc ?? 0);
             const logs = T('set_logs').filter(l => l.lineage_id && l.lineage_id === it.lineage_id && done.has(l.session_id));
             if ((mode === 'progress' || mode === 'repeat') && rule !== 'none' && it.reps_max != null && logs.length >= it.sets) {
@@ -314,7 +315,7 @@
             } else if (mode === 'repeat' && logs.length) {
               const top = Math.max(...logs.map(l => Number(l.weight) || 0)); if (top > 0) o.load_kg = top;
             }
-            if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.min((it.target_rir ?? 2) + 2, 5); }
+            if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.min((it.target_rir ?? 2) + 2, 5); o.base = { sets: it.sets, target_rir: it.target_rir, load_kg: o.load_kg ?? it.load_kg }; }
             return o;
           });
           save(); return nw.id;
