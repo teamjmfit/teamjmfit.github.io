@@ -574,6 +574,9 @@
       <div class="tabs">${CLIENT_TABS.map(([k, l]) => `<a href="#/cliente/${id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</div>
       <div data-tab>${loading()}</div>`;
     const box = content.querySelector('[data-tab]');
+    if (window.JMGoals) loadGoals(c.id).then(gs => { const g = primaryGoal(gs), hd = content.querySelector('.client-head > div'); if (!g || !hd) return;
+      const fo = JMGoals.FOCUS[g.focus]; const p = document.createElement('p'); p.className = 'gl-head';
+      p.innerHTML = `🎯 <b>${esc(g.title)}</b>${fo ? ` <span class="pill">${esc(fo.tag)}</span>` : ''}`; hd.appendChild(p); });
     if (tab === 'rutinas') return tabRoutines(c, box);
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
@@ -587,12 +590,16 @@
   // ----- Rutinas (entrenador)
   async function tabRoutines(c, box) {
     await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
-    const [allRoutines, items, programs, weeks] = await Promise.all([
+    const [allRoutines, items, programs, weeks, goalsR] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('programs', { eq: { client_id: c.id } }),
-      DB.list('program_weeks', { eq: { client_id: c.id } })
+      DB.list('program_weeks', { eq: { client_id: c.id } }),
+      window.JMGoals ? loadGoals(c.id) : null
     ]);
+    const pgR = primaryGoal(goalsR), foR = pgR && window.JMGoals ? JMGoals.FOCUS[pgR.focus] : null;
+    const focusBox = foR ? `<section class="card focus-card"><div class="row gap wrap"><b class="grow">Enfoque: ${esc(foR.l)} <span class="pill">${esc(foR.tag)}</span></b><a class="small" href="#/cliente/${c.id}/progreso">Objetivo</a></div>
+      <p class="small">🏋️ ${esc(foR.train)}</p><p class="small muted">🍽️ ${esc(foR.diet)}</p><p class="small muted">Lo marca el objetivo principal: «${esc(pgR.title)}».</p></section>` : '';
     if (!S.exercises.length) await loadExercises();
     S.weekSel = S.weekSel || {};
     const prog = programs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
@@ -625,7 +632,7 @@
             : `<p class="muted small">Rutinas fijas: el cliente solo las ve mientras no haya ninguna semana publicada en curso.</p>`}
         </section>`;
     const week = [1, 2, 3, 4, 5, 6, 7].map(d => { const r = routines.filter(x => x.day === d); return `<div class="wday ${r.length ? 'has' : ''}"><small>${DIAS_C[d]}</small>${r.map(x => `<span>${esc(x.name)}</span>`).join('') || '<em>—</em>'}</div>`; }).join('');
-    box.innerHTML = `${progBox}
+    box.innerHTML = `${focusBox}${progBox}
       <div class="week">${week}</div>
       ${window.JMLoad ? (() => { const ids = new Set(routines.map(r => r.id)); const pw = view ? pweeks.find(w => w.week_no === view.week_no - 1) : null;
         const prevIds = pw ? new Set(allRoutines.filter(r => r.program_week_id === pw.id).map(r => r.id)) : null;
@@ -692,12 +699,127 @@
     });
   }
 
+  // ----- Objetivos S.M.A.R.T. (objetivos.js + migración 013)
+  const mesoOf = (progs, weeks) => { const p = (progs || []).filter(x => x.status !== 'archived' && x.meso_weeks).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]; return p ? { start: p.start_date, weeks: p.meso_weeks } : null; };
+  const loadGoals = cid => DB.list('goals', { eq: { client_id: cid }, order: ['created_at', 'desc'] }).catch(() => null);
+  const primaryGoal = gs => (gs || []).filter(g => g.status === 'active').sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+  async function goalData(c, need) {
+    const [checkins, daily, logs, sessions] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 120 }).catch(() => []),
+      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
+      need === 'e1rm' || need === 'all' ? DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }).catch(() => []) : [],
+      need === 'e1rm' || need === 'all' ? DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 }).catch(() => []) : []]);
+    return { checkins, daily, logs, sessions };
+  }
+  function goalForm(c, { goal = null, data, goals = [], after, meso = null }) {
+    const G = window.JMGoals, M = G.METRICS, F = G.FOCUS;
+    const exs = [...new Set((data.logs || []).filter(l => +l.weight > 0).map(l => String(l.exercise_name || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+    const curOf = (m, ex) => { const s = G.series(m, data, ex); return G.valueAt(m, s, today()); };
+    const progs = meso;
+    const g0 = goal || { metric: 'weight', start_date: progs && progs.start && progs.start >= addDays(today(), -6) ? progs.start : today(), block_weeks: (progs && progs.weeks) || 4, is_primary: !goals.some(x => x.status === 'active' && x.is_primary) };
+    const startV = goal ? goal.start_value : curOf('weight');
+    const f = modal(goal ? 'Editar objetivo' : 'Nuevo objetivo S.M.A.R.T.', `
+      <div class="smart-steps"><span><b>S</b>pecífico</span><span><b>M</b>edible</span><span><b>A</b>lcanzable</span><span><b>R</b>elevante</span><span><b>T</b>emporal</span></div>
+      <fieldset class="smart"><legend><b>S·M</b> ¿Qué vas a conseguir y cómo se mide?</legend>
+        <div class="form-grid">
+          <label>Métrica<select name="metric">${Object.entries(M).map(([k, m]) => `<option value="${k}" ${g0.metric === k ? 'selected' : ''}>${m.l}</option>`).join('')}</select></label>
+          <label data-ex>Ejercicio<input name="exercise_name" list="gl-exs" maxlength="120" value="${esc(g0.exercise_name || '')}" placeholder="Ej: Peso muerto"><datalist id="gl-exs">${exs.map(e => `<option value="${esc(e)}">`).join('')}</datalist></label>
+          <label>Valor actual <small class="muted" data-unit></small><input name="start_value" type="number" step="0.1" min="0" inputmode="decimal" required value="${startV != null ? Math.round(startV * 10) / 10 : ''}"></label>
+          <label>Objetivo <small class="muted" data-unit></small><input name="target_value" type="number" step="0.1" min="0" inputmode="decimal" required value="${g0.target_value != null ? g0.target_value : ''}"></label>
+        </div><p class="muted small" data-src></p></fieldset>
+      <fieldset class="smart"><legend><b>T</b> ¿Para cuándo?</legend><div class="form-grid">
+        <label>Empieza<input name="start_date" type="date" required value="${esc(g0.start_date)}"></label>
+        <label>Fecha límite<input name="deadline" type="date" required value="${esc(g0.deadline || addDays(g0.start_date, (g0.block_weeks || 4) * 7 * 3))}"></label>
+        <label>Micro-objetivos cada<select name="block_weeks"><option value="4" ${+g0.block_weeks === 4 ? 'selected' : ''}>4 semanas</option><option value="6" ${+g0.block_weeks === 6 ? 'selected' : ''}>6 semanas</option></select></label>
+      </div><p class="muted small">Los bloques coinciden con los mesociclos${progs ? ` (el actual empieza el ${fmtDate(progs.start)})` : ''}: un hito al final de cada uno.</p></fieldset>
+      <fieldset class="smart"><legend><b>R</b> ¿Por qué es importante?</legend>
+        <label>Enfoque <small class="muted">marca las pautas de las rutinas</small><select name="focus">${Object.entries(F).map(([k, x]) => `<option value="${k}" ${g0.focus === k ? 'selected' : ''}>${x.l}</option>`).join('')}</select></label>
+        <label>Motivo<textarea name="why" rows="2" maxlength="1000" placeholder="Ej: competir en −86 kg en febrero; sentirme más ágil en el BJJ">${esc(g0.why || '')}</textarea></label>
+        <label class="check"><input type="checkbox" name="is_primary" ${g0.is_primary ? 'checked' : ''}> Objetivo principal (sale en el inicio y guía las rutinas)</label></fieldset>
+      <div class="smart-a"><b>A · ¿Es alcanzable?</b><ul data-val></ul></div>
+      <div class="smart-prev" data-prev></div>
+      <label class="check" data-force hidden><input type="checkbox" name="force"> Lo hemos hablado y aun así lo queremos así</label>`, {
+      submitLabel: goal ? 'Guardar' : 'Crear objetivo',
+      onSubmit: async (form, fd) => {
+        const g = read(fd), v = G.validate(g, { cur: g.metric === 'e1rm' ? curOf('e1rm', g.exercise_name) : null });
+        const bad = v.filter(x => x.lv === 'bad');
+        if (bad.some(x => !/extremo|demasiado|poco realista|agresivo|rápido/.test(x.t))) { toast(bad[0].t, 'err'); return false; }
+        if (bad.length && !fd.get('force')) { toast('El objetivo no parece realista: ajústalo o marca que lo habéis hablado', 'err'); return false; }
+        const row = Object.assign(g, { client_id: c.id, title: G.title(g) });
+        if (row.metric !== 'e1rm') row.exercise_name = null;
+        await safe(async () => {
+          if (row.is_primary) for (const x of goals.filter(x => x.is_primary && x.status === 'active' && (!goal || x.id !== goal.id))) await DB.update('goals', x.id, { is_primary: false });
+          if (goal) await DB.update('goals', goal.id, row); else await DB.insert('goals', Object.assign({ status: 'active' }, row));
+        }, goal ? 'Objetivo guardado' : 'Objetivo creado 🎯');
+        return after && after();
+      }
+    });
+    function read(fd) {
+      const n = k => num(String(fd.get(k) || '').replace(',', '.'));
+      return { metric: fd.get('metric'), exercise_name: String(fd.get('exercise_name') || '').trim() || null, start_value: n('start_value'), target_value: n('target_value'),
+        start_date: fd.get('start_date'), deadline: fd.get('deadline'), block_weeks: +fd.get('block_weeks') || 4, focus: fd.get('focus'), why: String(fd.get('why') || '').trim() || null, is_primary: !!fd.get('is_primary') };
+    }
+    let lastMetric = g0.metric, lastEx = g0.exercise_name || '', focusTouched = !!goal;
+    f.querySelector('[name=focus]').addEventListener('change', () => { focusTouched = true; });
+    const draw = () => {
+      const fd = new FormData(f), g = read(fd), m = M[g.metric];
+      f.querySelectorAll('[data-unit]').forEach(e => { e.textContent = '(' + m.u + ')'; });
+      f.querySelector('[data-ex]').hidden = g.metric !== 'e1rm';
+      // al cambiar de métrica o de ejercicio, el valor actual sale de sus datos
+      if (!goal && (g.metric !== lastMetric || (g.metric === 'e1rm' && (g.exercise_name || '') !== lastEx))) {
+        const cv = curOf(g.metric, g.exercise_name); f.querySelector('[name=start_value]').value = cv != null ? Math.round(cv * 10) / 10 : '';
+        lastMetric = g.metric; lastEx = g.exercise_name || ''; g.start_value = cv;
+      }
+      const cv = curOf(g.metric, g.exercise_name);
+      f.querySelector('[data-src]').textContent = `Se mide con: ${m.src}.${cv != null ? ` Último dato: ${G.nf(cv)} ${m.u}.` : ' Aún no hay datos: empezará a contar con el próximo registro.'}`;
+      if (!focusTouched && g.start_value && g.target_value) f.querySelector('[name=focus]').value = G.autoFocus(g.metric, g.start_value, g.target_value);
+      const v = G.validate(g, { cur: g.metric === 'e1rm' ? cv : null });
+      f.querySelector('[data-val]').innerHTML = v.map(x => `<li class="${x.lv}">${esc(x.t)}</li>`).join('') || '<li class="ok">Todo en orden.</li>';
+      f.querySelector('[data-force]').hidden = !v.some(x => x.lv === 'bad' && /extremo|demasiado|poco realista|agresivo|rápido/.test(x.t));
+      const ok = g.start_value > 0 && g.target_value > 0 && g.start_value !== g.target_value && g.deadline > g.start_date;
+      const fo = F[fd.get('focus')] || F.health;
+      f.querySelector('[data-prev]').innerHTML = ok ? `<p><b>🎯 ${esc(G.title(g))}</b></p><p class="small muted">Enfoque «${esc(fo.l)}»: ${esc(fo.train)}</p>
+        <ol class="gl-blocks">${G.blocks(g).map(b => `<li><span>Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b></li>`).join('')}</ol>` : '';
+    };
+    f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
+  }
+  // Tarjeta de un objetivo con anillo, estado, medallas y micro-objetivos
+  function goalCard(g, data, { big = false, actions = true } = {}) {
+    const G = window.JMGoals, m = G.METRICS[g.metric], p = G.progress(g, data), fo = G.FOCUS[g.focus];
+    return `<article class="gl-card st-${p.st[0]} ${big ? 'big' : ''}" data-goal="${g.id}">
+      <div class="gl-top">${G.ring(p.pct, p.st[0] === 'done' ? 1 : p.exp, 'st-' + p.st[0], big ? 104 : 84)}
+        <div class="grow"><b>${esc(g.title)}</b>
+          <small><span class="pill">${esc(fo ? fo.tag : 'Objetivo')}</span>${g.is_primary ? ' <span class="pill green">Principal</span>' : ''} ${esc(p.st[1])}${p.daysLeft > 0 && p.st[0] !== 'done' ? ` · quedan ${p.daysLeft} días` : ''}</small>
+          <p class="small">Ahora <b>${p.cur != null ? G.nf(p.cur) + ' ' + m.u : 'sin datos'}</b> · a estas alturas tocaría ${G.nf(p.expected)} ${m.u} · meta ${G.nf(+g.target_value)} ${m.u}</p>
+          ${g.why ? `<p class="small muted">«${esc(g.why)}»</p>` : ''}</div></div>
+      <div class="gl-badges">${G.badges(p.pct)}</div>
+      <ol class="gl-blocks">${p.blocks.map(b => `<li class="${b.now ? 'now' : ''} ${b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}"><span>${b.now ? '▶ ' : ''}Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b><small>${b.hit === true ? '✓ ' + G.nf(b.value) : b.hit === false ? '✗ ' + G.nf(b.value) : b.now ? 'en curso' : ''}</small></li>`).join('')}</ol>
+      ${actions ? `<div class="row gap wrap">${p.st[0] === 'done' && g.status !== 'done' ? `<button class="btn small primary" data-gdone="${g.id}">${ic('check')} Marcar conseguido</button>` : ''}<button class="btn small" data-gedit="${g.id}">${ic('edit')} Editar</button><button class="btn small ghost" data-gdrop="${g.id}">${g.status === 'active' ? 'Archivar' : 'Reactivar'}</button><button class="icon-btn danger" data-gdel="${g.id}" title="Borrar">${ic('trash')}</button></div>` : ''}
+    </article>`;
+  }
+  async function goalsSection(c, box, data, goals, redraw, meso = null) {
+    const el = box.querySelector('[data-goals]'); if (!el) return;
+    if (goals === null) { el.innerHTML = ''; return; }
+    if (!window.JMGoals) { el.innerHTML = ''; return; }
+    const act = goals.filter(g => g.status === 'active'), old = goals.filter(g => g.status !== 'active');
+    el.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">Objetivos S.M.A.R.T.</h3><button class="btn small primary" data-gnew>${ic('plus')} Nuevo objetivo</button></header>
+      ${act.length ? act.map(g => goalCard(g, data)).join('') : '<p class="empty">Sin objetivos activos. Define uno concreto, medible y con fecha: los micro-objetivos por bloque se crean solos.</p>'}
+      ${old.length ? `<details><summary class="small">Anteriores (${old.length})</summary>${old.map(g => goalCard(g, data)).join('')}</details>` : ''}</section>`;
+    const byG = id => goals.find(g => g.id === id);
+    el.querySelector('[data-gnew]').onclick = () => goalForm(c, { data, goals, after: redraw, meso });
+    el.querySelectorAll('[data-gedit]').forEach(b => b.onclick = () => goalForm(c, { goal: byG(b.dataset.gedit), data, goals, after: redraw, meso }));
+    el.querySelectorAll('[data-gdone]').forEach(b => b.onclick = async () => { await safe(() => DB.update('goals', b.dataset.gdone, { status: 'done', achieved_at: new Date().toISOString(), is_primary: false }), '¡Objetivo conseguido! 🏆'); redraw(); });
+    el.querySelectorAll('[data-gdrop]').forEach(b => b.onclick = async () => { const g = byG(b.dataset.gdrop); await safe(() => DB.update('goals', g.id, g.status === 'active' ? { status: 'dropped', is_primary: false } : { status: 'active' }), g.status === 'active' ? 'Objetivo archivado' : 'Objetivo reactivado'); redraw(); });
+    el.querySelectorAll('[data-gdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Se borrará este objetivo.')) { await safe(() => DB.remove('goals', b.dataset.gdel), 'Objetivo borrado'); redraw(); } });
+  }
+
   // ----- Mesociclo cerrado: 4 o 6 semanas, progresión proyectada y descarga final automática (meso.js + migración 012)
   async function mesoForm(c, { start = null, after = null } = {}) {
-    const [routines, items, programs, weeks] = await Promise.all([
+    const [routines, items, programs, weeks, goalsM] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('programs', { eq: { client_id: c.id } }), DB.list('program_weeks', { eq: { client_id: c.id } })]);
+      DB.list('programs', { eq: { client_id: c.id } }), DB.list('program_weeks', { eq: { client_id: c.id } }), window.JMGoals ? loadGoals(c.id) : null]);
+    const pgM = primaryGoal(goalsM), foM = pgM && window.JMGoals ? JMGoals.FOCUS[pgM.focus] : null, defProg = foM ? foM.prog : 'auto';
     const prog = programs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
     const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
     const fixed = routines.filter(r => !r.program_week_id);
@@ -724,9 +846,10 @@
         <label>Parte de<select name="src">${srcs.map(([v, l]) => `<option value="${v}" ${v === defSrc ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
         <label>Punto de partida<select name="offset"><option value="0">Igual que esas rutinas</option><option value="1" ${prog && prog.meso_weeks ? 'selected' : ''}>Un paso por encima (continuar el bloque anterior)</option></select></label>
         <label>Progresión en la carga<select name="prog">
-          <option value="auto">Automática: +kg si tiene carga; si no, +reps</option><option value="load">Carga (kg)</option><option value="reps">Repeticiones</option><option value="sets">Series (+1 cada 2 semanas, máx. +2)</option><option value="none">Solo el RIR</option></select></label>
+          ${[['auto', 'Automática: +kg si tiene carga; si no, +reps'], ['load', 'Carga (kg)'], ['reps', 'Repeticiones'], ['sets', 'Series (+1 cada 2 semanas, máx. +2)'], ['none', 'Solo el RIR']].map(([v, l]) => `<option value="${v}" ${v === defProg ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Subida por semana<span class="row gap"><input name="inc_kg" type="number" step="0.25" min="0" max="20" value="${D.inc_kg}" aria-label="kg por semana"><small>kg</small><input name="inc_reps" type="number" step="1" min="0" max="5" value="${D.inc_reps}" aria-label="reps por semana"><small>reps</small></span></label>
       </div>
+      ${foM ? `<p class="note small">Enfoque del objetivo principal: <b>${esc(foM.l)}</b>. ${esc(foM.train)}</p>` : ''}
       <label class="check"><input type="checkbox" name="rir_ramp" ${D.rir_ramp ? 'checked' : ''}> El RIR baja durante el bloque (p. ej. 3 → 2 → 1)</label>
       <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
         <label>Menos volumen (series)<span class="row gap"><input name="dvol" type="number" min="0" max="80" step="5" value="${D.deload_vol * 100}"><small>%</small></span></label>
@@ -908,6 +1031,8 @@
     const [events0, checkins] = await Promise.all([loadEvents(c.id, ymd(start), ymd(end)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 200 }).catch(() => [])]);
     const events = events0 || [];
     const evOn = iso => events.filter(e => e.date === iso);
+    const gls = window.JMGoals ? ((await loadGoals(c.id)) || []).filter(g => g.status === 'active') : [];
+    const msOn = iso => gls.flatMap(g => JMGoals.blocks(g).filter(b => b.to === iso).map(b => ({ g, b })));
     const reload = iso => { if (iso) { S.calSel = iso; S.calMonth[c.id] = iso.slice(0, 7); } tabCalendar(c, box); };
     const addOn = iso => events0 === null ? toast('Falta ejecutar la migración 011 en Supabase', 'err') : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload });
     const plan = iso => {
@@ -934,6 +1059,7 @@
         ${p.rs.map(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name); return `<span class="cev ${p.kind} ${dn ? 'done' : doneInWeek(r, iso) ? 'moved' : iso < t ? 'missed' : ''}">${esc(r.name)}</span>`; }).join('')}
         ${done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id)).map(s => `<span class="cev done">${esc(s.routine_name || 'Entreno')}</span>`).join('')}
         ${evOn(iso).map(e => `<span class="cev k-${e.kind} ${evDone(e, sessions, checkins) ? 'done' : ''}">${esc(evTitle(e))}</span>`).join('')}
+        ${msOn(iso).map(({ g, b }) => `<span class="cev k-goal" title="${esc(g.title)}">🎯 ${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}</span>`).join('')}
       </button>`);
     }
     const mName = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
@@ -951,6 +1077,7 @@
       S.calSel = iso; box.querySelectorAll('.cday').forEach(x => x.classList.toggle('sel', x.dataset.day === iso));
       const p = plan(iso), done = doneOn(iso), evs = evOn(iso);
       info.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3><button class="btn small primary" data-addday>${ic('plus')} Añadir</button></header>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
+        ${msOn(iso).map(({ g, b }) => `<p class="note small">🎯 Fin del bloque ${b.i} de «${esc(g.title)}»: llegar a <b>${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}</b>.</p>`).join('')}
         ${evs.length ? `<ul class="evlist">${evs.map(e => { const dn = evDone(e, sessions, checkins); return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${esc(evDetail(e, routines))}${dn ? ' · ✓ hecho' : ''}</small>${e.notes ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>
           <button class="icon-btn" data-evdone="${e.id}" aria-label="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}" title="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}">${ic('check')}</button><button class="icon-btn" data-evedit="${e.id}" aria-label="Editar o mover" title="Editar o mover">${ic('edit')}</button><button class="icon-btn danger" data-evdel="${e.id}" aria-label="Borrar" title="Borrar">${ic('trash')}</button></li>`; }).join('')}</ul>` : ''}
         ${p.rs.map(r => `<div class="routine-mini"><b>${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
@@ -1311,6 +1438,7 @@
       DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
       DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
     ]);
+    const goals = await loadGoals(c.id);
     const H = exHistory(logs, sessions);
     const perf = Object.entries(H).map(([k, h]) => ({ name: (logs.find(l => String(l.exercise_name).trim().toLowerCase() === k) || {}).exercise_name || k, h, st: stallOf(h), lastDate: h[h.length - 1].date }))
       .sort((a, b) => String(b.lastDate).localeCompare(String(a.lastDate))).slice(0, 14);
@@ -1354,6 +1482,7 @@
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
+      <div data-goals></div>
       ${VZ.map(v => v.html).join('')}
       ${LP ? LP.html : ''}
       ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
@@ -1375,6 +1504,7 @@
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
+    goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach), mesoOf(progs, pweeks));
     if (LP) LP.wire(box, async wid => {
       const w = pweeks.find(x => x.id === wid);
       if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
@@ -1723,7 +1853,7 @@
   // ----- Tarjeta de check-in (Progreso del cliente y bandeja de Revisiones)
   function checkinCard(k, asCoach, { who, prev, photos } = {}) {
     const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
-    const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh], ['Gemelo', k.calf], ['Cuello', k.neck], ['Hombros', k.shoulders]].filter(m => m[1]);
+    const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh], ['Gemelo', k.calf], ['Cuello', k.neck], ['Hombros', k.shoulders], ['% grasa', k.body_fat]].filter(m => m[1]);
     const old = [['Energía', k.energy], ['Sueño', k.sleep], ['Adherencia', k.adherence]].filter(m => m[1]);
     const ten = Object.entries(CK_SCALES).filter(([key]) => k[key] != null);
     const short = { train_adh: 'Entreno', diet_adh: 'Nutrición', hunger: 'Hambre', satiety: 'Saciedad', fatigue: 'Fatiga', energy10: 'Energía', sleep_q: 'Sueño', stress: 'Estrés', motivation: 'Motivación' };
@@ -1736,7 +1866,7 @@
       ${ten.length ? `<div class="ck-grid">${ten.map(([key]) => `<span class="${tone(key, k[key])}"><small>${short[key]}</small><b>${k[key]}</b></span>`).join('')}</div>` : ''}
       ${k.steps != null || k.sleep_h != null ? `<p class="small">${[k.steps != null ? `👣 ${Number(k.steps).toLocaleString('es-ES')} pasos/día` : '', k.sleep_h != null ? `😴 ${fmtKg(k.sleep_h)} h de sueño` : ''].filter(Boolean).join(' · ')}</p>` : ''}
       ${old.length ? `<div class="scores">${old.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(Math.max(0, 5 - m[1]))}</b></span>`).join('')}</div>` : ''}
-      ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])} cm`).join(' · ')}</p>` : ''}
+      ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
       ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
       <div class="ck-pics" data-photos hidden></div>
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
@@ -1885,6 +2015,8 @@
       DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => [])
     ]);
     const t0 = today();
+    const goalsC = window.JMGoals ? await loadGoals(c.id) : null, pg = primaryGoal(goalsC);
+    const gData = pg ? await goalData(c, pg.metric === 'e1rm' ? 'e1rm' : 'w') : null;
     const [events, ckins] = await Promise.all([loadEvents(c.id, addDays(t0, -7), addDays(t0, 13)).then(x => (x || []).filter(e => e.visible !== false)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 10 }).catch(() => [])]);
     const cw = currentWeek(weeks, programs);
     const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
@@ -1918,6 +2050,7 @@
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
       <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()) || events.some(e => e.date === ymd(dd) && e.kind !== 'note' && evDone(e, sessions, ckins)); const hasEv = events.some(e => e.date === ymd(dd) && e.kind !== 'note'); return `<div class="${n === d ? 'today' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
       <p class="muted small center">${cw ? esc(weekLabel(cw)) + ' · ' : ''}${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
+      ${pg ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small" href="#/progreso">Ver progreso</a></header>${goalCard(pg, gData, { big: true, actions: false })}</section>` : ''}
       ${todays.length ? todays.map(r => card(r, true)).join('') : evToday.some(e => e.kind !== 'note') ? '' : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
       ${evLate.length + evToday.length ? `<section class="card"><h3>${todays.length ? 'Hoy también' : 'Hoy'}</h3><ul class="evlist">${[...evLate, ...evToday].map(e => evRow(e, true)).join('')}</ul></section>` : ''}
       ${evNext.length ? `<h3 class="sub">Próximos días</h3><section class="card"><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
@@ -1981,7 +2114,8 @@
       ${scale('sleep_q')}${scale('stress')}${scale('motivation')}
       ${text('notes', 3)}
       <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
-        ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}</div></details>
+        ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
+        <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>
       <fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
         ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
         <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
@@ -1990,7 +2124,7 @@
       onSubmit: async (form, fd) => {
         const d = { client_id: c.id, date: fd.get('date') || today() };
         const n = k => num(String(fd.get(k) || '').replace(',', '.'));
-        ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'calf', 'neck', 'shoulders', 'steps', 'sleep_h', ...Object.keys(CK_SCALES)].forEach(k => { const v = n(k); if (v != null) d[k] = v; });
+        ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'calf', 'neck', 'shoulders', 'body_fat', 'steps', 'sleep_h', ...Object.keys(CK_SCALES)].forEach(k => { const v = n(k); if (v != null) d[k] = v; });
         if (d.steps != null) d.steps = Math.round(d.steps);
         Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v) d[k] = v; });
         if (!d.weight) { toast('Pon tu peso en ayunas', 'err'); return false; }
