@@ -603,13 +603,19 @@
     const routines = allRoutines.filter(r => (view ? r.program_week_id === view.id : !r.program_week_id));
     const live = currentWeek(pweeks, prog ? [prog] : []);
     const laterDrafts = view ? pweeks.filter(w => w.week_no > view.week_no).length : 0;
+    const lastW = pweeks[pweeks.length - 1];
+    const mesoEnd = !!(prog && prog.meso_weeks && lastW && ((live && live.id === lastW.id) || addDays(lastW.start_date, 7) <= today()));
     routines.sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
     const progBox = !prog
-      ? `<section class="card prog-card"><div class="row gap"><span class="grow"><b>Programa por semanas</b><small class="muted">Convierte estas rutinas en la semana 1. Luego creas cada semana nueva con un clic (copia, progresión automática o descarga) y la publicas cuando esté lista.</small></span>
-          <button class="btn small primary" data-newprog ${fixed.length ? '' : 'disabled title="Crea antes alguna rutina"'}>${ic('plus')} Crear programa</button></div></section>`
+      ? `<section class="card prog-card"><div class="row gap wrap"><span class="grow"><b>Planificación por bloques</b><small class="muted"><b>Mesociclo</b>: 4 o 6 semanas con la progresión proyectada y descarga automática al final. <b>Programa abierto</b>: creas cada semana a mano (copia, progresión o descarga).</small></span>
+          <button class="btn small primary" data-meso ${fixed.length ? '' : 'disabled title="Crea antes alguna rutina"'}>${ic('plus')} Crear mesociclo</button>
+          <button class="btn small ghost" data-newprog ${fixed.length ? '' : 'disabled'}>Programa abierto</button></div></section>`
       : `<section class="card prog-card">
-          <div class="row gap"><span class="grow"><b>${esc(prog.name)}</b><small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span></div>
-          <label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>
+          <div class="row gap wrap"><span class="grow"><b>${esc(prog.name)}</b>${prog.meso_weeks ? ` <span class="pill">Mesociclo · ${prog.meso_weeks} semanas</span>` : ''}<small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) + (prog.meso_weeks ? ` (${live.week_no}/${prog.meso_weeks})` : '') : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span>
+            <button class="btn small ${mesoEnd ? 'primary' : 'ghost'}" data-meso>${ic('plus')} ${prog.meso_weeks ? 'Siguiente mesociclo' : 'Nuevo mesociclo'}</button></div>
+          ${mesoEnd ? `<p class="note small">${live && live.kind === 'deload' ? 'Está en la semana de descarga: ' : 'El bloque ha terminado: '}prepara el siguiente mesociclo para que no se quede sin plan.</p>` : ''}
+          ${prog.meso_weeks ? `<div class="meso-line">${pweeks.map(w => `<span class="${w.kind === 'deload' ? 'dl' : ''} ${live && live.id === w.id ? 'now' : ''} ${live && w.week_no < live.week_no ? 'past' : ''}" title="${esc(weekLabel(w))}">${w.kind === 'deload' ? 'Descarga' : 'Carga ' + w.week_no}</span>`).join('')}</div>`
+            : `<label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>`}
           <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} k-${w.kind || 'normal'} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'} · ${(KINDS[w.kind] || KINDS.normal)[0]}">S${w.week_no}${KINDS[w.kind] && KINDS[w.kind][1] ? ' ' + KINDS[w.kind][1] : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
           ${view ? `<div class="row gap wrap wkbar"><span class="grow"><b>${esc(weekLabel(view))}</b> <small class="muted">${fmtDate(view.start_date)} – ${fmtDate(addDays(view.start_date, 6))}</small> <span class="pill ${view.published ? 'green' : 'amber'}">${view.published ? 'Publicada' : 'Borrador'}</span></span>
               <label class="wkkind">Tipo<select data-kind>${['normal', 'maintenance', 'deload', 'intensity'].map(k => `<option value="${k}" ${(view.kind || 'normal') === k ? 'selected' : ''}>${KINDS[k][0]}</option>`).join('')}</select></label>
@@ -641,6 +647,7 @@
     box.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => duplicateRoutines(c, [byId(routines, b.dataset.dup)], items));
     const ca = box.querySelector('[data-copyall]'); if (ca) ca.onclick = () => copyPlanFrom(c);
     const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
+    const ms = box.querySelector('[data-meso]'); if (ms) ms.onclick = () => mesoForm(c, { after: () => tabRoutines(c, box) });
     box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
     const au = box.querySelector('[data-auto]');
     if (au) au.onchange = async () => {
@@ -683,6 +690,87 @@
         S.weekSel = S.weekSel || {}; S.weekSel[c.id] = null; render();
       }
     });
+  }
+
+  // ----- Mesociclo cerrado: 4 o 6 semanas, progresión proyectada y descarga final automática (meso.js + migración 012)
+  async function mesoForm(c, { start = null, after = null } = {}) {
+    const [routines, items, programs, weeks] = await Promise.all([
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('programs', { eq: { client_id: c.id } }), DB.list('program_weeks', { eq: { client_id: c.id } })]);
+    const prog = programs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+    const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
+    const fixed = routines.filter(r => !r.program_week_id);
+    const srcs = [];
+    if (fixed.length) srcs.push(['', `Rutinas fijas (${fixed.length})`]);
+    pweeks.forEach(w => { const n = routines.filter(r => r.program_week_id === w.id).length; if (n) srcs.push([w.id, `${prog.name} · ${weekLabel(w)} (${n})`]); });
+    if (!srcs.length) { toast('Crea antes alguna rutina', 'err'); return; }
+    const w1 = pweeks[0], lastAcc = pweeks.filter(w => w.kind !== 'deload').pop();
+    const defSrc = prog && prog.meso_weeks && w1 && srcs.some(s => s[0] === w1.id) ? w1.id : lastAcc && srcs.some(s => s[0] === lastAcc.id) ? lastAcc.id : srcs[0][0];
+    const mon = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x.toISOString().slice(0, 10); };
+    const nextStart = pweeks.length ? addDays(pweeks[pweeks.length - 1].start_date, 7) : null;
+    const st0 = start || (nextStart && nextStart >= mon(today()) ? nextStart : today());
+    const nMeso = programs.filter(p => p.meso_weeks).length;
+    const nf = x => String(Math.round(x * 100) / 100).replace('.', ',');
+    const D = window.JMMeso.DEF;
+    const f = modal('Nuevo mesociclo', `
+      <p class="muted">Un bloque cerrado: semanas de carga con la progresión ya proyectada y una <b>descarga automática</b> al final. Se crea entero; luego puedes retocar cualquier semana.</p>
+      <div class="form-grid">
+        <label>Nombre<input name="name" required maxlength="60" value="Mesociclo ${nMeso + 1}"></label>
+        <label>Empieza la semana del<input name="start" type="date" required value="${esc(st0)}"></label>
+      </div>
+      <div class="choices two">${[[4, '4 semanas', '3 de carga + descarga en la 4.ª'], [6, '6 semanas', '5 de carga + descarga en la 6.ª']].map(([v, t, d]) => `<label class="choice"><input type="radio" name="weeks" value="${v}" ${v === ((prog && prog.meso_weeks) || 4) ? 'checked' : ''}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>
+      <div class="form-grid">
+        <label>Parte de<select name="src">${srcs.map(([v, l]) => `<option value="${v}" ${v === defSrc ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label>Punto de partida<select name="offset"><option value="0">Igual que esas rutinas</option><option value="1" ${prog && prog.meso_weeks ? 'selected' : ''}>Un paso por encima (continuar el bloque anterior)</option></select></label>
+        <label>Progresión en la carga<select name="prog">
+          <option value="auto">Automática: +kg si tiene carga; si no, +reps</option><option value="load">Carga (kg)</option><option value="reps">Repeticiones</option><option value="sets">Series (+1 cada 2 semanas, máx. +2)</option><option value="none">Solo el RIR</option></select></label>
+        <label>Subida por semana<span class="row gap"><input name="inc_kg" type="number" step="0.25" min="0" max="20" value="${D.inc_kg}" aria-label="kg por semana"><small>kg</small><input name="inc_reps" type="number" step="1" min="0" max="5" value="${D.inc_reps}" aria-label="reps por semana"><small>reps</small></span></label>
+      </div>
+      <label class="check"><input type="checkbox" name="rir_ramp" ${D.rir_ramp ? 'checked' : ''}> El RIR baja durante el bloque (p. ej. 3 → 2 → 1)</label>
+      <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
+        <label>Menos volumen (series)<span class="row gap"><input name="dvol" type="number" min="0" max="80" step="5" value="${D.deload_vol * 100}"><small>%</small></span></label>
+        <label>Menos intensidad (carga)<span class="row gap"><input name="dint" type="number" min="0" max="50" step="5" value="${D.deload_int * 100}"><small>%</small></span></label>
+      </div><small class="muted">Y RIR +2 (máx. 5). Parte de la última semana de carga.</small></fieldset>
+      <label class="check"><input type="checkbox" name="publish" checked> Publicar ya las semanas (el cliente ve cada una cuando llega)</label>
+      <div data-prev class="meso-prev"></div>
+      <p class="note small" data-warn hidden></p>
+      ${pweeks.length ? `<p class="muted small">«${esc(prog.name)}» deja de repetirse sola y se quitan sus semanas desde la fecha de inicio que aún no se han entrenado. Lo entrenado se conserva.</p>` : ''}
+      <p class="muted small">Los ejercicios con su propia regla de progresión (p. ej. +2,5 kg) la mantienen.</p>`, {
+      submitLabel: 'Crear mesociclo',
+      onSubmit: async (form, fd) => {
+        const o = opts(fd), n = +fd.get('weeks');
+        if (!fd.get('start')) { toast('Elige la fecha de inicio', 'err'); return false; }
+        await safe(() => DB.rpc('create_mesocycle', { p_client: c.id, p_name: String(fd.get('name') || '').trim() || 'Mesociclo', p_start: fd.get('start'), p_weeks: n, p_opts: o, p_from_week: fd.get('src') || null }),
+          `Mesociclo creado: ${n - 1} semanas de carga + descarga`);
+        S.weekSel = S.weekSel || {}; S.weekSel[c.id] = null;
+        return after ? after() : render();
+      }
+    });
+    function opts(fd) {
+      const pct = (v, mx) => Math.max(0, Math.min(mx, +v || 0)) / 100;
+      return { offset: +fd.get('offset') || 0, prog: fd.get('prog'), inc_kg: Math.max(0, +fd.get('inc_kg') || 0), inc_reps: Math.max(0, Math.round(+fd.get('inc_reps') || 0)),
+        rir_ramp: !!fd.get('rir_ramp'), deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish') };
+    }
+    const draw = () => {
+      const fd = new FormData(f), o = opts(fd), n = +fd.get('weeks'), src = fd.get('src') || null;
+      const rs = routines.filter(r => (src ? r.program_week_id === src : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
+      const its = rs.flatMap(r => items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position));
+      const P = window.JMMeso.project, show = its.slice(0, 6);
+      const cell = v => `${v.sets}×${esc(v.reps || '')}${v.load_kg != null ? ' · ' + nf(v.load_kg) + ' kg' : ''}${v.target_rir != null ? ' · RIR ' + nf(v.target_rir) : ''}`;
+      const sets = Array.from({ length: n }, (_, k) => its.reduce((a, it) => a + P(it, k, n, o).sets, 0));
+      const ld = window.JMMeso.weekLoads(its, n, o), mx = Math.max(...ld, 1);
+      const sd = f.querySelector('[name=start]').value || st0;
+      f.querySelector('[data-prev]').innerHTML = `<h4>Proyección del bloque</h4>
+        <div class="meso-bars" aria-hidden="true">${ld.map((x, k) => `<span class="${k === n - 1 ? 'dl' : ''}" style="height:${Math.max(8, Math.round(x / mx * 100))}%"><i>S${k + 1}</i></span>`).join('')}</div>
+        <div class="table-wrap"><table class="meso-table"><thead><tr><th>Ejercicio</th>${Array.from({ length: n }, (_, k) => `<th class="${k === n - 1 ? 'dl' : ''}">S${k + 1}${k === n - 1 ? ' ↓' : ''}<small>${fmtDate(addDays(mon(sd), 7 * k), { day: 'numeric', month: 'short' })}</small></th>`).join('')}</tr></thead>
+        <tbody>${show.map(it => `<tr><td>${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
+        <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr></tbody></table></div>
+        ${its.length > show.length ? `<p class="muted small">Y ${its.length - show.length} ejercicios más con la misma lógica.</p>` : ''}`;
+      const w = f.querySelector('[data-warn]'), past = (fd.get('start') || '') < mon(today());
+      w.hidden = !past; w.textContent = past ? 'La fecha de inicio es de una semana ya pasada: las semanas sin entrenar desde esa fecha se sustituyen.' : '';
+    };
+    f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
   }
 
   function cloneWeek(c, w, done) {
@@ -739,7 +827,7 @@
     const k0 = ev ? ev.kind : 'workout';
     const f = modal(ev ? 'Editar' : 'Añadir · ' + fmtDate(date, { weekday: 'long', day: 'numeric', month: 'long' }), `
       ${ev ? '' : `<div class="evkinds">${Object.entries(EV_KINDS).map(([k, [l, icn, d]]) => `<label class="evkind k-${k}"><input type="radio" name="kind" value="${k}" ${k === k0 ? 'checked' : ''}><span>${ic(icn)}<b>${l}</b><small>${d}</small></span></label>`).join('')}
-        <button type="button" class="evkind k-program" data-newprog><span>${ic('copy')}<b>Programa</b><small>Empezar un programa por semanas desde este día</small></span></button></div>`}
+        <button type="button" class="evkind k-program" data-newprog><span>${ic('copy')}<b>Mesociclo</b><small>Bloque de 4 o 6 semanas con progresión y descarga</small></span></button></div>`}
       <div class="form-grid">
         <label>Fecha<input name="date" type="date" required value="${esc(ev ? ev.date : date)}"></label>
         <label data-for="workout mobility">Rutina<select name="routine_id"><option value="">${'(sin rutina)'}</option>${opts}</select></label>
@@ -786,7 +874,7 @@
     };
     f.querySelectorAll('[name=kind]').forEach(x => x.onchange = sync); sync();
     const rep = f.querySelector('[name=repeat]'); if (rep) rep.onchange = () => { f.querySelector('[data-rep]').hidden = !rep.checked; };
-    const np = f.querySelector('[data-newprog]'); if (np) np.onclick = () => { closeModal(); newProgram(c, fixedCount, f.querySelector('[name=date]').value || date); };
+    const np = f.querySelector('[data-newprog]'); if (np) np.onclick = () => { const d = f.querySelector('[name=date]').value || date; closeModal(); mesoForm(c, { start: d, after: () => after && after(d) }); };
   }
   async function deleteEvent(ev, after) {
     if (!ev.series_id) { if (await confirmBox(`Se borrará «${evTitle(ev)}» del ${fmtDate(ev.date)}.`)) { await safe(() => DB.remove('calendar_events', ev.id), 'Borrado'); after(); } return; }

@@ -287,6 +287,28 @@
           copyWeek(T('routines').filter(r => r.client_id === a.p_client && !r.program_week_id).sort((x, y) => x.position - y.position), w1.id);
           save(); return prog.id;
         }
+        if (fn === 'create_mesocycle') {
+          const n = +a.p_weeks; if (![4, 6].includes(n)) throw new Error('El mesociclo es de 4 o 6 semanas');
+          const o = a.p_opts || {}, start = monday(a.p_start), P = window.JMMeso.project;
+          const src = T('routines').filter(r => r.client_id === a.p_client && (a.p_from_week ? r.program_week_id === a.p_from_week : !r.program_week_id)).sort((x, y) => x.position - y.position || (x.day || 0) - (y.day || 0));
+          if (!src.length) throw new Error('No hay rutinas de partida');
+          T('programs').filter(p => p.client_id === a.p_client && p.status === 'active').forEach(p => { p.auto_repeat = false; });
+          const trained = new Set(T('sessions').map(x => x.routine_id));
+          const drop = new Set(T('program_weeks').filter(w => w.client_id === a.p_client && w.start_date >= start && !T('routines').some(r => r.program_week_id === w.id && trained.has(r.id))).map(w => w.id));
+          const dropR = new Set(T('routines').filter(r => drop.has(r.program_week_id)).map(r => r.id));
+          store.tables.routine_items = T('routine_items').filter(i => !dropR.has(i.routine_id));
+          store.tables.routines = T('routines').filter(r => !dropR.has(r.id));
+          store.tables.program_weeks = T('program_weeks').filter(w => !drop.has(w.id));
+          const prog = { id: uuid(), client_id: a.p_client, name: a.p_name || 'Mesociclo', start_date: start, status: 'active', auto_repeat: false, deload_every: n, meso_weeks: n, meso_opts: o, created_at: now() };
+          T('programs').push(prog);
+          for (let k = 0; k < n; k++) {
+            const w = { id: uuid(), program_id: prog.id, client_id: a.p_client, week_no: k + 1, start_date: plus(start, 7 * k), kind: k === n - 1 ? 'deload' : 'normal', source_week_id: null, published: o.publish !== false, notes: k === n - 1 ? 'Descarga del mesociclo' : `Acumulación ${k + 1}/${n - 1}`, created_at: now() };
+            T('program_weeks').push(w);
+            copyWeek(src, w.id, it => { const v = P(it, k, n, o); const r = { sets: v.sets, load_kg: v.load_kg, target_rir: v.target_rir, base: v.base || null };
+              if (v.reps !== it.reps) Object.assign(r, { reps: v.reps, reps_min: v.reps_min, reps_max: v.reps_max }); return r; });
+          }
+          save(); return prog.id;
+        }
         if (fn === 'clone_program_week' || fn === '_clone_week') {
           const mode = a.p_mode || 'progress', vol = a.p_deload_volume || 0.6;
           const src = T('program_weeks').find(w => w.id === a.p_week_id);
