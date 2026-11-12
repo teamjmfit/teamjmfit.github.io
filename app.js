@@ -131,6 +131,7 @@
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
     dumbbell: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>',
+    filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     euro: '<path d="M17 5.5A7 7 0 1 0 17 18.5"/><path d="M4 10h10M4 14h10"/>',
     cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     apple: '<path d="M12 7c-2-2-6-1.5-6.5 2.5S7 19 9.5 19.5c1 .2 1.7-.5 2.5-.5s1.5.7 2.5.5C17 19 18.5 13 18 9.5S14 5 12 7z"/><path d="M12 7c0-2 1-3.5 3-4"/>',
@@ -1012,6 +1013,7 @@
   // ----- Calendario mensual del cliente (entrenador)
   async function tabCalendar(c, box) {
     S.calMonth = S.calMonth || {};
+    if (!S.calHide) { try { S.calHide = new Set(JSON.parse(localStorage.getItem('jm-cal-hide') || '[]')); } catch (e) { S.calHide = new Set(); } }
     const [y, m] = (S.calMonth[c.id] || today().slice(0, 7)).split('-').map(Number);
     await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
     const [routines, items, programs, weeks, sessions] = await Promise.all([
@@ -1025,7 +1027,7 @@
     const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
     const lastW = pweeks[pweeks.length - 1];
     const fixed = routines.filter(r => !r.program_week_id);
-    const t = today();
+    const t = today(), ym = `${y}-${String(m).padStart(2, '0')}`;
     const first = new Date(y, m - 1, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
     const lastDay = new Date(y, m, 0), end = new Date(lastDay); end.setDate(lastDay.getDate() + (7 - ((lastDay.getDay() + 6) % 7)) - 1);
     const [events0, checkins] = await Promise.all([loadEvents(c.id, ymd(start), ymd(end)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 200 }).catch(() => [])]);
@@ -1034,7 +1036,8 @@
     const gls = window.JMGoals ? ((await loadGoals(c.id)) || []).filter(g => g.status === 'active') : [];
     const msOn = iso => gls.flatMap(g => JMGoals.blocks(g).filter(b => b.to === iso).map(b => ({ g, b })));
     const reload = iso => { if (iso) { S.calSel = iso; S.calMonth[c.id] = iso.slice(0, 7); } tabCalendar(c, box); };
-    const addOn = iso => events0 === null ? toast('Falta ejecutar la migración 011 en Supabase', 'err') : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload });
+    const noTable = () => { toast('Falta ejecutar la migración 011 en Supabase', 'err'); };
+    const addOn = iso => events0 === null ? noTable() : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload });
     const plan = iso => {
       const dow = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
       const w = pweeks.find(x => x.start_date <= iso && iso <= addDays(x.start_date, 6));
@@ -1047,54 +1050,138 @@
     };
     const doneOn = iso => sessions.filter(s => s.finished_at && ymd(new Date(s.started_at)) === iso);
     const cap = x => x.charAt(0).toUpperCase() + x.slice(1);
-    // Una rutina cuenta como hecha si el cliente la hizo cualquier día de esa misma semana
-    const doneInWeek = (r, iso) => { const d0 = new Date(iso + 'T12:00:00'); d0.setDate(d0.getDate() - (d0.getDay() + 6) % 7); const a = ymd(d0), z = addDays(a, 6);
+    const doneInWeek = (r, iso) => { const a = mondayOf(iso), z = addDays(a, 6);
       return sessions.some(s => { const sd = s.finished_at && ymd(new Date(s.started_at)); return sd && sd >= a && sd <= z && (s.routine_id === r.id || (s.routine_name || '') === r.name); }); };
-    const cells = [];
-    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const iso = ymd(d), p = plan(iso), done = doneOn(iso);
-      const monday = d.getDay() === 1;
-      cells.push(`<button type="button" class="cday ${d.getMonth() !== m - 1 ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''}" data-day="${iso}">
-        <span class="cnum">${d.getDate()}${monday && p.week ? `<i class="cwk">S${p.week.week_no + (p.kind === 'auto' ? Math.floor((new Date(iso) - new Date(lastW.start_date)) / 6048e5) : 0)}</i>` : ''}</span>
-        ${p.rs.map(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name); return `<span class="cev ${p.kind} ${dn ? 'done' : doneInWeek(r, iso) ? 'moved' : iso < t ? 'missed' : ''}">${esc(r.name)}</span>`; }).join('')}
-        ${done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id)).map(s => `<span class="cev done">${esc(s.routine_name || 'Entreno')}</span>`).join('')}
-        ${evOn(iso).map(e => `<span class="cev k-${e.kind} ${evDone(e, sessions, checkins) ? 'done' : ''}">${esc(evTitle(e))}</span>`).join('')}
-        ${msOn(iso).map(({ g, b }) => `<span class="cev k-goal" title="${esc(g.title)}">🎯 ${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}</span>`).join('')}
-      </button>`);
+    // Filtros (tipo de tarea) y contadores del mes, como en Harbiz
+    const FILT = [['train', 'Entrenos'], ['cardio', 'Cardio'], ['mobility', 'Movilidad'], ['review', 'Revisiones y fotos'], ['note', 'Notas'], ['goal', 'Objetivos']];
+    const fk = e => (e.kind === 'workout' ? 'train' : ['checkin', 'photos'].includes(e.kind) ? 'review' : e.kind);
+    const shown = k => !S.calHide.has(k);
+    // Tareas de un día: rutinas del plan + entrenos hechos fuera del plan + eventos + hitos de objetivos
+    const tasks = iso => {
+      const p = plan(iso), done = doneOn(iso), out = [];
+      if (shown('train')) {
+        p.rs.forEach(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name), mv = !dn && doneInWeek(r, iso);
+          out.push({ cls: `cev ${p.kind} ${dn ? 'done' : mv ? 'moved' : iso < t ? 'missed' : ''}`, txt: r.name, st: dn || mv ? 'ok' : iso < t ? 'miss' : 'todo' }); });
+        done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id))
+          .forEach(s => out.push({ cls: 'cev done', txt: s.routine_name || 'Entreno', st: 'ok' }));
+      }
+      evOn(iso).filter(e => shown(fk(e))).forEach(e => { const dn = evDone(e, sessions, checkins);
+        out.push({ cls: `cev k-${e.kind} ${dn ? 'done' : ''}`, txt: evTitle(e), ic: EV_KINDS[e.kind][1], id: e.id, st: e.kind === 'note' ? null : dn ? 'ok' : iso < t ? 'miss' : 'todo' }); });
+      if (shown('goal')) msOn(iso).forEach(({ g, b }) => out.push({ cls: 'cev k-goal', txt: `🎯 ${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}`, title: g.title }));
+      return out;
+    };
+    let nOk = 0, nMiss = 0, nTodo = 0;
+    const rows = [];
+    for (let ws = new Date(start); ws <= end; ws.setDate(ws.getDate() + 7)) {
+      const mon = ymd(ws), p0 = plan(mon), w = p0.week;
+      let bar, bcls = 'pb-none';
+      if (w && p0.kind !== 'auto') {
+        const dl = w.kind === 'deload';
+        bar = `${esc(prog.name)} · ${prog.meso_weeks ? `S${w.week_no}/${prog.meso_weeks} · ${dl ? 'Descarga' : 'Carga'}` : esc(weekLabel(w))}${w.published ? '' : ' · borrador'}`;
+        bcls = dl ? 'pb-dl' : w.published ? 'pb-pub' : 'pb-draft';
+      } else if (p0.kind === 'auto') { bar = `${esc(prog.name)} · se repetirá sola`; bcls = 'pb-auto'; }
+      else if (p0.kind === 'fixed') { bar = fixed.length ? 'Rutinas fijas' : 'Sin plan'; bcls = fixed.length ? 'pb-fixed' : 'pb-none'; }
+      else bar = 'Sin plan';
+      const isLast = !!(w && prog && prog.meso_weeks && lastW && w.id === lastW.id && p0.kind !== 'auto');
+      const clipW = S.calClip && S.calClip.cid === c.id && S.calClip.type === 'week';
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const iso = addDays(mon, i), d = new Date(iso + 'T12:00:00'), tk = tasks(iso);
+        if (iso.slice(0, 7) === ym && iso <= t) tk.forEach(x => { if (x.st === 'ok') nOk++; else if (x.st === 'miss') nMiss++; });
+        if (iso.slice(0, 7) === ym && iso > t) tk.forEach(x => { if (x.st === 'todo') nTodo++; });
+        const vis = tk.slice(0, 3), more = tk.length - vis.length;
+        days.push(`<div class="cday ${iso.slice(0, 7) !== ym ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''} ${iso < t ? 'past' : ''}" data-day="${iso}" role="button" tabindex="0" aria-label="${esc(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}${tk.length ? ', ' + tk.length + ' tareas' : ''}">
+          <span class="cnum"><b>${d.getDate()}</b><button type="button" class="cadd" data-add="${iso}" aria-label="Añadir el ${d.getDate()}" title="Añadir">${ic('plus')}</button></span>
+          ${vis.map(x => `<span class="${x.cls}" ${x.id ? `draggable="true" data-ev="${x.id}"` : ''} ${x.title ? `title="${esc(x.title)}"` : ''}>${x.ic ? ic(x.ic) : ''}<em>${esc(x.txt)}</em></span>`).join('')}
+          ${more > 0 ? `<span class="cmore">+${more} más</span>` : ''}</div>`);
+      }
+      rows.push(`<div class="cweek"><div class="pbar ${bcls}"><span class="grow">${bar}</span>
+          ${events0 !== null ? `<button type="button" class="pb-btn" data-cpw="${mon}" title="Copiar los eventos de esta semana">${ic('copy')}<span>Copiar</span></button>${clipW && S.calClip.from !== mon ? `<button type="button" class="pb-btn on" data-psw="${mon}" title="Pegar aquí la semana copiada">Pegar semana</button>` : ''}` : ''}
+          ${isLast ? `<button type="button" class="pb-btn link" data-link>Enlazar próximo mesociclo →</button>` : ''}
+</div><div class="cdays">${days.join('')}</div></div>`);
     }
     const mName = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
-    const monthDone = sessions.filter(s => s.finished_at && s.started_at.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}`).length;
-    box.innerHTML = `<section class="card cal">
-        <header class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><h3 class="grow center">${esc(mName)}</h3><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button><button class="btn small primary" data-addev>${ic('plus')} Añadir</button></header>
-        <p class="muted small center">${monthDone} entreno${monthDone === 1 ? '' : 's'} hecho${monthDone === 1 ? '' : 's'} este mes${prog ? ` · ${esc(prog.name)}${prog.auto_repeat !== false ? ' · se repite sola cada semana' : ''}` : ' · rutinas fijas (se repiten cada semana)'}</p>
-        <div class="cgrid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<small class="chead">${x}</small>`).join('')}${cells.join('')}</div>
-        <div class="clegend"><span class="cev pub">Planificado</span><span class="cev done">Hecho</span><span class="cev moved pub">Hecho otro día</span><span class="cev missed pub">No hecho</span>${prog ? '<span class="cev auto">Se repetirá</span><span class="cev draft">Borrador</span>' : ''}${Object.entries(EV_KINDS).map(([k, [l]]) => `<span class="cev k-${k}">${l}</span>`).join('')}</div>
-        <p class="muted small center">Pincha un día para ver lo que tiene y añadir entrenos, cardio, revisiones o notas.</p>
+    box.innerHTML = `<section class="card cal cal2">
+        <header class="cal-top">
+          <div class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><button class="btn small ghost" data-today>Hoy</button><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button></div>
+          <h3>${esc(mName)}</h3>
+          <div class="row gap"><button class="btn small ghost ${S.calHide.size ? 'on' : ''}" data-filt aria-expanded="false">${ic('filter')}<span class="lbl">Filtros</span>${S.calHide.size ? ` (${FILT.length - S.calHide.size}/${FILT.length})` : ''}</button><button class="btn small primary" data-addev>${ic('plus')}<span class="lbl">Tarea</span></button></div>
+        </header>
+        <div class="cal-filt" data-fbox hidden>${FILT.map(([k, l]) => `<label class="check"><input type="checkbox" data-fk="${k}" ${shown(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+        <div class="cal-kpi"><span class="ok">${ic('check')}<b>${nOk}</b> tareas completadas</span><span class="miss">!<b>${nMiss}</b> sin completar</span><span class="todo">${ic('clock')}<b>${nTodo}</b> por hacer este mes</span></div>
+        ${S.calClip && S.calClip.cid === c.id ? `<p class="note small cal-clip">📋 Copiado: ${S.calClip.type === 'week' ? 'semana del ' + fmtDate(S.calClip.from) : fmtDate(S.calClip.from, { weekday: 'long', day: 'numeric', month: 'short' })} (${S.calClip.evs.length} evento${S.calClip.evs.length === 1 ? '' : 's'}). ${S.calClip.type === 'week' ? 'Pulsa «Pegar semana» en otra semana.' : 'Elige un día y pulsa «Pegar aquí».'} <button type="button" class="link" data-clipx>Cancelar</button></p>` : ''}
+        <div class="chead7">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<small>${x}</small>`).join('')}</div>
+        <div class="cweeks">${rows.join('')}</div>
+        <div class="clegend"><span class="cev pub"><em>Planificado</em></span><span class="cev done"><em>Hecho</em></span><span class="cev moved pub"><em>Hecho otro día</em></span><span class="cev missed pub"><em>No hecho</em></span>${Object.entries(EV_KINDS).filter(([k]) => k !== 'workout').map(([k, [l, icn]]) => `<span class="cev k-${k}">${ic(icn)}<em>${l}</em></span>`).join('')}<span class="cev k-goal"><em>🎯 Hito</em></span></div>
+        <p class="muted small center">Pincha un día para ver y gestionar lo que tiene; con «+» añades directamente. En el ordenador puedes arrastrar un evento a otro día.</p>
       </section><div data-dayinfo></div>`;
     box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const d = new Date(y, m - 1 + Number(b.dataset.mv), 1); S.calMonth[c.id] = ymd(d).slice(0, 7); tabCalendar(c, box); });
+    box.querySelector('[data-today]').onclick = () => { S.calMonth[c.id] = t.slice(0, 7); S.calSel = t; tabCalendar(c, box); };
+    const fb = box.querySelector('[data-fbox]'), fbt = box.querySelector('[data-filt]');
+    fbt.onclick = () => { fb.hidden = !fb.hidden; fbt.setAttribute('aria-expanded', String(!fb.hidden)); };
+    fb.querySelectorAll('[data-fk]').forEach(x => x.onchange = () => { if (x.checked) S.calHide.delete(x.dataset.fk); else S.calHide.add(x.dataset.fk); try { localStorage.setItem('jm-cal-hide', JSON.stringify([...S.calHide])); } catch (e) { /* sin almacenamiento */ } tabCalendar(c, box); });
+    const cx = box.querySelector('[data-clipx]'); if (cx) cx.onclick = () => { S.calClip = null; tabCalendar(c, box); };
+    const lk = box.querySelector('[data-link]'); if (lk) lk.onclick = () => mesoForm(c, { after: () => tabCalendar(c, box) });
+    // Copiar y pegar semanas (solo los eventos; los entrenos del programa se gestionan en Rutinas)
+    const copyEvs = async (list, shift) => {
+      const rows = list.map(e => ({ client_id: c.id, date: addDays(e.date, shift(e)), kind: e.kind, title: e.title, notes: e.notes, routine_id: e.routine_id, minutes: e.minutes, visible: e.visible !== false }));
+      if (rows.length) await DB.insert('calendar_events', rows); return rows.length;
+    };
+    box.querySelectorAll('[data-cpw]').forEach(b => b.onclick = async () => {
+      const a = b.dataset.cpw, evs = (await loadEvents(c.id, a, addDays(a, 6))) || [];
+      if (!evs.length) { toast('Esa semana no tiene eventos que copiar (cardio, notas, revisiones…)', 'err'); return; }
+      S.calClip = { cid: c.id, type: 'week', from: a, evs }; toast(`Semana copiada (${evs.length}). Ahora pulsa «Pegar semana» donde quieras.`); tabCalendar(c, box);
+    });
+    box.querySelectorAll('[data-psw]').forEach(b => b.onclick = async () => {
+      const k = S.calClip, sh = (new Date(b.dataset.psw + 'T12:00:00') - new Date(k.from + 'T12:00:00')) / 864e5;
+      if (sh === 0) { toast('Elige otra semana', 'err'); return; }
+      const n = await safe(() => copyEvs(k.evs, () => Math.round(sh)), 'Semana pegada'); if (n != null) tabCalendar(c, box);
+    });
+    // Arrastrar un evento a otro día (ordenador)
+    box.querySelectorAll('[data-ev][draggable]').forEach(el => {
+      el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', el.dataset.ev); e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); e.stopPropagation(); });
+      el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    });
+    box.querySelectorAll('.cday').forEach(cell => {
+      cell.addEventListener('dragover', e => { e.preventDefault(); cell.classList.add('drop'); });
+      cell.addEventListener('dragleave', () => cell.classList.remove('drop'));
+      cell.addEventListener('drop', async e => {
+        e.preventDefault(); cell.classList.remove('drop');
+        const id = e.dataTransfer.getData('text/plain'), ev = byId(events, id), to = cell.dataset.day;
+        if (!ev || ev.date === to) return;
+        await safe(() => DB.update('calendar_events', id, { date: to }), `Movido al ${fmtDate(to, { weekday: 'long', day: 'numeric' })}`); reload(to);
+      });
+    });
     const info = box.querySelector('[data-dayinfo]');
     const showDay = iso => {
       S.calSel = iso; box.querySelectorAll('.cday').forEach(x => x.classList.toggle('sel', x.dataset.day === iso));
-      const p = plan(iso), done = doneOn(iso), evs = evOn(iso);
-      info.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3><button class="btn small primary" data-addday>${ic('plus')} Añadir</button></header>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
+      const p = plan(iso), done = doneOn(iso), evs = evOn(iso), clipD = S.calClip && S.calClip.cid === c.id && S.calClip.type === 'day';
+      info.innerHTML = `<section class="card dayp"><header class="row gap wrap"><h3 class="grow">${cap(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>
+          ${evs.length ? `<button class="btn small ghost" data-cpd>${ic('copy')} Copiar día</button>` : ''}${clipD && S.calClip.from !== iso ? `<button class="btn small" data-psd>Pegar aquí (${S.calClip.evs.length})</button>` : ''}
+          <button class="btn small primary" data-addday>${ic('plus')} Añadir</button></header>${p.week ? `<p class="muted small">${esc(weekLabel(p.week))}${p.kind === 'auto' ? ' · se creará sola con los pesos que haga' : p.kind === 'draft' ? ' · borrador (el cliente no la ve)' : ''}</p>` : p.kind === 'fixed' && p.rs.length ? '<p class="muted small">Rutinas fijas</p>' : ''}
         ${msOn(iso).map(({ g, b }) => `<p class="note small">🎯 Fin del bloque ${b.i} de «${esc(g.title)}»: llegar a <b>${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}</b>.</p>`).join('')}
         ${evs.length ? `<ul class="evlist">${evs.map(e => { const dn = evDone(e, sessions, checkins); return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${esc(evDetail(e, routines))}${dn ? ' · ✓ hecho' : ''}</small>${e.notes ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>
-          <button class="icon-btn" data-evdone="${e.id}" aria-label="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}" title="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}">${ic('check')}</button><button class="icon-btn" data-evedit="${e.id}" aria-label="Editar o mover" title="Editar o mover">${ic('edit')}</button><button class="icon-btn danger" data-evdel="${e.id}" aria-label="Borrar" title="Borrar">${ic('trash')}</button></li>`; }).join('')}</ul>` : ''}
-        ${p.rs.map(r => `<div class="routine-mini"><b>${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
+          <button class="icon-btn" data-evdone="${e.id}" aria-label="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}" title="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}">${ic('check')}</button><button class="icon-btn" data-evdup="${e.id}" aria-label="Duplicar" title="Duplicar al día siguiente">${ic('copy')}</button><button class="icon-btn" data-evedit="${e.id}" aria-label="Editar o mover" title="Editar o mover">${ic('edit')}</button><button class="icon-btn danger" data-evdel="${e.id}" aria-label="Borrar" title="Borrar">${ic('trash')}</button></li>`; }).join('')}</ul>` : ''}
+        ${p.rs.map(r => `<div class="routine-mini"><b>${ic('dumbbell')} ${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
         ${done.map(s => `<p class="pill green">✓ ${esc(s.routine_name || 'Entreno')} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}</p>`).join('')}
         ${p.rs.length ? `<button class="btn small" data-goweek>${ic('edit')} Editar ${p.week && p.kind !== 'auto' ? esc(weekLabel(p.week)) : p.kind === 'auto' ? 'la última semana' : 'rutinas fijas'}</button>` : ''}</section>`;
       const g = info.querySelector('[data-goweek]');
       if (g) g.onclick = () => { S.weekSel = S.weekSel || {}; S.weekSel[c.id] = p.week ? p.week.id : 'fixed'; go('#/cliente/' + c.id + '/rutinas'); };
       info.querySelector('[data-addday]').onclick = () => addOn(iso);
+      const cpd = info.querySelector('[data-cpd]'); if (cpd) cpd.onclick = () => { S.calClip = { cid: c.id, type: 'day', from: iso, evs }; toast('Día copiado: elige otro día y pulsa «Pegar aquí»'); tabCalendar(c, box); };
+      const psd = info.querySelector('[data-psd]'); if (psd) psd.onclick = async () => { const n = await safe(() => copyEvs(S.calClip.evs, e => (new Date(iso + 'T12:00:00') - new Date(e.date + 'T12:00:00')) / 864e5), 'Pegado'); if (n != null) reload(iso); };
       const ev = id => byId(evs, id);
       info.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { const e = ev(b.dataset.evdone); await safe(() => DB.rpc('set_event_done', { p_id: e.id, p_done: !e.done_at })); reload(iso); });
+      info.querySelectorAll('[data-evdup]').forEach(b => b.onclick = async () => { const n = await safe(() => copyEvs([ev(b.dataset.evdup)], () => 1), 'Duplicado al día siguiente'); if (n != null) reload(iso); });
       info.querySelectorAll('[data-evedit]').forEach(b => b.onclick = () => eventForm(c, { date: iso, ev: ev(b.dataset.evedit), routines, weeks: pweeks, fixedCount: fixed.length, after: reload }));
       info.querySelectorAll('[data-evdel]').forEach(b => b.onclick = () => deleteEvent(ev(b.dataset.evdel), () => reload(iso)));
+      if (window.innerWidth < 700) info.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     box.querySelector('[data-addev]').onclick = () => addOn(S.calSel || t);
-    box.querySelectorAll('[data-day]').forEach(b => b.onclick = () => showDay(b.dataset.day));
-    const inMonth = S.calSel && S.calSel.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? S.calSel : (t.slice(0, 7) === `${y}-${String(m).padStart(2, '0')}` ? t : null);
-    if (inMonth) showDay(inMonth);
+    box.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addOn(b.dataset.add); });
+    box.querySelectorAll('.cday').forEach(b => { b.onclick = () => showDay(b.dataset.day); b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showDay(b.dataset.day); } }; });
+    const inMonth = S.calSel && S.calSel.slice(0, 7) === ym ? S.calSel : (t.slice(0, 7) === ym ? t : null);
+    if (inMonth) { const sc = window.scrollY; showDay(inMonth); window.scrollTo(0, sc); }
   }
 
   async function copyRoutinesTo(target, routines, allItems) {
