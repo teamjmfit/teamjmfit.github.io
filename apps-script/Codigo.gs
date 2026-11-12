@@ -41,7 +41,8 @@ function responder_(obj) {
 }
 
 function fecha_(v) {
-  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  // instanceof Date falla a veces con las celdas de la hoja: se comprueba el tipo de otra forma
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return v === '' || v == null ? '' : String(v);
 }
 
