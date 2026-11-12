@@ -1320,7 +1320,7 @@
     logs.forEach(l => { if (l.weight && l.reps) { const e1 = l.weight * (1 + l.reps / 30); if (!best[l.exercise_name] || e1 > best[l.exercise_name].e1) best[l.exercise_name] = { e1, w: l.weight, r: l.reps }; } });
     const prs = Object.entries(best).sort((a, b) => b[1].e1 - a[1].e1).slice(0, 8);
     // Carga, bienestar y sugerencia de descarga (solo entrenador)
-    let LP = null, volHtml = '';
+    let LP = null, volHtml = ''; const VZ = [];
     if (asCoach && window.JMLoad) {
       if (!S.exercises.length) await loadExercises().catch(() => []);
       const prog = progs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
@@ -1328,9 +1328,11 @@
       const t = today(), past = ws.filter(w => w.start_date <= t), lastDl = past.filter(w => w.kind === 'deload').pop();
       LP = JMLoad.panel({ sessions, checkins, nStall: perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length,
         sinceDl: prog && past.length ? (lastDl ? past.filter(w => w.week_no > lastDl.week_no).length : past.length) : null,
-        nextWeek: ws.find(w => w.start_date > t) || null, hasProgram: !!prog });
+        nextWeek: ws.find(w => w.start_date > t) || null, hasProgram: !!prog, compact: !!window.JMViz });
       volHtml = JMLoad.doneVolume(logs, S.exercises);
+      if (window.JMViz) VZ.push(JMViz.acwr({ sessions, checkins, weeks: ws }));
     }
+    const EX = window.JMViz ? JMViz.exercises({ logs, sessions, title: asCoach ? 'Evolución por ejercicio' : 'Tu evolución por ejercicio' }) : null;
 
     const rows = weeklyRows(checkins, daily), wrows = rows.filter(r => r.avg != null);
     const last = wrows[wrows.length - 1], first = wrows[0];
@@ -1352,6 +1354,7 @@
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
+      ${VZ.map(v => v.html).join('')}
       ${LP ? LP.html : ''}
       ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
       ${hasFat ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
@@ -1361,6 +1364,7 @@
       ${wrows.length ? `<section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t"><thead><tr><th>Semana</th><th>Media</th><th>Cambio</th>${target != null ? '<th>vs objetivo</th>' : ''}<th>Fatiga</th><th>Energía</th><th>Nutrición</th><th>Pasos</th></tr></thead><tbody>
         ${rows.slice().reverse().slice(0, 16).map(r => `<tr><td>${fmtDate(r.wk)}</td><td><b>${r.avg != null ? fmtKg(r.avg) : '–'}</b>${r.n > 1 ? `<small class="muted"> (${r.n})</small>` : ''}</td><td class="${r.delta == null ? '' : r.delta < 0 ? 'dn' : 'up'}">${sgn(r.delta)}</td>${target != null ? `<td><span class="pill ${vsT(r.delta) === 'ok' ? 'green' : vsT(r.delta) ? 'amber' : ''}">${r.delta == null ? '–' : sgn(r.delta - target)}</span></td>` : ''}<td>${r.fatigue != null ? fmtKg(r.fatigue) : '–'}</td><td>${r.energy != null ? fmtKg(r.energy) : '–'}</td><td>${r.diet != null ? fmtKg(r.diet) : '–'}</td><td>${r.steps != null ? Math.round(r.steps).toLocaleString('es-ES') : '–'}</td></tr>`).join('')}
       </tbody></table></div>${target != null ? '<p class="muted small pad">«vs objetivo»: diferencia entre lo que ha cambiado y lo que se buscaba esa semana (verde = dentro de ±0,2 kg).</p>' : ''}</section>` : ''}
+      ${EX ? EX.html : ''}
       ${perfHtml()}
       ${volHtml}
       ${weeksHtml()}
@@ -1370,6 +1374,7 @@
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
+    VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
     if (LP) LP.wire(box, async wid => {
       const w = pweeks.find(x => x.id === wid);
       if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
