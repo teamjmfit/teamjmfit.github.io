@@ -60,7 +60,7 @@
       kind: 'deload',
       sets: Math.max(1, Math.round(p.sets * (1 - o.deload_vol))),
       load_kg: p.load_kg == null ? null : roundLoad(p.load_kg * (1 - o.deload_int)),
-      target_rir: Math.min((p.target_rir ?? 2) + 2, 5),
+      target_rir: Math.max(p.target_rir ?? 2, 2),   // descarga a RIR 2 (si ya era más alto, se mantiene)
       base: { sets: p.sets, target_rir: p.target_rir, load_kg: p.load_kg }
     }));
   }

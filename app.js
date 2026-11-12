@@ -723,7 +723,7 @@
       kd.onchange = async () => {
         const k = kd.value;
         const msg = { normal: 'Vuelve a lo pautado (series, RIR y cargas originales).', maintenance: 'Se mantiene lo pautado, sin subir cargas ni apretar el RIR.',
-          deload: 'Baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos (máx. 5). Puedes volver atrás cuando quieras.',
+          deload: 'Baja al 60 % las series, mantiene las cargas y pone RIR 2 (si ya era más alto, lo deja). Puedes volver atrás cuando quieras.',
           intensity: 'Acerca el RIR 1 punto al fallo y sube la carga en los ejercicios donde la semana anterior llegó al tope del rango con el RIR pedido.' }[k];
         if (!(await confirmBox(`${weekLabel(view)} → ${KINDS[k][0]}. ${msg}`, 'Aplicar'))) { kd.value = view.kind || 'normal'; return; }
         await safe(() => DB.rpc('set_week_kind', { p_week: view.id, p_kind: k }), `Semana ${view.week_no}: ${KINDS[k][0].toLowerCase()}`);
@@ -762,13 +762,13 @@
       need === 'e1rm' || need === 'all' ? DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 }).catch(() => []) : []]);
     return { checkins, daily, logs, sessions };
   }
-  function goalForm(c, { goal = null, data, goals = [], after, meso = null }) {
+  function goalForm(c, { goal = null, preset = null, data, goals = [], after, meso = null }) {
     const G = window.JMGoals, M = G.METRICS, F = G.FOCUS;
     const exs = [...new Set((data.logs || []).filter(l => +l.weight > 0).map(l => String(l.exercise_name || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
     const curOf = (m, ex) => { const s = G.series(m, data, ex); return G.valueAt(m, s, today()); };
     const progs = meso;
-    const g0 = goal || { metric: 'weight', start_date: progs && progs.start && progs.start >= addDays(today(), -6) ? progs.start : today(), block_weeks: (progs && progs.weeks) || 4, is_primary: !goals.some(x => x.status === 'active' && x.is_primary) };
-    const startV = goal ? goal.start_value : curOf('weight');
+    const g0 = goal || Object.assign({ metric: 'weight', start_date: progs && progs.start && progs.start >= addDays(today(), -6) ? progs.start : today(), block_weeks: (progs && progs.weeks) || 4, is_primary: !goals.some(x => x.status === 'active' && x.is_primary) }, preset || {});
+    const startV = goal ? goal.start_value : preset ? preset.start_value : curOf('weight');
     const f = modal(goal ? 'Editar objetivo' : 'Nuevo objetivo S.M.A.R.T.', `
       <div class="smart-steps"><span><b>S</b>pecífico</span><span><b>M</b>edible</span><span><b>A</b>lcanzable</span><span><b>R</b>elevante</span><span><b>T</b>emporal</span></div>
       <fieldset class="smart"><legend><b>S·M</b> ¿Qué vas a conseguir y cómo se mide?</legend>
@@ -786,7 +786,8 @@
       <fieldset class="smart"><legend><b>R</b> ¿Por qué es importante?</legend>
         <label>Enfoque <small class="muted">marca las pautas de las rutinas</small><select name="focus">${Object.entries(F).map(([k, x]) => `<option value="${k}" ${g0.focus === k ? 'selected' : ''}>${x.l}</option>`).join('')}</select></label>
         <label>Motivo<textarea name="why" rows="2" maxlength="1000" placeholder="Ej: competir en −86 kg en febrero; sentirme más ágil en el BJJ">${esc(g0.why || '')}</textarea></label>
-        <label class="check"><input type="checkbox" name="is_primary" ${g0.is_primary ? 'checked' : ''}> Objetivo principal (sale en el inicio y guía las rutinas)</label></fieldset>
+        <label class="check"><input type="checkbox" name="is_primary" ${g0.is_primary ? 'checked' : ''}> Objetivo principal (sale en el inicio y guía las rutinas)</label>
+        <label>🎁 Premio al conseguirlo <small class="muted">opcional; se desbloquea al llegar al 100 %</small><input name="reward" maxlength="200" value="${esc(g0.reward || '')}" placeholder="Ej: camiseta TEAM JMFIT, sesión de técnica gratis, comida libre"></label></fieldset>
       <div class="smart-a"><b>A · ¿Es alcanzable?</b><ul data-val></ul></div>
       <div class="smart-prev" data-prev></div>
       <label class="check" data-force hidden><input type="checkbox" name="force"> Lo hemos hablado y aun así lo queremos así</label>`, {
@@ -808,9 +809,9 @@
     function read(fd) {
       const n = k => num(String(fd.get(k) || '').replace(',', '.'));
       return { metric: fd.get('metric'), exercise_name: String(fd.get('exercise_name') || '').trim() || null, start_value: n('start_value'), target_value: n('target_value'),
-        start_date: fd.get('start_date'), deadline: fd.get('deadline'), block_weeks: +fd.get('block_weeks') || 4, focus: fd.get('focus'), why: String(fd.get('why') || '').trim() || null, is_primary: !!fd.get('is_primary') };
+        start_date: fd.get('start_date'), deadline: fd.get('deadline'), block_weeks: +fd.get('block_weeks') || 4, focus: fd.get('focus'), why: String(fd.get('why') || '').trim() || null, is_primary: !!fd.get('is_primary'), reward: String(fd.get('reward') || '').trim() || null };
     }
-    let lastMetric = g0.metric, lastEx = g0.exercise_name || '', focusTouched = !!goal;
+    let lastMetric = g0.metric, lastEx = g0.exercise_name || '', focusTouched = !!goal || !!(preset && preset.focus);
     f.querySelector('[name=focus]').addEventListener('change', () => { focusTouched = true; });
     const draw = () => {
       const fd = new FormData(f), g = read(fd), m = M[g.metric];
@@ -844,6 +845,7 @@
           <p class="small">Ahora <b>${p.cur != null ? G.nf(p.cur) + ' ' + m.u : 'sin datos'}</b> · a estas alturas tocaría ${G.nf(p.expected)} ${m.u} · meta ${G.nf(+g.target_value)} ${m.u}</p>
           ${g.why ? `<p class="small muted">«${esc(g.why)}»</p>` : ''}</div></div>
       <div class="gl-badges">${G.badges(p.pct)}</div>
+      ${g.reward ? `<p class="gl-reward ${p.st[0] === 'done' ? 'on' : ''}">${p.st[0] === 'done' ? `🎁 <b>¡Premio desbloqueado!</b> ${esc(g.reward)}` : `🔒 Premio al conseguirlo: <b>${esc(g.reward)}</b> <small>(${Math.round(p.pct * 100)} %)</small>`}</p>` : ''}
       <ol class="gl-blocks">${p.blocks.map(b => `<li class="${b.now ? 'now' : ''} ${b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}"><span>${b.now ? '▶ ' : ''}Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b><small>${b.hit === true ? '✓ ' + G.nf(b.value) : b.hit === false ? '✗ ' + G.nf(b.value) : b.now ? 'en curso' : ''}</small></li>`).join('')}</ol>
       ${actions ? `<div class="row gap wrap">${p.st[0] === 'done' && g.status !== 'done' ? `<button class="btn small primary" data-gdone="${g.id}">${ic('check')} Marcar conseguido</button>` : ''}<button class="btn small" data-gedit="${g.id}">${ic('edit')} Editar</button><button class="btn small ghost" data-gdrop="${g.id}">${g.status === 'active' ? 'Archivar' : 'Reactivar'}</button><button class="icon-btn danger" data-gdel="${g.id}" title="Borrar">${ic('trash')}</button></div>` : ''}
     </article>`;
@@ -853,11 +855,15 @@
     if (goals === null) { el.innerHTML = ''; return; }
     if (!window.JMGoals) { el.innerHTML = ''; return; }
     const act = goals.filter(g => g.status === 'active'), old = goals.filter(g => g.status !== 'active');
+    const sug = JMGoals.suggest(data, c, goals, (meso && meso.weeks) || 4);
+    const sugHtml = sug.length ? `<div class="gl-sug"><b>💡 Objetivos sugeridos por sus datos</b>${sug.map((g, i) => `<div class="gl-sug-row"><span class="grow"><b>${esc(g.title)}</b><small>${esc(g.why)} · ${esc((JMGoals.FOCUS[g.focus] || {}).tag || '')}</small></span><button class="btn small" data-gsug="${i}">${ic('plus')} Crear</button></div>`).join('')}</div>` : '';
     el.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">Objetivos S.M.A.R.T.</h3><button class="btn small primary" data-gnew>${ic('plus')} Nuevo objetivo</button></header>
       ${act.length ? act.map(g => goalCard(g, data)).join('') : '<p class="empty">Sin objetivos activos. Define uno concreto, medible y con fecha: los micro-objetivos por bloque se crean solos.</p>'}
+      ${sugHtml}
       ${old.length ? `<details><summary class="small">Anteriores (${old.length})</summary>${old.map(g => goalCard(g, data)).join('')}</details>` : ''}</section>`;
     const byG = id => goals.find(g => g.id === id);
     el.querySelector('[data-gnew]').onclick = () => goalForm(c, { data, goals, after: redraw, meso });
+    el.querySelectorAll('[data-gsug]').forEach(b => b.onclick = () => { const g = Object.assign({}, sug[+b.dataset.gsug]); delete g.title; g.why = ''; goalForm(c, { preset: g, data, goals, after: redraw, meso }); });
     el.querySelectorAll('[data-gedit]').forEach(b => b.onclick = () => goalForm(c, { goal: byG(b.dataset.gedit), data, goals, after: redraw, meso }));
     el.querySelectorAll('[data-gdone]').forEach(b => b.onclick = async () => { await safe(() => DB.update('goals', b.dataset.gdone, { status: 'done', achieved_at: new Date().toISOString(), is_primary: false }), '¡Objetivo conseguido! 🏆'); redraw(); });
     el.querySelectorAll('[data-gdrop]').forEach(b => b.onclick = async () => { const g = byG(b.dataset.gdrop); await safe(() => DB.update('goals', g.id, g.status === 'active' ? { status: 'dropped', is_primary: false } : { status: 'active' }), g.status === 'active' ? 'Objetivo archivado' : 'Objetivo reactivado'); redraw(); });
@@ -905,7 +911,7 @@
       <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
         <label>Menos volumen (series)<span class="row gap"><input name="dvol" type="number" min="0" max="80" step="5" value="${D.deload_vol * 100}"><small>%</small></span></label>
         <label>Menos intensidad (carga)<span class="row gap"><input name="dint" type="number" min="0" max="50" step="5" value="${D.deload_int * 100}"><small>%</small></span></label>
-      </div><small class="muted">Y RIR +2 (máx. 5). Parte de la última semana de carga.</small></fieldset>
+      </div><small class="muted">Y RIR 2 en todas las series. Parte de la última semana de carga.</small></fieldset>
       <label class="check"><input type="checkbox" name="publish" checked> Publicar ya las semanas (el cliente ve cada una cuando llega)</label>
       <div data-prev class="meso-prev"></div>
       <p class="note small" data-warn hidden></p>
@@ -955,7 +961,7 @@
     const modes = [['progress', 'Progresión automática', 'Sube carga o reps en los ejercicios con regla de progresión si el cliente cumplió el objetivo en esta semana (todas las series en el tope del rango y con el RIR pedido). Lo demás se copia igual.'],
       ['repeat', 'Repetir con los pesos que hizo', 'Misma semana; cada ejercicio parte de la carga que registró el cliente (y sube si tiene regla de progresión y la cumplió).'],
       ['copy', 'Copia exacta', 'Mismas series, reps y cargas.'], ['maintenance', 'Mantenimiento', 'Lo mismo que esta semana, sin subir cargas.'],
-      ['intensity', 'Intensidad', 'RIR 1 punto más cerca del fallo y +carga donde esta semana llegó al tope del rango.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR +2.']];
+      ['intensity', 'Intensidad', 'RIR 1 punto más cerca del fallo y +carga donde esta semana llegó al tope del rango.'], ['deload', 'Descarga', '60 % de las series, misma carga y RIR 2.']];
     modal('Crear la semana siguiente', `<p class="muted">A partir de la ${esc(weekLabel(w))}. Se crea en borrador para que la revises antes de publicarla.</p>
       <div class="choices">${modes.map(([v, t, d], i) => `<label class="choice"><input type="radio" name="mode" value="${v}" ${i ? '' : 'checked'}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>`, {
       submitLabel: 'Crear semana', onSubmit: async (f, fd) => {
@@ -1321,7 +1327,7 @@
       <h4>Ejercicios${week ? ` <small class="muted">· ${esc(weekLabel(week))}</small>` : ''}</h4>
       <div data-rows></div>
       <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>
-      ${adj ? `<p class="note small">Esta es una semana de <b>${week.kind === 'deload' ? 'descarga' : 'intensidad'}</b>: aquí ves y cambias los valores <b>fijos</b> (series, RIR y carga). Al guardar se vuelve a aplicar ${week.kind === 'deload' ? 'el 60 % de las series y RIR +2' : 'RIR −1 y la subida de carga'}.</p>` : ''}
+      ${adj ? `<p class="note small">Esta es una semana de <b>${week.kind === 'deload' ? 'descarga' : 'intensidad'}</b>: aquí ves y cambias los valores <b>fijos</b> (series, RIR y carga). Al guardar se vuelve a aplicar ${week.kind === 'deload' ? 'el 60 % de las series y RIR 2' : 'RIR −1 y la subida de carga'}.</p>` : ''}
       ${week && laterDrafts ? `<label class="check"><input type="checkbox" name="propagate" checked> Aplicar también a las ${laterDrafts} semana${laterDrafts > 1 ? 's' : ''} siguiente${laterDrafts > 1 ? 's' : ''} <small class="muted">(no cambia las semanas pasadas ni las sesiones que ya haya entrenado; cada semana conserva sus cargas y su tipo: descarga, intensidad…)</small></label>` : ''}`, {
       wide: true, submitLabel: 'Guardar rutina',
       danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
@@ -1649,7 +1655,7 @@
     goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach), mesoOf(progs, pweeks));
     if (LP) LP.wire(box, async wid => {
       const w = pweeks.find(x => x.id === wid);
-      if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y sube el RIR 2 puntos. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
+      if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y pone RIR 2. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
       await safe(() => DB.rpc('set_week_kind', { p_week: wid, p_kind: 'deload' }), `Semana ${w.week_no}: descarga`);
       tabProgress(c, box, asCoach);
     });

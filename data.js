@@ -337,7 +337,7 @@
             } else if (mode === 'repeat' && logs.length) {
               const top = Math.max(...logs.map(l => Number(l.weight) || 0)); if (top > 0) o.load_kg = top;
             }
-            if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.min((it.target_rir ?? 2) + 2, 5); o.base = { sets: it.sets, target_rir: it.target_rir, load_kg: o.load_kg ?? it.load_kg }; }
+            if (mode === 'deload') { o.sets = Math.max(1, Math.round(it.sets * vol)); o.target_rir = Math.max(it.target_rir ?? 2, 2); o.base = { sets: it.sets, target_rir: it.target_rir, load_kg: o.load_kg ?? it.load_kg }; }
             return o;
           });
           save(); return nw.id;
@@ -361,7 +361,7 @@
           T('routine_items').filter(i => i.routine_id === rid).forEach(i => {
             const b = i.base || { sets: i.sets, target_rir: i.target_rir, load_kg: i.load_kg };
             if (['normal', 'maintenance', 'test'].includes(kind)) { Object.assign(i, { sets: b.sets, target_rir: b.target_rir, load_kg: b.load_kg, base: null }); return; }
-            if (kind === 'deload') { Object.assign(i, { sets: Math.max(1, Math.round(b.sets * 0.6)), target_rir: Math.min((b.target_rir ?? 2) + 2, 5), load_kg: b.load_kg, base: b }); return; }
+            if (kind === 'deload') { Object.assign(i, { sets: Math.max(1, Math.round(b.sets * 0.6)), target_rir: Math.max(b.target_rir ?? 2, 2), load_kg: b.load_kg, base: b }); return; }
             const logs = T('set_logs').filter(l => l.lineage_id && l.lineage_id === i.lineage_id && done.has(l.session_id));
             const rirs = logs.map(l => l.rir).filter(v => v != null);
             const okk = logs.length >= b.sets && i.reps_max != null && Math.min(...logs.map(l => +l.reps || 0)) >= i.reps_max && (b.target_rir == null || !rirs.length || Math.min(...rirs) >= b.target_rir);

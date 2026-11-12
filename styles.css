@@ -911,3 +911,12 @@ fieldset.smart legend { padding: 0 6px; font-weight: 600; } fieldset.smart legen
 .tpl-days { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
 .tpl-days li { display: grid; grid-template-columns: 42px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--card2); font-size: 13px; }
 .tpl-days li span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; } .tpl-days li small { color: var(--muted); }
+
+/* Objetivos sugeridos y premios */
+.gl-sug { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--card)); display: grid; gap: 8px; }
+.gl-sug-row { display: flex; gap: 10px; align-items: center; } .gl-sug-row b { display: block; font-size: 14px; } .gl-sug-row small { color: var(--muted); }
+.gl-reward { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--card2); font-size: 13px; color: var(--muted); }
+.gl-reward b { color: var(--text); }
+.gl-reward.on { background: color-mix(in srgb, var(--green) 18%, var(--card)); color: var(--text); animation: gl-pop .6s ease; }
+@keyframes gl-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .gl-reward.on { animation: none; } }
