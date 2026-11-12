@@ -729,3 +729,28 @@ label.sl-item span, label.sl-item b { color: var(--text); }
 .ev.done .evic { background: color-mix(in srgb, var(--green) 22%, transparent); color: var(--green); }
 .ev .icon-btn { flex: none; }
 @media (max-width: 520px) { .evkinds { grid-template-columns: 1fr 1fr; } .evkind small { display: none; } .ev { flex-wrap: wrap; } .ev .btn { margin-left: 42px; } }
+
+/* Mesociclos */
+.choices.two { grid-template-columns: 1fr 1fr; margin: 4px 0 10px; }
+.choices.two label.choice { display: flex; align-items: flex-start; gap: 10px; }
+.choices.two label.choice input { margin-top: 3px; }
+.deload-set { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 12px 10px; margin: 10px 0; }
+.deload-set legend { padding: 0 6px; font-weight: 600; }
+.meso-prev h4 { margin: 12px 0 6px; }
+.meso-bars { display: flex; align-items: flex-end; gap: 6px; height: 70px; padding: 0 2px 16px; }
+.meso-bars span { position: relative; flex: 1; border-radius: 6px 6px 2px 2px; background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.meso-bars span.dl { background: color-mix(in srgb, #2ec4b6 70%, transparent); }
+.meso-bars i { position: absolute; bottom: -16px; left: 0; right: 0; text-align: center; font-style: normal; font-size: 11px; color: var(--muted); }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.meso-table { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 520px; }
+.meso-table th, .meso-table td { padding: 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.meso-table th small { display: block; font-weight: 400; color: var(--muted); }
+.meso-table td:first-child { white-space: normal; font-weight: 600; min-width: 110px; }
+.meso-table .dl { background: color-mix(in srgb, #2ec4b6 12%, transparent); }
+.meso-table .tot td { font-weight: 600; }
+.meso-line { display: flex; gap: 4px; margin: 8px 0 4px; }
+.meso-line span { flex: 1; text-align: center; font-size: 11px; padding: 5px 2px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+.meso-line span.dl { background: color-mix(in srgb, #2ec4b6 20%, transparent); }
+.meso-line span.past { opacity: .5; }
+.meso-line span.now { outline: 2px solid var(--accent); font-weight: 700; }
+@media (max-width: 520px) { .choices.two { grid-template-columns: 1fr; } }
