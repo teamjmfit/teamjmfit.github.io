@@ -48,11 +48,13 @@
     logs.forEach(l => {
       if (!l.weight || !l.reps) return;
       const k = String(l.exercise_name || '').trim().toLowerCase(); if (!k) return;
-      const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0 });
+      const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0, sets: [] });
       ss.n++; const e = e1rm(Number(l.weight), Number(l.reps));
+      ss.sets.push({ no: l.set_no, w: Number(l.weight), r: Number(l.reps), rir: l.rir, rpe: l.rpe });
       if (e > ss.e1) Object.assign(ss, { e1: e, w: Number(l.weight), r: Number(l.reps) });
     });
     const out = {}; for (const k in by) out[k] = Object.values(by[k]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    for (const k in out) out[k].forEach(x => x.sets.sort((a, b) => a.no - b.no));
     return out;
   }
   // Estado: récord en la última sesión, estancado (3+ sesiones sin superar la mejor marca) o bajando
@@ -808,8 +810,22 @@
       if (!H || !name) return '';
       const h = H[String(name).trim().toLowerCase()]; if (!h || !h.length) return '<p class="ex-hist muted">Sin marcas todavía en este ejercicio.</p>';
       const st = stallOf(h), [cls, txt] = STALL_TXT[st.st], best = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]);
-      return `<p class="ex-hist"><span class="muted">Últimas:</span> ${h.slice(-4).reverse().map(x => `<b>${fmtKg(x.w)}×${x.r}</b> <small class="muted">${fmtDate(x.date, { day: 'numeric', month: 'short' })}</small>`).join(' · ')}
-        <span class="muted">· mejor 1RM est. ${Math.round(best.e1)} kg</span> <span class="pill ${cls}">${txt}${st.st === 'stall' || st.st === 'down' ? ` · ${st.since} ses.` : ''}</span></p>`;
+      const last = h[h.length - 1], prev = h[h.length - 2], d = (iso) => fmtDate(iso, { day: 'numeric', month: 'short' });
+      const setTxt = x => `${fmtKg(x.w)}×${x.r}${x.rir != null ? `<small> /RIR ${fmtKg(x.rir)}</small>` : x.rpe != null ? `<small> /RPE ${fmtKg(x.rpe)}</small>` : ''}`;
+      let cmp = '';
+      if (prev) {
+        const pc = (last.e1 - prev.e1) / prev.e1 * 100, dw = last.w - prev.w, dr = last.r - prev.r;
+        const what = dw ? `${dw > 0 ? '+' : ''}${fmtKg(dw)} kg` : dr ? `${dr > 0 ? '+' : ''}${dr} rep${Math.abs(dr) === 1 ? '' : 's'}` : 'mismo peso y reps';
+        const [c2, ar] = pc > 0.5 ? ['dn', '▲'] : pc < -0.5 ? ['up', '▼'] : ['', '='];
+        cmp = `<span class="${c2}"><b>${ar}</b> ${what}</span> <small class="muted">en la mejor serie vs ${d(prev.date)} (${fmtKg(prev.w)}×${prev.r})</small>`;
+      }
+      // minigráfica del 1RM estimado de las últimas sesiones
+      const pts = h.slice(-8), lo = Math.min(...pts.map(x => x.e1)), hi = Math.max(...pts.map(x => x.e1)), W = 90, Hh = 24;
+      const spark = pts.length > 1 ? `<svg class="spark" viewBox="0 0 ${W} ${Hh}" aria-hidden="true"><polyline points="${pts.map((x, i) => `${(i * (W - 4) / (pts.length - 1) + 2).toFixed(1)},${(Hh - 3 - (hi > lo ? (x.e1 - lo) / (hi - lo) : 0.5) * (Hh - 6)).toFixed(1)}`).join(' ')}"/></svg>` : '';
+      return `<div class="ex-hist2">
+        <div class="eh-row"><span class="eh-l">Última vez <small>${d(last.date)}</small></span><span class="eh-sets">${last.sets.map(setTxt).join(' · ')}</span></div>
+        <div class="eh-row"><span class="eh-l">Progresión</span><span class="eh-p">${cmp || '<small class="muted">Primera sesión registrada</small>'}</span>${spark}<span class="pill ${cls}">${txt}${st.st === 'stall' || st.st === 'down' ? ` · ${st.since} ses.` : ''}</span></div>
+        <small class="muted">Mejor 1RM est.: ${Math.round(best.e1)} kg · ${h.length} ${h.length === 1 ? 'sesión' : 'sesiones'}</small></div>`;
     };
     const rowHtml = (i, idx) => `<div class="ex-row" data-idx="${idx}">
         <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>
