@@ -556,7 +556,7 @@
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['ficha', 'Ficha'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
     const c = await DB.get('clients', id);
@@ -578,6 +578,7 @@
     if (tab === 'nutricion') return tabNutrition(c, box);
     if (tab === 'progreso') return tabProgress(c, box, true);
     if (tab === 'ficha') return tabFicha(c, box);
+    if (tab === 'revisiones') return tabReviews(c, box);
     if (tab === 'mensajes') return tabMessages(c, box, 'coach');
     if (tab === 'cobros') return tabClientPayments(c, box);
   }
@@ -799,7 +800,9 @@
 
   function routineEditor(c, r, items, { week = null, laterDrafts = 0 } = {}) {
     const isNew = !r; r = r || { name: '', day: null, notes: '' };
-    const rows = items.map(i => legacyLoad(Object.assign({}, i)));
+    // En semanas de descarga / intensidad se editan los valores FIJOS (base); al guardar se vuelve a aplicar el tipo
+    const adj = !!(week && (week.kind === 'deload' || week.kind === 'intensity'));
+    const rows = items.map(i => { const x = Object.assign({}, i); if (adj && x.base) { const b = x.base; if (b.sets != null) x.sets = b.sets; x.target_rir = b.target_rir ?? null; if (b.load_kg !== undefined) x.load_kg = b.load_kg; } return legacyLoad(x); });
     rows.forEach(i => { i.prog = progKey(i.progression); });
     const intensOf = i => i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
     rows.forEach(i => { i.intens = intensOf(i); });
@@ -851,6 +854,7 @@
       <h4>Ejercicios${week ? ` <small class="muted">· ${esc(weekLabel(week))}</small>` : ''}</h4>
       <div data-rows></div>
       <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>
+      ${adj ? `<p class="note small">Esta es una semana de <b>${week.kind === 'deload' ? 'descarga' : 'intensidad'}</b>: aquí ves y cambias los valores <b>fijos</b> (series, RIR y carga). Al guardar se vuelve a aplicar ${week.kind === 'deload' ? 'el 60 % de las series y RIR +2' : 'RIR −1 y la subida de carga'}.</p>` : ''}
       ${week && laterDrafts ? `<label class="check"><input type="checkbox" name="propagate" checked> Aplicar también a las ${laterDrafts} semana${laterDrafts > 1 ? 's' : ''} siguiente${laterDrafts > 1 ? 's' : ''} <small class="muted">(no cambia las semanas pasadas ni las sesiones que ya haya entrenado; cada semana conserva sus cargas y su tipo: descarga, intensidad…)</small></label>` : ''}`, {
       wide: true, submitLabel: 'Guardar rutina',
       danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
@@ -888,6 +892,7 @@
             else news.push(Object.assign({ routine_id: rid, client_id: c.id }, crypto.randomUUID ? { lineage_id: crypto.randomUUID() } : {}, payload(x, i)));
           }
           if (news.length) await DB.insert('routine_items', news);
+          if (adj) await DB.rpc('set_week_kind', { p_week: week.id, p_kind: week.kind });   // vuelve a aplicar descarga / intensidad sobre lo fijo
           if (week && fd.get('propagate')) { const n = await DB.rpc('propagate_routine', { p_routine: rid }); if (n) toast(`Cambios aplicados a ${n} semana${n > 1 ? 's' : ''} siguiente${n > 1 ? 's' : ''}`, 'ok'); }
         }, 'Rutina guardada');
         render();
@@ -1163,7 +1168,7 @@
       ${weeksHtml()}
       ${prs.length ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="grid2">
-        <section class="card"><h3>Check-ins <small class="muted">${checkins.length}</small></h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
+        <section class="card"><h3>Check-ins <small class="muted">${checkins.length}</small>${asCoach && checkins.length ? ` <a class="small" href="#/cliente/${c.id}/revisiones">Ver todas las revisiones</a>` : ''}</h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
@@ -1267,6 +1272,48 @@
 
   // ----- Ficha del cliente (entrenador)
   const ageOf = b => { if (!b) return null; const d = new Date(b + 'T12:00:00'), n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--; return a; };
+  // ----- Revisiones del cliente: todos sus check-ins, con filtros; cada uno se abre entero al tocarlo
+  async function tabReviews(c, box) {
+    const [checkins, photos] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => [])]);
+    if (!checkins.length) { box.innerHTML = '<p class="empty">Este cliente todavía no ha enviado ninguna revisión.</p>'; return; }
+    const nPh = k => photos.filter(p => p.checkin_id === k.id).length || (k.photo_path ? 1 : 0);
+    const FIL = [['all', 'Todas'], ['pend', 'Sin revisar'], ['fotos', 'Con fotos'], ['dolor', 'Con molestias']];
+    const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!k.pains };
+    let fil = 'all';
+    const first = checkins[checkins.length - 1], lastW = checkins.find(k => k.weight), firstW = checkins.slice().reverse().find(k => k.weight);
+    const draw = () => {
+      const list = checkins.filter(test[fil]);
+      box.innerHTML = `<div class="kpis small">
+          <div class="kpi"><small>Revisiones</small><b>${checkins.length}</b><span>desde ${fmtDate(first.date, { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
+          <div class="kpi ${checkins.some(k => !k.coach_seen) ? 'warn' : ''}"><small>Sin revisar</small><b>${checkins.filter(k => !k.coach_seen).length}</b><span>${checkins[0] ? 'última ' + fmtDate(checkins[0].date, { day: 'numeric', month: 'short' }) : ''}</span></div>
+          <div class="kpi"><small>Peso</small><b>${lastW ? fmtKg(lastW.weight) + ' kg' : '–'}</b><span>${lastW && firstW && lastW !== firstW ? sgn(lastW.weight - firstW.weight) + ' kg desde la primera' : '—'}</span></div>
+        </div>
+        <div class="np-plans">${FIL.map(([k, l]) => `<button type="button" class="chip ${fil === k ? 'on' : ''}" data-f="${k}">${l} <small>${checkins.filter(test[k]).length}</small></button>`).join('')}</div>
+        <section class="card flush">${list.length ? list.map(k => {
+          const i = checkins.indexOf(k), prev = checkins.slice(i + 1).find(x => x.weight), dw = prev && k.weight ? Number(k.weight) - Number(prev.weight) : null, np = nPh(k);
+          return `<div class="ck-item" data-id="${k.id}"><button type="button" class="ck-row ${!k.coach_seen ? 'unseen' : ''}">
+            <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+            <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
+            <span class="ck-m">${[k.train_adh != null ? `Ent ${k.train_adh}` : '', k.diet_adh != null ? `Nut ${k.diet_adh}` : '', k.fatigue != null ? `Fat ${k.fatigue}` : '', k.energy10 != null ? `En ${k.energy10}` : ''].filter(Boolean).join(' · ')}</span>
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${k.pains ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+        }).join('') : '<p class="empty">Ninguna revisión con este filtro.</p>'}</section>
+        <p class="muted small">Toca una revisión para verla entera (medidas, respuestas, fotos) y responderla.</p>`;
+      box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { fil = b.dataset.f; draw(); });
+      box.querySelectorAll('.ck-item').forEach(el => {
+        el.querySelector('.ck-row').onclick = () => {
+          const o = el.querySelector('.ck-open');
+          if (!o.hidden) { o.hidden = true; o.innerHTML = ''; el.classList.remove('open'); return; }
+          const k = checkins.find(x => x.id === el.dataset.id), i = checkins.indexOf(k);
+          o.appendChild(checkinCard(k, true, { prev: checkins.slice(i + 1).find(x => x.weight), photos: photos.filter(p => p.checkin_id === k.id) }));
+          o.hidden = false; el.classList.add('open');
+        };
+      });
+    };
+    draw();
+  }
+
   async function tabFicha(c, box) {
     const [checkins, daily] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),

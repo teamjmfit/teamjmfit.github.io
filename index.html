@@ -23,7 +23,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="app"><div class="splash"><img src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div class="loading"><span></span><span></span><span></span></div></div></div>
+  <div id="splash" role="status" aria-live="polite"><img src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><p data-frase></p><div class="loading"><span></span><span></span><span></span></div></div>
+  <script src="splash.js"></script>
+  <div id="app"><div class="splash"></div></div>
   <script src="config.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous" defer></script>
   <script src="exercises.js" defer></script>
