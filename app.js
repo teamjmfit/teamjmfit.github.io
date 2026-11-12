@@ -374,7 +374,7 @@
   }
 
   // ------------------------------------------------------------ layout
-  function shell(navItems, activeKey, content, { title, back, actions = '' } = {}) {
+  function shell(navItems, activeKey, content, { title, back, actions = '', sub = '' } = {}) {
     const nav = navItems.map(n => `<a href="#/${n.href}" class="${n.key === activeKey ? 'on' : ''}">${ic(n.icon)}<span>${n.label}</span>${n.badge ? `<i class="badge">${n.badge}</i>` : ''}</a>`).join('');
     $app.innerHTML = `
       <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
@@ -384,7 +384,7 @@
       </aside>
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
-          <h1>${esc(title || '')}</h1><span class="grow"></span>${actions}
+          ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
           <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
         <div class="content">${content}</div>
@@ -836,17 +836,19 @@
     f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
   }
   // Tarjeta de un objetivo con anillo, estado, medallas y micro-objetivos
-  function goalCard(g, data, { big = false, actions = true } = {}) {
+  function goalCard(g, data, { big = false, actions = true, compact = false } = {}) {
     const G = window.JMGoals, m = G.METRICS[g.metric], p = G.progress(g, data), fo = G.FOCUS[g.focus];
     return `<article class="gl-card st-${p.st[0]} ${big ? 'big' : ''}" data-goal="${g.id}">
-      <div class="gl-top">${G.ring(p.pct, p.st[0] === 'done' ? 1 : p.exp, 'st-' + p.st[0], big ? 104 : 84)}
+      <div class="gl-top">${G.ring(p.pct, p.st[0] === 'done' ? 1 : p.exp, 'st-' + p.st[0], compact ? 88 : big ? 104 : 84)}
         <div class="grow"><b>${esc(g.title)}</b>
-          <small><span class="pill">${esc(fo ? fo.tag : 'Objetivo')}</span>${g.is_primary ? ' <span class="pill green">Principal</span>' : ''} ${esc(p.st[1])}${p.daysLeft > 0 && p.st[0] !== 'done' ? ` · quedan ${p.daysLeft} días` : ''}</small>
+          ${compact ? `<small class="gl-st">${esc(p.st[1])}${p.daysLeft > 0 && p.st[0] !== 'done' ? ` · quedan ${p.daysLeft} días` : ''}</small>
+          <p class="gl-now">Ahora <b>${p.cur != null ? G.nf(p.cur) + ' ' + m.u : '–'}</b><span>→</span>meta <b>${G.nf(+g.target_value)} ${m.u}</b></p>
+          ${g.why ? `<p class="small muted">«${esc(g.why)}»</p>` : ''}</div></div>` : `<small><span class="pill">${esc(fo ? fo.tag : 'Objetivo')}</span>${g.is_primary ? ' <span class="pill green">Principal</span>' : ''} ${esc(p.st[1])}${p.daysLeft > 0 && p.st[0] !== 'done' ? ` · quedan ${p.daysLeft} días` : ''}</small>
           <p class="small">Ahora <b>${p.cur != null ? G.nf(p.cur) + ' ' + m.u : 'sin datos'}</b> · a estas alturas tocaría ${G.nf(p.expected)} ${m.u} · meta ${G.nf(+g.target_value)} ${m.u}</p>
-          ${g.why ? `<p class="small muted">«${esc(g.why)}»</p>` : ''}</div></div>
+          ${g.why ? `<p class="small muted">«${esc(g.why)}»</p>` : ''}</div></div>`}
       <div class="gl-badges">${G.badges(p.pct)}</div>
       ${g.reward ? `<p class="gl-reward ${p.st[0] === 'done' ? 'on' : ''}">${p.st[0] === 'done' ? `🎁 <b>¡Premio desbloqueado!</b> ${esc(g.reward)}` : `🔒 Premio al conseguirlo: <b>${esc(g.reward)}</b> <small>(${Math.round(p.pct * 100)} %)</small>`}</p>` : ''}
-      <ol class="gl-blocks">${p.blocks.map(b => `<li class="${b.now ? 'now' : ''} ${b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}"><span>${b.now ? '▶ ' : ''}Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b><small>${b.hit === true ? '✓ ' + G.nf(b.value) : b.hit === false ? '✗ ' + G.nf(b.value) : b.now ? 'en curso' : ''}</small></li>`).join('')}</ol>
+      ${compact && p.blocks.length ? `<details class="gl-more"><summary>Micro-objetivos por bloque (${p.blocks.length})</summary>` : ''}<ol class="gl-blocks">${p.blocks.map(b => `<li class="${b.now ? 'now' : ''} ${b.hit === true ? 'hit' : b.hit === false ? 'miss' : ''}"><span>${b.now ? '▶ ' : ''}Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b><small>${b.hit === true ? '✓ ' + G.nf(b.value) : b.hit === false ? '✗ ' + G.nf(b.value) : b.now ? 'en curso' : ''}</small></li>`).join('')}</ol>${compact && p.blocks.length ? '</details>' : ''}
       ${actions ? `<div class="row gap wrap">${p.st[0] === 'done' && g.status !== 'done' ? `<button class="btn small primary" data-gdone="${g.id}">${ic('check')} Marcar conseguido</button>` : ''}<button class="btn small" data-gedit="${g.id}">${ic('edit')} Editar</button><button class="btn small ghost" data-gdrop="${g.id}">${g.status === 'active' ? 'Archivar' : 'Reactivar'}</button><button class="icon-btn danger" data-gdel="${g.id}" title="Borrar">${ic('trash')}</button></div>` : ''}
     </article>`;
   }
@@ -855,10 +857,11 @@
     if (goals === null) { el.innerHTML = ''; return; }
     if (!window.JMGoals) { el.innerHTML = ''; return; }
     const act = goals.filter(g => g.status === 'active'), old = goals.filter(g => g.status !== 'active');
-    const sug = JMGoals.suggest(data, c, goals, (meso && meso.weeks) || 4);
+    const sug = S.profile.role === 'coach' ? JMGoals.suggest(data, c, goals, (meso && meso.weeks) || 4) : [];
     const sugHtml = sug.length ? `<div class="gl-sug"><b>💡 Objetivos sugeridos por sus datos</b>${sug.map((g, i) => `<div class="gl-sug-row"><span class="grow"><b>${esc(g.title)}</b><small>${esc(g.why)} · ${esc((JMGoals.FOCUS[g.focus] || {}).tag || '')}</small></span><button class="btn small" data-gsug="${i}">${ic('plus')} Crear</button></div>`).join('')}</div>` : '';
-    el.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">Objetivos S.M.A.R.T.</h3><button class="btn small primary" data-gnew>${ic('plus')} Nuevo objetivo</button></header>
-      ${act.length ? act.map(g => goalCard(g, data)).join('') : '<p class="empty">Sin objetivos activos. Define uno concreto, medible y con fecha: los micro-objetivos por bloque se crean solos.</p>'}
+    const isC = S.profile.role !== 'coach';
+    el.innerHTML = `<section class="card"><header class="row gap"><h3 class="grow">${isC ? 'Mis objetivos' : 'Objetivos S.M.A.R.T.'}</h3><button class="btn small ${isC && act.length ? '' : 'primary'}" data-gnew>${ic('plus')} ${isC ? 'Nuevo' : 'Nuevo objetivo'}</button></header>
+      ${act.length ? act.map(g => goalCard(g, data, { compact: isC })).join('') : `<p class="empty">${isC ? 'Aún no tienes objetivos. Crea uno concreto y con fecha, o pídeselo a Jorge.' : 'Sin objetivos activos. Define uno concreto, medible y con fecha: los micro-objetivos por bloque se crean solos.'}</p>`}
       ${sugHtml}
       ${old.length ? `<details><summary class="small">Anteriores (${old.length})</summary>${old.map(g => goalCard(g, data)).join('')}</details>` : ''}</section>`;
     const byG = id => goals.find(g => g.id === id);
@@ -1576,6 +1579,31 @@
     </svg>${series.length > 1 ? `<div class="legend">${series.map(s => `<span><i class="${s.cls}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}`;
   }
 
+  // Aviso compacto del check-in semanal (cliente): se resalta si toca enviarlo
+  function ckCta(lastCk) {
+    const days = lastCk ? Math.max(0, Math.floor((Date.now() - new Date(lastCk.date + 'T12:00:00')) / 864e5)) : null, due = days == null || days >= 6;
+    return `<section class="ck-cta ${due ? 'due' : ''}"><span class="ck-ic">${ic('camera')}</span><span class="grow"><b>Check-in semanal</b><small>${lastCk ? (days === 0 ? 'Enviado hoy ✓' : `Último hace ${days} día${days === 1 ? '' : 's'}${due ? ' · toca enviarlo' : ''}`) : 'Aún no has enviado ninguno'}</small></span><button type="button" class="btn small ${due ? 'primary' : ''}" data-ck>${due ? 'Enviar' : 'Nuevo'}</button></section>`;
+  }
+  // Tarjetas plegables (vista del cliente): se ve solo la cabecera hasta tocarla; se recuerda en este dispositivo
+  const FOLD_KEY = 'jmfit-folds';
+  function foldify(root, scope, openByDefault = []) {
+    let st = {}; try { st = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { st = {}; }
+    root.querySelectorAll(':scope > section.card, :scope > div > section.card').forEach(sec => {
+      const h = [...sec.children].find(x => x.matches('h3, header')), t = h && (h.matches('h3') ? h : h.querySelector('h3'));
+      if (!t || sec.classList.contains('fold')) return;
+      const name = (t.childNodes[0] && t.childNodes[0].textContent || '').trim(), key = scope + ':' + name;
+      sec.classList.add('fold'); h.classList.add('fold-h'); h.setAttribute('role', 'button'); h.tabIndex = 0;
+      const set = open => { sec.classList.toggle('shut', !open); h.setAttribute('aria-expanded', String(open)); };
+      set(key in st ? !!st[key] : openByDefault.some(k => name.startsWith(k)));
+      const tog = e => {
+        if (e.target !== h && e.target.closest('select, input, label, a, button')) return;
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault(); const open = sec.classList.contains('shut'); set(open); st[key] = open;
+        try { localStorage.setItem(FOLD_KEY, JSON.stringify(st)); } catch (er) { /* sin almacenamiento: solo esta vez */ }
+      };
+      h.addEventListener('click', tog); h.addEventListener('keydown', tog);
+    });
+  }
   async function tabProgress(c, box, asCoach) {
     const [checkins, sessions, logs, daily, photos, progs, pweeks] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
@@ -1623,7 +1651,7 @@
     const hasFat = rows.some(r => r.fatigue != null || r.stress != null || r.energy != null);
 
     box.innerHTML = `
-      ${!asCoach ? `<button class="btn primary block big" data-ck>${ic('camera')} Enviar check-in semanal</button>` : ''}
+      ${!asCoach ? ckCta(checkins[0]) : ''}
       <div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null ? `objetivo ${sgn(target)} kg/sem` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
@@ -1651,6 +1679,7 @@
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
+    if (!asCoach) foldify(box, 'prog', ['Peso medio']);
     VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
     goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach), mesoOf(progs, pweeks));
     if (LP) LP.wire(box, async wid => {
@@ -2245,7 +2274,7 @@
 
   async function clientToday() {
     const c = S.client;
-    shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}` });
+    shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}`, sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })) });
     const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
     if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
     const [allRoutines, items, sessions, programs, weeks] = await Promise.all([
@@ -2269,12 +2298,19 @@
     const doneWeek = sessions.filter(s => s.finished_at && new Date(s.started_at) >= weekStart);
     const planned = routines.filter(r => r.day).length;
     const next = routines.filter(r => r.day && r.day > d)[0] || routines.filter(r => r.day)[0];
-    const card = (r, hero) => {
-      const its = items.filter(i => i.routine_id === r.id);
-      return `<section class="card routine ${hero ? 'hero' : ''}"><header><div><small>${r.day ? DIAS[r.day] : 'Cuando quieras'}</small><b>${esc(r.name)}</b><small>${its.length} ejercicios · ~${Math.round(its.reduce((s, i) => s + i.sets * (45 + i.rest_sec), 0) / 60)} min</small></div><span class="grow"></span>${doneToday.has(r.id) ? '<span class="pill green">Hecho hoy ✓</span>' : ''}</header>
-        ${hero ? `<ol class="ex-list compact">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol>` : ''}
-        <a class="btn ${hero ? 'primary big block' : 'small'}" href="#/entreno/${r.id}">${ic('play')} ${hero ? 'Empezar entreno' : 'Empezar'}</a></section>`;
+    const mins = its => Math.round(its.reduce((s, i) => s + i.sets * (45 + i.rest_sec), 0) / 60);
+    const doneWk = new Set(doneWeek.map(s => s.routine_id));
+    // Tarjeta principal del día: oscura y con acento dorado; la lista de ejercicios va plegada
+    const hero = r => {
+      const its = items.filter(i => i.routine_id === r.id), dn = doneToday.has(r.id);
+      return `<section class="hero-ink ${dn ? 'done' : ''}"><div class="hx-top"><small>Hoy · ${r.day ? DIAS[r.day] : 'cuando quieras'}</small>${dn ? '<span class="pill green">Hecho ✓</span>' : ''}</div>
+        <h2>${esc(r.name)}</h2>
+        <div class="hx-meta"><span>${ic('dumbbell', 'xs')} ${its.length} ejercicios</span><span>${ic('clock', 'xs')} ~${mins(its)} min</span>${cw ? `<span>${esc(weekLabel(cw))}</span>` : ''}</div>
+        ${its.length ? `<details class="hx-list"><summary>Ver ejercicios</summary><ol>${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol></details>` : ''}
+        <a class="btn primary big block" href="#/entreno/${r.id}">${ic('play')} ${dn ? 'Repetir entreno' : 'Empezar entreno'}</a></section>`;
     };
+    const rrow = r => { const its = items.filter(i => i.routine_id === r.id);
+      return `<li><a href="#/entreno/${r.id}" class="${doneWk.has(r.id) ? 'did' : ''}"><span class="rday">${r.day ? esc(DIAS[r.day].slice(0, 3)) : '—'}</span><span class="grow"><b>${esc(r.name)}</b><small>${its.length} ejercicios · ~${mins(its)} min${doneWk.has(r.id) ? ' · hecho esta semana' : ''}</small></span><span class="rgo">${ic(doneWk.has(r.id) ? 'check' : 'play')}</span></a></li>`; };
     const pending = getActiveWorkout();
     const wkS = ymd(weekStart), wkE = addDays(wkS, 6);
     const evToday = events.filter(e => e.date === t0), evNext = events.filter(e => e.date > t0 && e.date <= addDays(t0, 6));
@@ -2287,16 +2323,20 @@
         : e.kind === 'note' ? '' : `<button class="btn small ${dn ? '' : 'primary'}" data-evdone="${e.id}" data-on="${dn ? 0 : 1}">${ic('check')} ${dn ? 'Hecho ✓' : 'Marcar hecho'}</button>`;
       return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${big ? '' : esc(cap1(fmtDate(e.date, { weekday: 'long', day: 'numeric' }))) + ' · '}${esc([EV_KINDS[e.kind][0], r ? r.name : '', e.minutes ? e.minutes + ' min' : ''].filter((x, i, a) => x && a.indexOf(x) === i && x !== evTitle(e)).join(' · '))}${e.date < t0 && big ? ' · pendiente' : ''}</small>${e.notes && big ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>${big ? act : ''}</li>`;
     };
-    $app.querySelector('.content').innerHTML = `
+    const pctW = planned ? Math.min(100, Math.round(doneWeek.length / planned * 100)) : 0;
+    const others = routines.filter(r => !todays.includes(r));
+    const hasToday = evToday.some(e => e.kind !== 'note');
+    $app.querySelector('.content').innerHTML = `<div class="c-home">
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
-      <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()) || events.some(e => e.date === ymd(dd) && e.kind !== 'note' && evDone(e, sessions, ckins)); const hasEv = events.some(e => e.date === ymd(dd) && e.kind !== 'note'); return `<div class="${n === d ? 'today' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div>
-      <p class="muted small center">${cw ? esc(weekLabel(cw)) + ' · ' : ''}${doneWeek.length} de ${planned || '–'} entrenos esta semana</p>
-      ${pg ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small" href="#/progreso">Ver progreso</a></header>${goalCard(pg, gData, { big: true, actions: false })}</section>` : ''}
-      ${todays.length ? todays.map(r => card(r, true)).join('') : evToday.some(e => e.kind !== 'note') ? '' : `<section class="card restday"><h3>Hoy toca descanso 😌</h3><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
+      <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw && !todays.length ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
+        <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
+        <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()) || events.some(e => e.date === ymd(dd) && e.kind !== 'note' && evDone(e, sessions, ckins)); const hasEv = events.some(e => e.date === ymd(dd) && e.kind !== 'note'); return `<div class="${n === d ? 'today' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div></section>
+      ${todays.length ? todays.map(hero).join('') : hasToday ? '' : `<section class="hero-ink rest"><div class="hx-top"><small>Hoy</small></div><h2>Día de descanso 😌</h2><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
       ${evLate.length + evToday.length ? `<section class="card"><h3>${todays.length ? 'Hoy también' : 'Hoy'}</h3><ul class="evlist">${[...evLate, ...evToday].map(e => evRow(e, true)).join('')}</ul></section>` : ''}
-      ${evNext.length ? `<h3 class="sub">Próximos días</h3><section class="card"><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
-      ${routines.filter(r => r.day !== d).length ? `<h3 class="sub">Todas mis rutinas</h3>${routines.filter(r => r.day !== d).map(r => card(r, false)).join('')}` : ''}
-      ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}`;
+      ${pg ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
+      ${others.length ? `<section class="card rlist-card"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
+      ${evNext.length ? `<section class="card"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
+      ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}</div>`;
     const box = $app.querySelector('.content');
     box.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
     box.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { b.disabled = true; try { await safe(() => DB.rpc('set_event_done', { p_id: b.dataset.evdone, p_done: b.dataset.on === '1' }), b.dataset.on === '1' ? '¡Hecho! 💪' : ''); } catch (e) { b.disabled = false; return; } clientToday(); });
@@ -2313,9 +2353,9 @@
     const tot = (p.protein || 0) * 4 + (p.carbs || 0) * 4 + (p.fat || 0) * 9;
     const pct = v => (tot ? Math.round(v / tot * 100) : 0);
     box.innerHTML = `
-      ${p.kcal ? `<section class="card macros"><div class="kcal"><b>${p.kcal}</b><small>kcal al día</small></div>
-        ${tot ? `<div class="mbar"><i style="flex:${pct(p.protein * 4)}" class="p"></i><i style="flex:${pct(p.carbs * 4)}" class="c"></i><i style="flex:${pct(p.fat * 9)}" class="f"></i></div>` : ''}
-        <div class="mrow"><span class="p">Proteína <b>${p.protein ?? '–'} g</b></span><span class="c">Carbohidratos <b>${p.carbs ?? '–'} g</b></span><span class="f">Grasas <b>${p.fat ?? '–'} g</b></span>${p.water ? `<span>Agua <b>${esc(p.water)}</b></span>` : ''}</div></section>` : ''}
+      ${p.kcal ? (() => { const mx = [['p', 'Proteína', p.protein, 4], ['c', 'Carbohidratos', p.carbs, 4], ['f', 'Grasas', p.fat, 9]], top = Math.max(1, ...mx.map(m => pct((m[2] || 0) * m[3])));
+        return `<section class="card macros2"><div class="kcal"><b>${p.kcal}</b><small>kcal al día</small>${p.water ? `<span class="mx-w">💧 ${esc(p.water)}</span>` : ''}</div>
+        <div class="mx">${mx.map(([k, l, g, f]) => `<div class="mx-r ${k}"><span>${l}</span><b>${g ?? '–'} g</b><i><em style="width:${tot ? Math.round(pct((g || 0) * f) / top * 100) : 0}%"></em></i><small>${tot ? pct((g || 0) * f) + ' %' : ''}</small></div>`).join('')}</div></section>`; })() : ''}
       ${hasBlocks ? window.JMNutri.clientView(d) : ''}
       ${p.meals && !hasBlocks ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
       ${p.notes ? `<section class="card"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
@@ -2599,5 +2639,6 @@
     });
   }
 
-  boot();
+  // Arranca cuando ya están cargados los módulos (analítica, objetivos, mesociclos): si no, al recargar faltaban secciones
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
 })();
