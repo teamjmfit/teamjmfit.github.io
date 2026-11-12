@@ -912,7 +912,7 @@
     const tmb = 10 * i.kg + 6.25 * i.cm - 5 * i.age + (fem ? -161 : 5);
     const get = tmb * a[1];
     const kcal = gain ? get * 1.12 : loss ? get * 0.82 : get;
-    const pR = gain ? 1.6 : loss ? 2 : 1.8, fR = fem ? 1.1 : 0.8;
+    const pR = i.pR > 0 ? i.pR : (gain ? 1.6 : loss ? 2 : 1.8), fR = i.fR > 0 ? i.fR : (fem ? 1.1 : 0.8);   // g/kg elegidos a mano o los de por defecto
     const p = i.kg * pR, f = i.kg * fR, c = (kcal - p * 4 - f * 9) / 4;
     const r2 = x => Math.round(x * 100) / 100;
     const rate = gain ? `+${r2(i.kg * 0.0025)} a +${r2(i.kg * 0.005)} kg/sem` : loss ? `-${r2(i.kg * 0.005)} a -${r2(i.kg * 0.01)} kg/sem` : '0 kg/sem (mantenimiento)';
@@ -945,11 +945,14 @@
         <label>Peso (kg)${lastW ? ` <small class="muted">· último check-in ${fmtKg(lastW)}</small>` : ''}<input name="kg" type="number" step="0.1" min="30" max="250" value="${esc(inp.kg)}"></label>
         <label>Objetivo<select name="goal">${o(GOALS, inp.goal)}</select></label>
         <label>Nivel de actividad<select name="act">${o(ACT.map(a => a[0]), inp.act)}</select></label>
+        <label>Proteína (g por kg)<input name="pR" type="number" step="0.1" min="0.8" max="3.5" inputmode="decimal" value="${esc(inp.pR || '')}"></label>
+        <label>Grasas (g por kg)<input name="fR" type="number" step="0.1" min="0.3" max="2" inputmode="decimal" value="${esc(inp.fR || '')}"></label>
       </div>
+      <p class="muted small">Pon los gramos por kilo de proteína y grasa que quieras (p. ej. 1,8 y 0,9): se multiplican por el peso y el resto de calorías del objetivo va a carbohidratos. Vacío = valor por defecto del objetivo.</p>
       <p class="muted small" data-actd></p>
       <div data-out></div>`;
     form.parentNode.insertBefore(box, form);
-    const get = () => { const v = n => box.querySelector(`[name=${n}]`).value; return { sex: v('sex'), age: Number(v('age')), cm: Number(v('cm')), kg: Number(v('kg')), goal: v('goal'), act: v('act') }; };
+    const get = () => { const v = n => box.querySelector(`[name=${n}]`).value, dec = n => Number(String(v(n)).replace(',', '.')) || 0; return { sex: v('sex'), age: Number(v('age')), cm: Number(v('cm')), kg: Number(v('kg')), goal: v('goal'), act: v('act'), pR: dec('pR'), fR: dec('fR') }; };
     let pct = null;   // reparto por comidas editado a mano (como en el Excel); null = automático
     const R = x => Math.round(x), pc = x => Math.round(x * 100);
     let sig = '';
@@ -960,6 +963,8 @@
       const out = box.querySelector('[data-out]');
       if (!(i.age && i.cm && i.kg)) { out.innerHTML = '<p class="empty">Rellena edad, altura y peso para calcular.</p>'; return; }
       const r = nutriCalc(i); const d = pct || r.dist;
+      const def = nutriCalc(Object.assign({}, i, { pR: 0, fR: 0 }));
+      box.querySelector('[name=pR]').placeholder = fmtKg(def.pR) + ' (por defecto)'; box.querySelector('[name=fR]').placeholder = fmtKg(def.fR) + ' (por defecto)';
       const sums = [0, 1, 2].map(j => d.reduce((s, row) => s + row[j], 0));
       out.innerHTML = `<div class="kpis small calc-k">
           <div class="kpi"><small>TMB</small><b>${R(r.tmb)}</b><span>kcal en reposo</span></div>
