@@ -438,27 +438,21 @@
     shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
-    const [clients, sessions, checkins, msgs] = await Promise.all([
+    const [clients, sessions, checkins] = await Promise.all([
       loadClients(),
       DB.list('sessions', { order: ['started_at', 'desc'], limit: 60 }),
-      DB.list('checkins', { order: ['created_at', 'desc'], limit: 60 }),
-      DB.list('messages', { order: ['created_at', 'desc'], limit: 60 })
+      DB.list('checkins', { order: ['created_at', 'desc'], limit: 60 })
     ]);
     const name = id => (byId(clients, id) || {}).name || 'Cliente';
     const active = clients.filter(c => c.active);
     const week = sessions.filter(s => s.started_at >= weekAgo && s.finished_at);
     const unseenCk = checkins.filter(c => !c.coach_seen);
-    // último mensaje por cliente; si es del cliente, está pendiente de respuesta
-    const lastByClient = {};
-    msgs.forEach(m => { if (!lastByClient[m.client_id]) lastByClient[m.client_id] = m; });
-    const pendingMsgs = Object.values(lastByClient).filter(m => m.author === 'client');
     const trainedIds = new Set(week.map(s => s.client_id));
     const idle = active.filter(c => !trainedIds.has(c.id));
 
     const feed = [
       ...sessions.slice(0, 15).filter(s => s.finished_at).map(s => ({ t: s.finished_at, html: `<b>${esc(name(s.client_id))}</b> completó <i>${esc(s.routine_name || 'entreno')}</i>${s.rpe ? ` · RPE ${s.rpe}` : ''}`, href: `cliente/${s.client_id}/progreso`, icon: 'dumbbell', unseen: !s.coach_seen })),
-      ...checkins.slice(0, 15).map(c => ({ t: c.created_at, html: `<b>${esc(name(c.client_id))}</b> envió su check-in${c.weight ? ` · ${fmtKg(c.weight)} kg` : ''}`, href: `cliente/${c.client_id}/progreso`, icon: 'chart', unseen: !c.coach_seen })),
-      ...pendingMsgs.map(m => ({ t: m.created_at, html: `<b>${esc(name(m.client_id))}</b>: ${esc(m.body.slice(0, 80))}`, href: `cliente/${m.client_id}/mensajes`, icon: 'chat', unseen: true }))
+      ...checkins.slice(0, 15).map(c => ({ t: c.created_at, html: `<b>${esc(name(c.client_id))}</b> envió su check-in${c.weight ? ` · ${fmtKg(c.weight)} kg` : ''}`, href: `cliente/${c.client_id}/progreso`, icon: 'chart', unseen: !c.coach_seen }))
     ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14);
 
     const html = `
@@ -466,7 +460,7 @@
         <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${active.length}</b><span>${clients.length - active.length} en pausa</span></a>
         <div class="kpi"><small>Entrenos esta semana</small><b>${week.length}</b><span>${trainedIds.size} clientes han entrenado</span></div>
         <a class="kpi ${unseenCk.length ? 'warn' : ''}" href="#/revisiones"><small>Check-ins sin revisar</small><b>${unseenCk.length}</b><span>pendientes de respuesta</span></a>
-        <div class="kpi ${pendingMsgs.length ? 'warn' : ''}"><small>Mensajes por contestar</small><b>${pendingMsgs.length}</b><span>de tus clientes</span></div>
+        <div class="kpi ${idle.length ? 'warn' : ''}"><small>Sin entrenar en 7 días</small><b>${idle.length}</b><span>clientes activos</span></div>
       </div>
       <div class="grid2">
         <section class="card"><h3>Actividad reciente</h3>
@@ -475,7 +469,7 @@
         <div class="stack">
           <section class="card" id="venc"><h3>Próximos cobros</h3>${loading()}</section>
           <section class="card"><h3>Sin entrenar en 7 días</h3>
-            ${idle.length ? `<ul class="list">${idle.map(c => `<li><a href="#/cliente/${c.id}/mensajes"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>Escribir</small></a></li>`).join('')}</ul>` : '<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}
+            ${idle.length ? `<ul class="list">${idle.map(c => c.phone ? `<li><a href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}" target="_blank" rel="noopener"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>${ic('wa', 'xs')} WhatsApp</small></a></li>` : `<li><a href="#/cliente/${c.id}/progreso"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>Ver</small></a></li>`).join('')}</ul>` : '<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}
           </section>
         </div>
       </div>`;
@@ -591,8 +585,9 @@
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['mensajes', 'Mensajes'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
+    if (tab === 'mensajes') return go(`#/cliente/${id}/progreso`);   // los mensajes se quitaron: se habla por WhatsApp
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
     const c = await DB.get('clients', id);
     if (!c) { toast('Cliente no encontrado', 'err'); return go('#/clientes'); }
@@ -618,7 +613,6 @@
     if (tab === 'progreso') return tabProgress(c, box, true);
     if (tab === 'ficha') return tabFicha(c, box);
     if (tab === 'revisiones') return tabReviews(c, box);
-    if (tab === 'mensajes') return tabMessages(c, box, 'coach');
     if (tab === 'cobros') return tabClientPayments(c, box);
   }
 
@@ -1889,33 +1883,6 @@
     </svg>`;
   }
 
-  // ----- Mensajes (compartido)
-  async function tabMessages(c, box, me) {
-    box.innerHTML = `<section class="card chat"><div class="msgs" data-msgs>${loading()}</div>
-      <form class="composer" data-send><textarea name="b" rows="1" placeholder="Escribe un mensaje…" required></textarea><button class="icon-btn primary" aria-label="Enviar">${ic('send')}</button></form></section>`;
-    const list = box.querySelector('[data-msgs]');
-    let lastCount = -1;
-    async function load() {
-      const msgs = await DB.list('messages', { eq: { client_id: c.id }, order: ['created_at', 'asc'], fresh: true });
-      if (msgs.length === lastCount) return; lastCount = msgs.length;
-      list.innerHTML = msgs.length ? msgs.map(m => `<div class="msg ${m.author === me ? 'mine' : ''}"><p>${nl2br(m.body)}</p><small>${fmtDate(m.created_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>`).join('')
-        : `<p class="empty">${me === 'coach' ? 'Empieza la conversación con ' + esc(c.name.split(' ')[0]) + '.' : 'Escribe a tu entrenador cualquier duda.'}</p>`;
-      list.scrollTop = list.scrollHeight;
-    }
-    await load();
-    intervals.push(setInterval(() => { if (document.visibilityState === 'visible') load().catch(() => {}); }, 15000));
-    const f = box.querySelector('[data-send]');
-    const ta = f.b;
-    ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) { e.preventDefault(); f.requestSubmit(); } });
-    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; });
-    f.onsubmit = async e => {
-      e.preventDefault(); const body = ta.value.trim(); if (!body) return;
-      ta.value = ''; ta.style.height = 'auto';
-      await safe(() => DB.insert('messages', { client_id: c.id, author: me, body }));
-      lastCount = -1; load();
-    };
-  }
-
   // ----- Cobros del cliente
   async function tabClientPayments(c, box) {
     try {
@@ -2249,8 +2216,7 @@
   const CLIENT_NAV = [
     { key: 'hoy', href: '', icon: 'dumbbell', label: 'Entreno' },
     { key: 'nutricion', href: 'nutricion', icon: 'apple', label: 'Nutrición' },
-    { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' },
-    { key: 'mensajes', href: 'mensajes', icon: 'chat', label: 'Mensajes' }
+    { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' }
   ];
 
   async function renderClient() {
@@ -2268,7 +2234,6 @@
     if (!r0) return clientToday();
     if (r0 === 'nutricion') return clientNutrition();
     if (r0 === 'progreso') { shell(CLIENT_NAV, 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
-    if (r0 === 'mensajes') { shell(CLIENT_NAV, 'mensajes', loading(), { title: 'Mensajes' }); return tabMessages(S.client, $app.querySelector('.content'), 'client'); }
     go('#/');
   }
 
