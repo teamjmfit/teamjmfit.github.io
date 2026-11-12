@@ -252,7 +252,7 @@
         }
         if (t === 'meal_options') store.tables.option_items = T('option_items').filter(i => i.option_id !== id);
         if (t === 'sessions') store.tables.set_logs = T('set_logs').filter(r => r.session_id !== id);
-        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans', 'meal_plans', 'meal_blocks', 'meal_options', 'option_items', 'checkin_photos', 'daily_metrics']
+        if (t === 'clients') ['routines', 'routine_items', 'sessions', 'set_logs', 'checkins', 'messages', 'nutrition_plans', 'meal_plans', 'meal_blocks', 'meal_options', 'option_items', 'checkin_photos', 'daily_metrics', 'form_responses']
           .forEach(n => { store.tables[n] = T(n).filter(r => r.client_id !== id); });
         save();
       },
@@ -328,6 +328,46 @@
             if (!lw || !lw.published || plus(lw.start_date, 7) > td) break;
             const id = await this.rpc('_clone_week', { p_week_id: lw.id, p_mode: 'repeat' });
             const nw = T('program_weeks').find(w => w.id === id); nw.published = true; nw.notes = 'Repetida automáticamente';
+            n++;
+          }
+          save(); return n;
+        }
+        // Migración 009: tipo de semana y cambios hacia las semanas siguientes
+        const applyKind = (rid, kind, prevWeek) => {
+          const done = prevWeek ? new Set(T('sessions').filter(x => x.finished_at && T('routines').some(r => r.id === x.routine_id && r.program_week_id === prevWeek)).map(x => x.id)) : new Set();
+          T('routine_items').filter(i => i.routine_id === rid).forEach(i => {
+            const b = i.base || { sets: i.sets, target_rir: i.target_rir, load_kg: i.load_kg };
+            if (['normal', 'maintenance', 'test'].includes(kind)) { Object.assign(i, { sets: b.sets, target_rir: b.target_rir, load_kg: b.load_kg, base: null }); return; }
+            if (kind === 'deload') { Object.assign(i, { sets: Math.max(1, Math.round(b.sets * 0.6)), target_rir: Math.min((b.target_rir ?? 2) + 2, 5), load_kg: b.load_kg, base: b }); return; }
+            const logs = T('set_logs').filter(l => l.lineage_id && l.lineage_id === i.lineage_id && done.has(l.session_id));
+            const rirs = logs.map(l => l.rir).filter(v => v != null);
+            const okk = logs.length >= b.sets && i.reps_max != null && Math.min(...logs.map(l => +l.reps || 0)) >= i.reps_max && (b.target_rir == null || !rirs.length || Math.min(...rirs) >= b.target_rir);
+            const inc = Number((i.progression || {}).inc_kg ?? 2.5);
+            Object.assign(i, { sets: b.sets, target_rir: Math.max((b.target_rir ?? 2) - 1, 0), load_kg: okk ? roundLoad((b.load_kg ?? Math.max(...logs.map(l => +l.weight || 0))) + inc) : b.load_kg, base: b });
+          });
+        };
+        const prevOf = w => (T('program_weeks').filter(x => x.program_id === w.program_id && x.week_no < w.week_no).sort((x, y) => y.week_no - x.week_no)[0] || {}).id || null;
+        if (fn === 'set_week_kind') {
+          const w = T('program_weeks').find(x => x.id === a.p_week); if (!w) throw new Error('Semana no encontrada');
+          T('routines').filter(r => r.program_week_id === w.id).forEach(r => applyKind(r.id, a.p_kind, prevOf(w)));
+          w.kind = a.p_kind; w.kind_set_at = now(); save(); return null;
+        }
+        if (fn === 'propagate_routine') {
+          const src = T('routines').find(r => r.id === a.p_routine); if (!src || !src.program_week_id) return 0;
+          const sw = T('program_weeks').find(w => w.id === src.program_week_id); let n = 0;
+          for (const w of T('program_weeks').filter(x => x.program_id === sw.program_id && x.week_no > sw.week_no).sort((x, y) => x.week_no - y.week_no)) {
+            const rs = T('routines').filter(r => r.program_week_id === w.id && (r.day ?? null) === (src.day ?? null));
+            let t = rs.find(r => String(r.name).toLowerCase() === String(src.name).toLowerCase()) || rs.find(r => r.position === src.position);
+            if (t && T('sessions').some(x => x.routine_id === t.id && x.finished_at)) continue;
+            if (t) Object.assign(t, { name: src.name, day: src.day, notes: src.notes });
+            else { t = Object.assign({}, src, { id: uuid(), program_week_id: w.id, created_at: now() }); T('routines').push(t); }
+            const loads = {}; T('routine_items').filter(i => i.routine_id === t.id).forEach(i => { loads[i.lineage_id] = i.base ? i.base.load_kg : i.load_kg; });
+            store.tables.routine_items = T('routine_items').filter(i => i.routine_id !== t.id);
+            T('routine_items').filter(i => i.routine_id === src.id).sort((x, y) => x.position - y.position).forEach(i => {
+              const b = i.base || {};
+              T('routine_items').push(Object.assign({}, i, { id: uuid(), routine_id: t.id, sets: b.sets ?? i.sets, target_rir: b.target_rir !== undefined ? b.target_rir : i.target_rir, load_kg: loads[i.lineage_id] !== undefined ? loads[i.lineage_id] : (b.load_kg !== undefined ? b.load_kg : i.load_kg), base: null }));
+            });
+            if (['deload', 'intensity'].includes(w.kind)) applyKind(t.id, w.kind, prevOf(w));
             n++;
           }
           save(); return n;
