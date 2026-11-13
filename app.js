@@ -415,6 +415,26 @@
     } catch (e) { /* el aviso es opcional */ }
   }
 
+  // Aviso de almacenamiento (migración 018): fotos y base de datos frente al límite del plan de Supabase.
+  // Límites del plan gratuito: 1 GB de archivos y 500 MB de base de datos (se pueden cambiar en ajustes: storage_limit_mb, db_limit_mb).
+  async function storageCard(stack) {
+    if (S.storageInfo === undefined) {
+      S.storageInfo = null;
+      try {
+        const [u, lf, ld] = await Promise.all([DB.rpc('storage_usage'), DB.getSetting('storage_limit_mb').catch(() => null), DB.getSetting('db_limit_mb').catch(() => null)]);
+        S.storageInfo = { u, lf: Number(lf) || 1024, ld: Number(ld) || 500 };
+      } catch (e) { return; }   // migración aún sin aplicar
+    }
+    const I = S.storageInfo; if (!I || !I.u || !document.body.contains(stack) || stack.querySelector('[data-stor]')) return;
+    const mb = b => Math.round((Number(b) || 0) / 1048576), pf = mb(I.u.photo_bytes) / I.lf, pd = mb(I.u.db_bytes) / I.ld;
+    if (Math.max(pf, pd) < 0.7) return;
+    const row = (l, used, lim, p) => `<li><span class="grow">${l}<small>${used} MB de ${lim >= 1024 ? lim / 1024 + ' GB' : lim + ' MB'}</small></span><b class="${p >= 0.9 ? 'hi' : ''}">${Math.round(p * 100)} %</b></li>`;
+    const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-stor', '');
+    sec.innerHTML = `<h3>⚠️ Almacenamiento casi lleno</h3><ul class="list">${pf >= 0.7 ? row(`Fotos de check-ins (${I.u.photos})`, mb(I.u.photo_bytes), I.lf, pf) : ''}${pd >= 0.7 ? row('Base de datos', mb(I.u.db_bytes), I.ld, pd) : ''}</ul>
+      <p class="muted small">Cuando llegue al 100 % no se podrán subir más fotos ni datos. Opciones: pasar Supabase al plan Pro o borrar fotos antiguas de check-ins.</p>`;
+    stack.prepend(sec);
+  }
+
   async function renderCoach() {
     document.body.dataset.role = 'coach';
     const [r0, r1, r2] = S.route;
@@ -476,7 +496,7 @@
     $app.querySelector('.content').innerHTML = html;
     {
       const stack = $app.querySelector('.content .stack');
-      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); };
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); };
       if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
     }
     // cobros (no bloquea)
@@ -659,9 +679,8 @@
   // ----- Rutinas (entrenador)
   async function tabRoutines(c, box) {
     await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
-    const [allRoutines, items, programs, weeks, goalsR] = await Promise.all([
+    const [allRoutines, programs, weeks, goalsR] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('programs', { eq: { client_id: c.id } }),
       DB.list('program_weeks', { eq: { client_id: c.id } }),
       window.JMGoals ? loadGoals(c.id) : null
@@ -677,6 +696,10 @@
     const view = prog && !wantFixed ? (pweeks.find(w => w.id === S.weekSel[c.id]) || pweeks[pweeks.length - 1] || null) : null;
     const fixed = allRoutines.filter(r => !r.program_week_id);
     const routines = allRoutines.filter(r => (view ? r.program_week_id === view.id : !r.program_week_id));
+    // solo los ejercicios de la semana que se ve (y de la anterior, para comparar el volumen): con muchos mesociclos no se carga todo
+    const pwPrev = view ? pweeks.find(w => w.week_no === view.week_no - 1) : null;
+    const needIds = routines.map(r => r.id).concat(pwPrev ? allRoutines.filter(r => r.program_week_id === pwPrev.id).map(r => r.id) : []);
+    const items = needIds.length ? await DB.list('routine_items', { in: { routine_id: needIds }, order: ['position', 'asc'] }) : [];
     const live = currentWeek(pweeks, prog ? [prog] : []);
     const laterDrafts = view ? pweeks.filter(w => w.week_no > view.week_no).length : 0;
     const lastW = pweeks[pweeks.length - 1];
@@ -1160,13 +1183,18 @@
     if (!S.calHide) { try { S.calHide = new Set(JSON.parse(localStorage.getItem('jm-cal-hide') || '[]')); } catch (e) { S.calHide = new Set(); } }
     const [y, m] = (S.calMonth[c.id] || today().slice(0, 7)).split('-').map(Number);
     await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
-    const [routines, items, programs, weeks, sessions] = await Promise.all([
+    const [routines, programs, weeks, sessions] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('programs', { eq: { client_id: c.id } }),
       DB.list('program_weeks', { eq: { client_id: c.id } }),
       DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 400 })
     ]);
+    // ejercicios solo de las semanas que caen en el mes que se ve (y de las rutinas fijas)
+    const mFrom = addDays(`${y}-${String(m).padStart(2, '0')}-01`, -13), mTo = addDays(`${y}-${String(m).padStart(2, '0')}-01`, 44);
+    const wIn = new Set(weeks.filter(w => w.start_date >= mFrom && w.start_date <= mTo).map(w => w.id));
+    programs.forEach(p => { const l = weeks.filter(w => w.program_id === p.id).sort((a, b) => b.week_no - a.week_no)[0]; if (l) wIn.add(l.id); });   // la última semana se repite sola
+    const calIds = routines.filter(r => !r.program_week_id || wIn.has(r.program_week_id)).map(r => r.id);
+    const items = calIds.length ? await DB.list('routine_items', { in: { routine_id: calIds }, order: ['position', 'asc'] }) : [];
     const prog = programs.filter(p => p.status === 'active').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
     const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
     const lastW = pweeks[pweeks.length - 1];
@@ -2329,9 +2357,8 @@
     shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}`, sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })) });
     const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
     if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
-    const [allRoutines, items, sessions, programs, weeks] = await Promise.all([
+    const [allRoutines, sessions, programs, weeks] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
-      DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 30 }),
       DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
       DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => [])
@@ -2343,6 +2370,10 @@
     const cw = currentWeek(weeks, programs);
     const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
     routines.sort((a, b) => (a.day || 9) - (b.day || 9));
+    // solo los ejercicios de la semana en curso (y de los entrenos puntuales del calendario)
+    const evR = (events || []).map(e => e.routine_id).filter(Boolean);
+    const rIds = [...new Set(routines.map(r => r.id).concat(evR))];
+    const items = rIds.length ? await DB.list('routine_items', { in: { routine_id: rIds }, order: ['position', 'asc'] }).catch(() => []) : [];
     const d = isoDay();
     const todays = routines.filter(r => r.day === d);
     const doneToday = new Set(sessions.filter(s => s.finished_at && s.started_at.slice(0, 10) === today()).map(s => s.routine_id));

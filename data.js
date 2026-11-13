@@ -69,7 +69,7 @@
       async update(t, id, patch, key = 'id') { try { return ok(await sb.from(t).update(patch).eq(key, id).select()); } finally { dropW(t); } },
       async upsert(t, row, key = 'id') { try { return ok(await sb.from(t).upsert(row, { onConflict: key }).select()); } finally { dropW(t); } },
       async remove(t, id, key = 'id') { try { ok(await sb.from(t).delete().eq(key, id)); } finally { dropW(t); } },
-      async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence)$/.test(fn)) drop(); } },
+      async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence|storage_usage)$/.test(fn)) drop(); } },
       async uploadPhoto(clientId, blob) {
         const path = `${clientId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
@@ -288,6 +288,7 @@
           copyWeek(T('routines').filter(r => r.client_id === a.p_client && !r.program_week_id).sort((x, y) => x.position - y.position), w1.id);
           save(); return prog.id;
         }
+        if (fn === 'storage_usage') return { photo_bytes: 0, photos: 0, db_bytes: 0 };
         if (fn === 'delete_mesocycle') {
           const prog = T('programs').find(p => p.id === a.p_program); if (!prog) throw new Error('Mesociclo no encontrado');
           const d0 = new Date(); d0.setDate(d0.getDate() - ((d0.getDay() + 6) % 7)); const mon = d0.toISOString().slice(0, 10);

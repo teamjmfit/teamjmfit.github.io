@@ -1076,3 +1076,8 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .meso-table tr.prio td:first-child { color: var(--accent); font-weight: 600; }
 .btn.danger { color: var(--red); }
 .wk-card .weekstrip button.today:not(.sel) { background: transparent; }
+/* Aviso de almacenamiento (entrenador) */
+.stor-card { box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 50%, transparent); }
+.stor-card .list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.stor-card .list small { display: block; color: var(--muted); font-size: 12px; }
+.stor-card b { color: var(--amber); font: 700 20px var(--head); } .stor-card b.hi { color: var(--red); }
