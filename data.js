@@ -19,6 +19,8 @@
       Object.entries(opts.eq || {}).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
       Object.entries(opts.in || {}).forEach(([k, v]) => { q = q.in(k, v); });
       Object.entries(opts.gte || {}).forEach(([k, v]) => { q = q.gte(k, v); });
+      Object.entries(opts.lte || {}).forEach(([k, v]) => { q = q.lte(k, v); });
+      (opts.notNull || []).forEach(k => { q = q.not(k, 'is', null); });
       if (opts.order) q = q.order(opts.order[0], { ascending: opts.order[1] !== 'desc' });
       if (opts.limit) q = q.limit(opts.limit);
       return q;
@@ -63,7 +65,20 @@
         const rows = ok(await sb.from('clients').select('*').eq('user_id', s.user.id));
         return rows[0] || null;
       },
-      list(t, opts) { return cached(t, opts, async () => ok(await applyFilters(sb.from(t).select('*'), opts))); },
+      // Supabase devuelve como mucho 1.000 filas por petición: si se piden más, se traen por páginas (hasta el límite pedido).
+      // opts.cols: solo esas columnas (menos datos por la red).
+      list(t, opts) {
+        return cached(t, opts, async () => {
+          const cols = (opts && opts.cols) || '*', lim = opts && opts.limit;
+          if (!lim || lim <= 1000) return ok(await applyFilters(sb.from(t).select(cols), opts));
+          const o = Object.assign({}, opts, { limit: null }), out = [];
+          for (let from = 0; from < lim; from += 1000) {
+            const to = Math.min(lim, from + 1000) - 1, rows = ok(await applyFilters(sb.from(t).select(cols), o).order('id').range(from, to));
+            out.push(...rows); if (rows.length < to - from + 1) break;
+          }
+          return out;
+        });
+      },
       get(t, id, key = 'id') { return cached(t, { get: [key, id] }, async () => { const r = ok(await sb.from(t).select('*').eq(key, id)); return r[0] || null; }); },
       async insert(t, rows) { try { return ok(await sb.from(t).insert(rows).select()); } finally { dropW(t); } },
       async update(t, id, patch, key = 'id') { try { return ok(await sb.from(t).update(patch).eq(key, id).select()); } finally { dropW(t); } },
@@ -173,6 +188,8 @@
       for (const [k, v] of Object.entries(opts.eq || {})) if ((row[k] ?? null) !== v) return false;
       for (const [k, v] of Object.entries(opts.in || {})) if (!v.includes(row[k])) return false;
       for (const [k, v] of Object.entries(opts.gte || {})) if (!(row[k] >= v)) return false;
+      for (const [k, v] of Object.entries(opts.lte || {})) if (!(row[k] <= v)) return false;
+      for (const k of opts.notNull || []) if (row[k] == null) return false;
       return true;
     }
     const clone = o => JSON.parse(JSON.stringify(o));

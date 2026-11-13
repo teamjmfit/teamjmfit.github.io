@@ -28,33 +28,6 @@
       '<div class="kpi"><small>Pasos/día</small><b>' + (s.steps == null ? '–' : Math.round(s.steps).toLocaleString('es-ES')) + '</b><span>media 7 días</span></div>' +
       '<div class="kpi"><small>Sueño</small><b>' + f1(s.sleep) + ' h</b><span>media 7 días</span></div></div>';
   }
-  // Cliente: tarjeta "Registro de hoy" en Entreno (ya no se usa: el registro del día está en el inicio del cliente, app.js)
-  async function clientCard() {
-    var strip = document.querySelector('.weekstrip'); if (!strip || document.querySelector('[data-dm]') || busy.c) return;
-    busy.c = true;
-    try {
-      var u = await who(); if (!u || !u.clientId) return;
-      var rows = (await sb.from('daily_metrics').select('*').eq('client_id', u.clientId).gte('date', iso(Date.now() - 14 * 864e5)).order('date', { ascending: false })).data || [];
-      var t = rows.find(function (r) { return r.date === iso(Date.now()); }) || {};
-      if (document.querySelector('[data-dm]')) return;
-      var card = document.createElement('section'); card.className = 'card'; card.setAttribute('data-dm', '');
-      card.innerHTML = '<h3>Registro de hoy</h3><form class="form-grid three" data-f>' +
-        '<label>Peso (kg)<input name="weight" type="number" step="0.1" inputmode="decimal" value="' + (t.weight || '') + '"></label>' +
-        '<label>Pasos<input name="steps" type="number" inputmode="numeric" value="' + (t.steps || '') + '"></label>' +
-        '<label>Sueño (h)<input name="sleep_h" type="number" step="0.5" inputmode="decimal" value="' + (t.sleep_h || '') + '"></label>' +
-        '<button class="btn primary full" style="grid-column:1/-1">' + (t.date ? 'Actualizar' : 'Guardar') + '</button></form><div style="margin-top:12px" data-s>' + summaryHtml(weeksSummary(rows)) + '</div>' +
-        '<p class="muted small" style="margin-top:8px">Pésate cada mañana en ayunas tras ir al baño: la media semanal es lo que cuenta, no el dato de un día.</p>';
-      (strip.nextElementSibling || strip).after(card);
-      card.querySelector('[data-f]').onsubmit = async function (e) {
-        e.preventDefault(); var f = e.target, n = function (k) { return f[k].value === '' ? null : Number(f[k].value); };
-        var r = await sb.from('daily_metrics').upsert({ client_id: u.clientId, date: iso(Date.now()), weight: n('weight'), steps: n('steps'), sleep_h: n('sleep_h') }, { onConflict: 'client_id,date' });
-        if (r.error) { alert('Error: ' + r.error.message); return; }
-        f.querySelector('button').textContent = 'Guardado ✓';
-        var rows2 = (await sb.from('daily_metrics').select('*').eq('client_id', u.clientId).gte('date', iso(Date.now() - 14 * 864e5))).data || [];
-        card.querySelector('[data-s]').innerHTML = summaryHtml(weeksSummary(rows2));
-      };
-    } finally { busy.c = false; }
-  }
   // Progreso (entrenador y cliente): métricas diarias de 14 días
   async function progressCard() {
     var m = location.hash.match(/^#\/(?:cliente\/([^/]+)\/progreso|progreso)$/); if (!m) return;
