@@ -26,7 +26,9 @@ function cfg_() {
   return c;
 }
 function api_(c, method, path, body, raw) {
-  const opt = { method, muteHttpExceptions: true, headers: { apikey: c.key, Authorization: 'Bearer ' + c.key } };
+  // Las claves nuevas (sb_secret_…) van solo en «apikey»; las antiguas (JWT service_role) también como Bearer
+  const headers = { apikey: c.key }; if (/^eyJ/.test(c.key)) headers.Authorization = 'Bearer ' + c.key;
+  const opt = { method, muteHttpExceptions: true, headers };
   if (body !== undefined) { opt.contentType = 'application/json'; opt.payload = JSON.stringify(body); }
   if (method === 'patch') opt.headers.Prefer = 'return=minimal';
   const r = UrlFetchApp.fetch(c.url + path, opt), code = r.getResponseCode();
