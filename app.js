@@ -453,32 +453,33 @@
     stack.prepend(sec);
   }
 
-  // Vencimientos (025): quién está en los 3 días de margen, quién tiene la app pausada y los «Ya he pagado» por revisar
+  // Vencimientos: quién tiene el plan vencido, quién dice que ya ha pagado y a quién has cortado el acceso
   async function payAlerts(stack) {
-    const cl = (S.clients || []).filter(c => !c.is_template && c.active !== false && 'grace_days' in c && c.pay_due && !c.billing_off && c.remind_payment !== false);
+    const all = (S.clients || []).filter(c => !c.is_template && 'grace_days' in c);
     const claims = await DB.list('payment_claims', { eq: { status: 'pendiente' }, order: ['created_at', 'desc'], limit: 50 }).catch(() => []);
-    const rows = cl.map(c => { const over = dayDiff(today(), c.pay_due), g = 3 + (c.grace_days || 0), man = c.access_until && c.access_until >= today();
-      return { c, over, g, man, k: claims.find(k => k.client_id === c.id) }; }).filter(r => r.over >= 0 || r.k);
-    claims.filter(k => !rows.some(r => r.c.id === k.client_id)).forEach(k => { const c = (S.clients || []).find(x => x.id === k.client_id); if (c) rows.push({ c, over: c.pay_due ? dayDiff(today(), c.pay_due) : 0, g: 3, man: false, k }); });
+    const rows = all.map(c => ({ c, over: c.pay_due && !c.billing_off && c.remind_payment !== false && c.active !== false ? dayDiff(today(), c.pay_due) : null, k: claims.find(k => k.client_id === c.id) }))
+      .filter(r => (r.over != null && r.over >= 0) || r.k || r.c.access_blocked);
     const old = stack.querySelector('[data-payalert]'); if (old) old.remove();
     if (!rows.length) return;
-    rows.sort((a, b) => (b.k ? 1 : 0) - (a.k ? 1 : 0) || b.over - a.over);
-    const st = r => (r.k ? ['amber', 'por confirmar'] : r.man ? ['green', `desbloqueado hasta ${fmtDate(r.c.access_until, { day: 'numeric', month: 'short' })}`] : r.over > r.g ? ['red', 'app pausada'] : r.over === 0 ? ['amber', 'vence hoy'] : ['amber', `margen: ${r.g - r.over} d`]);
+    rows.sort((a, b) => (b.k ? 1 : 0) - (a.k ? 1 : 0) || (b.over ?? -1) - (a.over ?? -1));
+    const st = r => (r.c.access_blocked ? ['red', 'sin acceso'] : r.k ? ['amber', 'dice que pagó'] : r.over === 0 ? ['amber', 'vence hoy'] : ['red', `vencido ${r.over} d`]);
     const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-payalert', '');
     sec.innerHTML = `<h3>💶 Vencimientos</h3><ul class="list">${rows.map(r => { const [cl2, t] = st(r);
       return `<li><span class="pill ${cl2}">${t}</span><span class="grow"><a href="#/cliente/${r.c.id}/ficha">${esc(r.c.name)}</a><small>${r.over > 0 ? `Venció hace ${r.over} d` : r.over === 0 ? 'Vence hoy' : ''}${r.k ? ` · <b>Dice que ya ha pagado</b>${r.k.note ? ': «' + esc(r.k.note) + '»' : ''} (${ago(r.k.created_at)})` : ''}</small></span>
-        ${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Confirmado: 7 días de acceso hasta que actualices la hoja">✓</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕</button>` : ''}
+        ${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Pago comprobado">✓</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕</button>` : ''}
+        ${'access_blocked' in r.c ? `<button class="btn small ${r.c.access_blocked ? 'primary' : 'ghost'}" data-acc="${r.c.id}">${r.c.access_blocked ? 'Reactivar' : 'Quitar acceso'}</button>` : ''}
         ${r.c.phone ? `<a class="icon-btn sm" target="_blank" rel="noopener" href="https://wa.me/${esc(String(r.c.phone).replace(/\D/g, ''))}" title="WhatsApp">${ic('wa')}</a>` : ''}</li>`; }).join('')}</ul>
-      <p class="muted small">Al registrar el pago en tu hoja de cobros, la nueva fecha desbloquea su app sola. ✓ = le das 7 días mientras tanto.</p>`;
+      <p class="muted small">El cliente ve un aviso diario hasta que registres el pago en tu hoja de cobros. «Quitar acceso» le deja solo una pantalla de «No tienes acceso».</p>`;
     stack.prepend(sec);
-    const resolve = async (id, ok) => {
-      if (DB.mode !== 'demo') return DB.rpc('resolve_payment_claim', { p_claim: id, p_ok: ok, p_days: ok ? 7 : 0 });
-      const [k] = await DB.update('payment_claims', id, { status: ok ? 'confirmado' : 'rechazado', resolved_at: new Date().toISOString() });
-      if (ok && k) await DB.update('clients', k.client_id, { access_until: addDays(today(), 7) });
-    };
-    const act = async (id, ok) => { await safe(() => resolve(id, ok), ok ? 'Pago confirmado: 7 días de acceso' : 'Aviso rechazado'); S.clients = null; await loadClients(); payAlerts(stack); };
-    sec.querySelectorAll('[data-pok]').forEach(b => b.onclick = () => act(b.dataset.pok, true));
-    sec.querySelectorAll('[data-pno]').forEach(b => b.onclick = () => act(b.dataset.pno, false));
+    const again = async () => { S.clients = null; await loadClients(); payAlerts(stack); };
+    const resolve = (id, ok) => (DB.mode !== 'demo' ? DB.rpc('resolve_payment_claim', { p_claim: id, p_ok: ok, p_days: 0 }) : DB.update('payment_claims', id, { status: ok ? 'confirmado' : 'rechazado', resolved_at: new Date().toISOString() }));
+    sec.querySelectorAll('[data-pok]').forEach(b => b.onclick = async () => { await safe(() => resolve(b.dataset.pok, true), 'Pago marcado como comprobado. Recuerda apuntarlo en la hoja'); again(); });
+    sec.querySelectorAll('[data-pno]').forEach(b => b.onclick = async () => { await safe(() => resolve(b.dataset.pno, false), 'Aviso rechazado'); again(); });
+    sec.querySelectorAll('[data-acc]').forEach(b => b.onclick = async () => {
+      const c = all.find(x => x.id === b.dataset.acc), off = !c.access_blocked;
+      if (off && !(await confirmBox(`${c.name} dejará de ver sus entrenos, su nutrición y su calendario hasta que le reactives. ¿Quitarle el acceso?`, 'Quitar acceso'))) return;
+      await safe(() => DB.update('clients', c.id, { access_blocked: off }), off ? 'Acceso quitado' : 'Acceso reactivado'); again();
+    });
   }
 
   async function storageCard(stack) {
@@ -841,18 +842,17 @@
           <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Recordarle el check-in el viernes si aún no lo ha hecho</label>
           <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
           <small class="muted">La fecha de renovación sale de tu hoja de cobros.</small></fieldset>` : ''}
-        ${!isNew && 'grace_days' in c ? `<fieldset class="full rem-set"><legend>Vencimiento del plan</legend>
-          <p class="small muted">${c.pay_due ? `Vence el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))}.` : 'Sin fecha de vencimiento en la hoja de cobros.'} Del día del vencimiento al +3 ve un aviso diario; desde el 4.º sin pago, su app se pausa.</p>
-          <label>Días extra de margen<input name="grace_days" type="number" min="0" max="60" value="${c.grace_days || 0}"></label>
-          <label>Desbloqueado hasta<input name="access_until" type="date" value="${esc(c.access_until || '')}"></label>
-          <label class="check"><input type="checkbox" name="billing_off" ${c.billing_off ? 'checked' : ''}> Sin avisos ni bloqueo por pago (familia, colaboradores…)</label></fieldset>` : ''}
+        ${!isNew && 'grace_days' in c ? `<fieldset class="full rem-set"><legend>Pago y acceso</legend>
+          <p class="small muted">${c.pay_due ? `Vence el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))}.` : 'Sin fecha de vencimiento en la hoja de cobros.'} Desde ese día ve un aviso diario hasta que la hoja tenga la nueva fecha.</p>
+          ${'access_blocked' in c ? `<label class="check"><input type="checkbox" name="access_blocked" ${c.access_blocked ? 'checked' : ''}> <b>Acceso desactivado</b>: al abrir la app le sale que no tiene acceso</label>` : ''}
+          <label class="check"><input type="checkbox" name="billing_off" ${c.billing_off ? 'checked' : ''}> Sin avisos de pago (familia, colaboradores…)</label></fieldset>` : ''}
       </div>`, {
       submitLabel: isNew ? 'Crear cliente' : 'Guardar',
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se borrarán ${c.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)) { await safe(() => DB.remove('clients', c.id), 'Cliente eliminado'); go('#/clientes'); } } },
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
-        if (!isNew && 'grace_days' in c) { d.grace_days = Math.max(0, Math.min(60, parseInt(d.grace_days, 10) || 0)); d.access_until = d.access_until || null; d.billing_off = !!fd.get('billing_off'); }
+        if (!isNew && 'grace_days' in c) { d.billing_off = !!fd.get('billing_off'); if ('access_blocked' in c) d.access_blocked = !!fd.get('access_blocked'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
         if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
         await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
@@ -2680,10 +2680,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // ---------- Analizador semanal (026): check-in + entrenos de esa semana y de las 4 anteriores
   async function openAnalysis(k, asCoach, who) {
     const cid = k.client_id, c = (who && who.id === cid ? who : null) || (S.clients || []).find(x => x.id === cid) || S.client || { id: cid };
-    const m = modal(asCoach ? `Análisis · ${c.name || ''}` : 'Tu semana', `<div data-anbox>${loading()}</div>`, { submitLabel: 'Cerrar', wide: true, onSubmit: () => {} });
+    const m = modal(asCoach ? `Análisis · ${c.name || ''}` : 'Tus mejoras de la semana', `<div data-anbox>${loading()}</div>`, { submitLabel: 'Cerrar', wide: true, onSubmit: () => {} });
     const box = document.querySelector('[data-anbox]');
     try {
-      let saved = await DB.list('checkin_analysis', { eq: { checkin_id: k.id } }).catch(() => []);
+      // el cliente solo ve sus mejoras: se calcula en su móvil y no se guarda
+      let saved = asCoach ? await DB.list('checkin_analysis', { eq: { checkin_id: k.id } }).catch(() => []) : [];
       saved = saved && saved[0];
       let a = saved && saved.result && saved.result.v === JMAnalysis.RULES_V ? saved.result : null;
       const compute = async () => {
@@ -2695,7 +2696,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         const items = ids.length ? await DB.list('routine_items', { in: { routine_id: ids } }).catch(() => []) : [];
         const res = JMAnalysis.run({ client: c, checkin: k, checkins, sessions, logs, items });
         const row = { checkin_id: k.id, client_id: cid, light: res.light, rules_v: res.v, result: res };
-        DB.upsert('checkin_analysis', row, 'checkin_id').catch(e => console.warn('checkin_analysis', e));   // sin la 026 se ve igual, sin guardarse
+        if (asCoach) DB.upsert('checkin_analysis', row, 'checkin_id').catch(e => console.warn('checkin_analysis', e));   // sin la 026 se ve igual, sin guardarse
         return res;
       };
       if (!a) a = await compute();
@@ -2727,7 +2728,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
       ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
       <div class="ck-pics" data-photos hidden></div>
-      ${window.JMAnalysis ? `<button type="button" class="btn small an-btn" data-analyze>📊 ${asCoach ? 'Análisis de la semana' : 'Analizar mi semana'}</button>` : ''}
+      ${window.JMAnalysis ? `<button type="button" class="btn small an-btn" data-analyze>${asCoach ? '📊 Análisis de la semana' : '💪 Mis mejoras de la semana'}</button>` : ''}
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
       ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
     const anb = el.querySelector('[data-analyze]'); if (anb) anb.onclick = () => openAnalysis(k, asCoach, who || (asCoach ? null : S.client));
@@ -3081,10 +3082,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     }
     // RGPD: antes de usar la app, el cliente acepta el uso de sus datos (y de los de salud, de forma explícita)
     if ('consent_version' in S.client && S.client.consent_version !== CONSENT_V) return consentScreen();
-    // Vencimientos (025): días 0…+3 aviso diario; desde el 4.º sin pago, solo la pantalla de pago (y privacidad)
+    // Vencimientos: aviso diario desde el vencimiento; si el entrenador le corta el acceso, solo la pantalla «No tienes acceso»
     const bill = await billingState();
-    if (bill && bill.blocked) return paywall(bill);
-    if (bill && bill.days_over >= 0) billingPopup(bill);
+    if (bill && bill.blocked) return paywall();
+    if (bill && bill.days_over != null && bill.days_over >= 0) billingPopup(bill);
     const [r0, r1] = S.route;
     if (r0 === 'entreno') return workout(r1);
     if (!r0) return clientToday();
@@ -3093,14 +3094,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     go('#/');
   }
 
-  // ---------- Vencimientos y cobros (migración 025)
+  // ---------- Vencimientos (025/028): desde el vencimiento, solo un aviso diario. El acceso lo corta el entrenador a mano.
   const dayDiff = (a, b) => Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 864e5);
   function billingLocal(c, claims) {
-    if (!c || !c.pay_due || c.billing_off || c.remind_payment === false) return null;
-    const over = dayDiff(today(), c.pay_due), g = 3 + (c.grace_days || 0);
+    if (!c) return null;
+    const warn = c.pay_due && !c.billing_off && c.remind_payment !== false;
     const pend = (claims || []).some(k => k.status === 'pendiente' && Date.now() - new Date(k.created_at) < 48 * 36e5);
-    const manual = c.access_until && c.access_until >= today();
-    return { days_over: over, grace_left: Math.max(0, g - over), blocked: over > g && !manual && !pend, claim_pending: pend };
+    return { days_over: warn ? dayDiff(today(), c.pay_due) : null, blocked: !!c.access_blocked, claim_pending: pend };
   }
   async function billingState(force) {
     const c = S.client; if (!c) return null;
@@ -3108,8 +3108,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     let v = null;
     if (DB.mode === 'demo') v = billingLocal(c, await DB.list('payment_claims', { eq: { client_id: c.id } }).catch(() => []));
     else {
-      try { const r = await DB.rpc('client_billing', { p_client: c.id }); v = Array.isArray(r) ? r[0] || null : r; if (v && (c.billing_off || !c.pay_due)) v = null; }
-      catch (e) { v = null; }   // sin la migración 025: sin avisos ni bloqueo
+      try { const r = await DB.rpc('client_billing', { p_client: c.id }); v = Array.isArray(r) ? r[0] || null : r; }
+      catch (e) { v = null; }   // sin las migraciones: sin avisos
     }
     S.billing = { cid: c.id, at: Date.now(), v }; return v;
   }
@@ -3117,35 +3117,33 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     await safe(() => DB.insert('payment_claims', { client_id: S.client.id, status: 'pendiente', note: String(note || '').trim().slice(0, 300) || null }), 'Aviso enviado a tu entrenador ✓');
     await billingState(true);
   }
+  // Aviso diario desde el día del vencimiento hasta que la hoja de cobros tenga la nueva fecha
   function billingPopup(b) {
     const c = S.client, key = 'jmfit-venc-' + today();
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { /* se mostrará otra vez */ }
     if (document.querySelector('.modal-back') || b.claim_pending) return;
-    const when = cap1(fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' }));
-    const t = b.days_over === 0 ? 'Hoy vence tu plan' : `Tu plan venció el ${when.toLowerCase()}`;
-    const left = b.grace_left;
+    const when = fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' });
+    const t = b.days_over === 0 ? 'Hoy vence tu plan' : `Tu plan venció el ${when}`;
     setTimeout(() => modal(t, `<div class="pay-warn"><span class="pw-ic">${ic('euro')}</span>
-      <p>${b.days_over === 0 ? 'Para seguir con tus entrenos, tu nutrición y tus revisiones, renueva tu plan.' : `Para seguir usando la app necesito que renueves tu plan.`}</p>
-      <p class="pw-left"><b>${left === 0 ? 'Hoy es el último día' : `Te queda${left === 1 ? '' : 'n'} ${left} día${left === 1 ? '' : 's'}`}</b> antes de que la app se pause hasta el pago.</p>
+      <p>Para seguir con tus entrenos, tu nutrición y tus revisiones, renueva tu plan.</p>
       <small class="muted">${c.pay_plan ? esc(c.pay_plan) + ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) : ''}</small>
       <label>¿Ya lo has pagado? Cuéntame cómo (opcional)<input name="note" maxlength="300" placeholder="Bizum el día 14, transferencia…"></label></div>`, {
       submitLabel: 'Ya he pagado',
       onSubmit: async (f, fd) => { await claimPaid(fd.get('note')); }
     }), 400);
   }
-  function paywall(b) {
-    const c = S.client;
+  // Acceso desactivado por el entrenador
+  function paywall() {
     shell(CLIENT_NAV, '', `<section class="paywall card">
       <div class="pw-lock">🔒</div>
-      <h2>Tu plan está pausado</h2>
-      <p>Tu plan venció el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))} y han pasado los 3 días de margen. Para seguir con tus entrenos, tu nutrición y tus revisiones necesito que lo renueves.</p>
-      ${c.pay_plan || c.pay_amount ? `<p class="muted">${c.pay_plan ? esc(c.pay_plan) : ''}${c.pay_plan && c.pay_amount ? ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) : ''}</p>` : ''}
+      <h2>No tienes acceso</h2>
+      <p>Tu acceso a la app está desactivado ahora mismo. Habla con tu entrenador para reactivarlo.</p>
       <form class="stack" data-paid><label>Si ya has pagado, cuéntame cómo (opcional)<input name="note" maxlength="300" placeholder="Bizum el día 14, transferencia…"></label>
         <button class="btn primary block">Ya he pagado</button></form>
-      <p class="muted small">Al pulsarlo se reactiva tu app durante 48 h mientras lo reviso. Tus datos siguen guardados y puedes descargarlos o pedir su borrado desde ${ic('shield')} Privacidad.</p>
-    </section>`, { title: 'Renovación del plan' });
+      <p class="muted small">Tus datos siguen guardados: puedes descargarlos o pedir su borrado desde ${ic('shield')} Privacidad.</p>
+    </section>`, { title: 'Acceso' });
     $app.querySelector('[data-paid]').onsubmit = async e => { e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
-      try { await claimPaid(e.target.note.value); render(); } catch (er) { btn.disabled = false; } };
+      try { await claimPaid(e.target.note.value); toast('Se lo he dicho a tu entrenador; te reactivará en cuanto lo compruebe', 'ok'); } catch (er) { btn.disabled = false; } };
   }
 
   async function clientToday() {
@@ -3384,7 +3382,6 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           if (rows.length) { await DB.insert('checkin_photos', rows); await DB.update('checkins', k.id, { photo_path: rows[0].path }); }
         }, '¡Check-in enviado! 💪'); } catch (e) { return false; }
         render();
-        if (window.JMAnalysis) { const kk = Object.assign({}, d); DB.list('checkins', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1 }).then(r => { if (r && r[0]) setTimeout(() => openAnalysis(r[0], false, c), 700); }).catch(() => {}); void kk; }
       }
     });
     f.querySelectorAll('.ck-ph input').forEach(inp => inp.onchange = () => {
