@@ -405,6 +405,7 @@
     { key: 'clientes', href: 'clientes', icon: 'users', label: 'Clientes' },
     { key: 'programas', href: 'programas', icon: 'dumbbell', label: 'Programas' },
     { key: 'revisiones', href: 'revisiones', icon: 'inbox', label: 'Revisiones' },
+    { key: 'notas', href: 'notas', icon: 'edit', label: 'Notas' },
     { key: 'cobros', href: 'cobros', icon: 'euro', label: 'Cobros' }
   ];
   // Aviso en la pestaña Revisiones con los check-ins sin revisar (no bloquea el render)
@@ -467,6 +468,7 @@
     if (r0 === 'revisiones') return coachReviews(r1);
     if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
+    if (r0 === 'notas') { setTimeout(refreshReviewBadge, 0); return coachNotes(r1); }
     go('#/');
   }
 
@@ -651,7 +653,7 @@
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['diario', 'Diario'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     if (tab === 'mensajes') return go(`#/cliente/${id}/progreso`);   // los mensajes se quitaron: se habla por WhatsApp
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
@@ -680,6 +682,76 @@
     if (tab === 'ficha') return tabFicha(c, box);
     if (tab === 'revisiones') return tabReviews(c, box);
     if (tab === 'cobros') return tabClientPayments(c, box);
+    if (tab === 'diario') return notesBox(c, box);
+  }
+
+  // ---------- Diario / bloc de notas del entrenador por cliente (migración 020; solo lo ve el entrenador)
+  const NOTE_TAGS = ['Entreno', 'Nutrición', 'Salud', 'Revisión', 'Llamada', 'Idea'];
+  async function coachNotes(sel) {
+    if (!S.clients) await loadClients();
+    let cid = sel || (() => { try { return localStorage.getItem('jmfit-notes-client') || ''; } catch (e) { return ''; } })();
+    if (cid && !S.clients.some(c => c.id === cid)) cid = '';
+    shell(COACH_NAV, 'notas', `<section class="card row gap wrap notes-pick"><label class="grow">Cliente<select data-nc><option value="">Todos (últimas notas)</option>${S.clients.map(c => `<option value="${c.id}" ${c.id === cid ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></section><div data-notes>${loading()}</div>`, { title: 'Notas' });
+    const host = $app.querySelector('[data-notes]');
+    const draw = () => { const c = S.clients.find(x => x.id === cid); try { localStorage.setItem('jmfit-notes-client', cid); } catch (e) {} return c ? notesBox(c, host) : notesAll(host); };
+    $app.querySelector('[data-nc]').onchange = e => { cid = e.target.value; draw(); };
+    draw();
+  }
+  async function notesAll(host) {
+    const ns = await DB.list('client_notes', { order: ['created_at', 'desc'], limit: 60 }).catch(() => null);
+    if (!ns) { host.innerHTML = '<p class="empty">El diario necesita la actualización 020 de la base de datos.</p>'; return; }
+    const name = id => (S.clients.find(c => c.id === id) || {}).name || '—';
+    host.innerHTML = ns.length ? `<section class="card"><h3>Últimas notas</h3><ul class="notes">${ns.map(n => `<li><div class="note-h"><a href="#/notas/${n.client_id}"><b>${esc(name(n.client_id))}</b></a><small class="muted">${fmtDate(n.note_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}</div><p>${nl2br(n.body)}</p></li>`).join('')}</ul></section>`
+      : `<div class="hero-empty">${ic('edit', 'xl')}<h2>Sin notas todavía</h2><p>Elige un cliente y apunta lo que quieras: cambios que le haces, lo que habláis, ideas para su próximo bloque…</p></div>`;
+  }
+  async function notesBox(c, host) {
+    let ns = await DB.list('client_notes', { eq: { client_id: c.id }, order: ['note_date', 'desc'] }).catch(() => null);
+    if (!ns) { host.innerHTML = '<p class="empty">El diario necesita la actualización 020 de la base de datos.</p>'; return; }
+    let q = '', edit = null;
+    const sort = () => ns.sort((a, b) => (!!b.pinned - !!a.pinned) || String(b.note_date).localeCompare(String(a.note_date)) || String(b.created_at).localeCompare(String(a.created_at)));
+    const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const form = n => `<form class="note-form" data-nf="${n ? n.id : ''}">
+        <textarea name="body" rows="${n ? 5 : 3}" maxlength="20000" required placeholder="Ej: le subo 20 g de carbos en el pre entreno; dice que duerme mal por exámenes…">${n ? esc(n.body) : ''}</textarea>
+        <div class="row gap wrap"><input type="date" name="note_date" value="${esc(n ? n.note_date : today())}">
+          <div class="note-tags">${NOTE_TAGS.map(t => `<label class="chip"><input type="radio" name="tag" value="${t}" ${n && n.tag === t ? 'checked' : ''}>${t}</label>`).join('')}</div>
+          <span class="grow"></span>${n ? '<button type="button" class="btn small ghost" data-ncancel>Cancelar</button>' : ''}<button class="btn small primary">${n ? 'Guardar' : 'Añadir nota'}</button></div></form>`;
+    const draw = () => {
+      sort();
+      const words = norm(q).split(/\s+/).filter(Boolean);
+      const list = ns.filter(n => words.every(w => norm(n.body + ' ' + (n.tag || '')).includes(w)));
+      let mo = '';
+      host.innerHTML = `<section class="card notes-card"><h3>Diario de ${esc(c.name)} <small class="muted">· solo lo ves tú</small></h3>${form(null)}</section>
+        <section class="card">${ns.length > 4 ? `<input type="search" class="notes-q" placeholder="Buscar en sus notas…" value="${esc(q)}" data-nq>` : ''}
+        ${list.length ? `<ul class="notes">${list.map(n => {
+          const m = n.pinned ? '📌 Fijadas' : fmtDate(n.note_date, { month: 'long', year: 'numeric' }), hd = m !== mo ? `<li class="note-mo">${m}</li>` : ''; mo = m;
+          return hd + (edit === n.id ? `<li>${form(n)}</li>` : `<li data-n="${n.id}"><div class="note-h"><b>${fmtDate(n.note_date, { weekday: 'short', day: 'numeric', month: 'short' })}</b>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}<span class="grow"></span>
+            <button class="icon-btn sm ${n.pinned ? 'on' : ''}" data-npin title="${n.pinned ? 'Quitar de fijadas' : 'Fijar arriba'}">📌</button><button class="icon-btn sm" data-nedit title="Editar">${ic('edit')}</button><button class="icon-btn sm" data-ndel title="Borrar">${ic('trash')}</button></div><p>${nl2br(n.body)}</p></li>`);
+        }).join('')}</ul>` : `<p class="empty">${ns.length ? 'Nada con esa búsqueda.' : 'Aún no hay notas de este cliente.'}</p>`}</section>`;
+      host.querySelectorAll('[data-nf]').forEach(f => {
+        const ta = f.querySelector('textarea'); ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) f.requestSubmit(); });
+        const cn = f.querySelector('[data-ncancel]'); if (cn) cn.onclick = () => { edit = null; draw(); };
+        f.querySelectorAll('[name=tag]').forEach(r => r.onclick = e => { if (r.dataset.was === '1') { r.checked = false; r.dataset.was = ''; } else { f.querySelectorAll('[name=tag]').forEach(x => { x.dataset.was = ''; }); r.dataset.was = '1'; } });
+        f.querySelectorAll('[name=tag]:checked').forEach(r => { r.dataset.was = '1'; });
+        f.onsubmit = async e => {
+          e.preventDefault();
+          const fd = new FormData(f), body = String(fd.get('body') || '').trim(); if (!body) return;
+          const row = { body, note_date: fd.get('note_date') || today(), tag: fd.get('tag') || null };
+          await safe(async () => {
+            if (f.dataset.nf) { Object.assign(ns.find(n => n.id === f.dataset.nf), row, { updated_at: new Date().toISOString() }); await DB.update('client_notes', f.dataset.nf, Object.assign({ updated_at: new Date().toISOString() }, row)); edit = null; }
+            else { const [n] = await DB.insert('client_notes', Object.assign({ client_id: c.id }, row)); ns.push(n); }
+          }, 'Nota guardada');
+          draw();
+        };
+      });
+      const sq = host.querySelector('[data-nq]'); if (sq) sq.oninput = () => { q = sq.value; const pos = sq.selectionStart; draw(); const n2 = host.querySelector('[data-nq]'); n2.focus(); n2.setSelectionRange(pos, pos); };
+      host.querySelectorAll('[data-n]').forEach(li => {
+        const n = ns.find(x => x.id === li.dataset.n);
+        li.querySelector('[data-nedit]').onclick = () => { edit = n.id; draw(); const t = host.querySelector(`[data-nf="${n.id}"] textarea`); if (t) t.focus(); };
+        li.querySelector('[data-npin]').onclick = async () => { n.pinned = !n.pinned; await safe(() => DB.update('client_notes', n.id, { pinned: n.pinned })); draw(); };
+        li.querySelector('[data-ndel]').onclick = async () => { if (!(await confirmBox('¿Borrar esta nota?'))) return; await safe(() => DB.remove('client_notes', n.id), 'Nota borrada'); ns = ns.filter(x => x.id !== n.id); draw(); };
+      });
+    };
+    draw();
   }
 
   // Una plantilla se edita con la misma pestaña Rutinas que un cliente

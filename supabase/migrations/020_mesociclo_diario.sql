@@ -1,9 +1,10 @@
--- TEAM JMFIT · 020 · Retrasar un mesociclo una semana (con descarga antes, si se quiere)
+-- TEAM JMFIT · 020 · Retrasar un mesociclo una semana (con descarga antes) y diario del entrenador por cliente
 --   delay_mesocycle: mueve todas las semanas del mesociclo 7 días más tarde. Con p_deload, en la
 --   semana que queda libre pone una descarga (60 % de las series, misma carga, RIR 2 o el pautado si es más alto).
 --   p_source 'prev': la descarga usa las rutinas de la última semana del bloque anterior;
 --            'meso': las de la primera semana del mesociclo. Si no hay bloque anterior, usa las del mesociclo.
 --   Solo si el mesociclo empieza esta semana o más adelante, no tiene entrenos y no hay nada planificado después.
+--   client_notes: diario / bloc de notas del entrenador por cliente (solo lo ve el entrenador). Entra en la copia diaria.
 --   Aditiva: no cambia nada hasta que se usa.
 begin;
 
@@ -68,5 +69,47 @@ begin
 end $$;
 revoke all on function public.delay_mesocycle(uuid, boolean, text) from public, anon;
 grant execute on function public.delay_mesocycle(uuid, boolean, text) to authenticated;
+
+-- Diario del entrenador por cliente
+create table if not exists public.client_notes (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  note_date date not null default current_date,
+  tag text check (length(tag) <= 30),
+  body text not null check (length(body) between 1 and 20000),
+  pinned boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists client_notes_client on public.client_notes (client_id, note_date desc, created_at desc);
+alter table public.client_notes enable row level security;
+drop policy if exists p_client_notes_coach on public.client_notes;
+create policy p_client_notes_coach on public.client_notes for all using (public.is_coach()) with check (public.is_coach());
+revoke all on public.client_notes from anon;
+
+create or replace function public.backup_dump(p_key text)
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare t text; v jsonb; out jsonb := jsonb_build_object('generated_at', now());
+begin
+  if p_key is null or length(p_key) < 40
+     or not exists (select 1 from public.backup_keys where hash = sha256(convert_to(p_key, 'UTF8'))) then
+    raise exception 'Clave de copia no válida';
+  end if;
+  foreach t in array array['clients','checkins','checkin_photos','daily_metrics','nutrition_plans','meal_plans',
+    'meal_blocks','meal_options','option_items','meal_choices','foods','programs','program_weeks','routines',
+    'routine_items','sessions','set_logs','messages','exercises','profiles','form_responses','calendar_events','goals',
+    'consents','client_notes'] loop
+    if to_regclass('public.' || t) is not null then
+      execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]''::jsonb) from public.%I x', t) into v;
+      out := out || jsonb_build_object(t, v);
+    end if;
+  end loop;
+  select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) into v from public.settings s where s.key !~* '(token|secret|key|pass)';
+  insert into public.settings (key, value) values ('last_backup', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
+  on conflict (key) do update set value = excluded.value;
+  return out || jsonb_build_object('settings', v);
+end $$;
+revoke execute on function public.backup_dump(text) from public;
+grant execute on function public.backup_dump(text) to anon, authenticated;
 
 commit;

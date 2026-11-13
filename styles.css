@@ -1112,3 +1112,17 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .kpi.exp b { color: var(--accent, #b8862d); }
 .kpis.small .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
 @media (min-width: 760px) { .kpis.small .kpi:last-child:nth-child(odd) { grid-column: auto; } }
+/* Diario del entrenador */
+.notes-pick select { width: 100%; }
+.note-form textarea { width: 100%; margin-bottom: 8px; }
+.note-form input[type=date] { width: auto; }
+.note-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.note-tags .chip { cursor: pointer; } .note-tags .chip input { display: none; }
+.note-tags .chip:has(input:checked) { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
+.notes { list-style: none; padding: 0; margin: 0; }
+.notes > li { padding: 10px 0; border-top: 1px solid var(--line); }
+.notes > li.note-mo { border: 0; padding: 14px 0 2px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.notes > li p { margin: 6px 0 0; white-space: normal; }
+.note-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note-h .icon-btn.on { background: var(--accent-soft); }
+.notes-q { width: 100%; margin-bottom: 6px; }
