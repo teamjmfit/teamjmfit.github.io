@@ -11,11 +11,14 @@
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nl2br = v => esc(v).replace(/\n/g, '<br>');
   const num = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
+  // RIR pautado «al fallo»: target_rir 0 + progression.fail (el entrenador lo elige en Intensidad)
+  const isFailT = i => i && Number(i.target_rir) === 0 && i.target_rir !== null && i.target_rir !== '' && !!(i.progression && i.progression.fail);
   // Variables de entrenamiento: texto corto "60 kg · RIR 2 · tempo 3-1-1-0" (o el texto libre antiguo)
   const loadLabel = i => {
     const p = [];
     if (i.load_kg != null && i.load_kg !== '') p.push(fmtKg(i.load_kg) + ' kg');
-    if (i.target_rir != null && i.target_rir !== '') p.push('RIR ' + fmtKg(i.target_rir));
+    if (isFailT(i)) p.push('Al fallo');
+    else if (i.target_rir != null && i.target_rir !== '') p.push('RIR ' + fmtKg(i.target_rir));
     else if (i.target_rpe != null && i.target_rpe !== '') p.push('RPE ' + fmtKg(i.target_rpe));
     if (i.tempo) p.push('tempo ' + i.tempo);
     return p.length ? p.join(' · ') : (i.load || '');
@@ -65,7 +68,7 @@
       const k = String(l.exercise_name || '').trim().toLowerCase(); if (!k) return;
       const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0, sets: [] });
       ss.n++; const e = e1rm(Number(l.weight), Number(l.reps));
-      ss.sets.push({ no: l.set_no, w: Number(l.weight), r: Number(l.reps), rir: l.rir, rpe: l.rpe });
+      ss.sets.push({ no: l.set_no, w: Number(l.weight), r: Number(l.reps), rir: l.rir, rpe: l.rpe, fail: !!l.failure });
       if (e > ss.e1) Object.assign(ss, { e1: e, w: Number(l.weight), r: Number(l.reps) });
     });
     const out = {}; for (const k in by) out[k] = Object.values(by[k]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -1271,7 +1274,7 @@
         return after ? after() : render();
       }
     });
-    function rirSel(name, def) { return `<select name="${name}" aria-label="RIR">${[0, 1, 2, 3, 4].map(v => `<option value="${v}" ${v === def ? 'selected' : ''}>${v}</option>`).join('')}</select>`; }
+    function rirSel(name, def) { return `<select name="${name}" aria-label="RIR">${[0, 1, 2, 3, 4].map(v => `<option value="${v}" ${v === def ? 'selected' : ''}>${v === 0 ? 'Fallo (0)' : v}</option>`).join('')}</select>`; }
     // ejercicios de las rutinas de partida y su grupo muscular principal
     const srcItems = src => routines.filter(r => (src ? r.program_week_id === src : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position)
       .flatMap(r => items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position));
@@ -1313,7 +1316,7 @@
         <div class="table-wrap"><table class="meso-table"><thead><tr><th>Ejercicio</th>${Array.from({ length: n }, (_, k) => `<th class="${k === n - 1 ? 'dl' : ''}">S${k + 1}${k === n - 1 ? ' ↓' : ''}<small>${fmtDate(addDays(mon(sd), 7 * k), { day: 'numeric', month: 'short' })}</small></th>`).join('')}</tr></thead>
         <tbody>${show.map(it => `<tr class="${pset.has(it.id) ? 'prio' : ''}"><td>${pset.has(it.id) ? '★ ' : ''}${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
         <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr>
-        <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>RIR ${v}</option>`).join('')}</select></td>`; }).join('')}</tr>
+        <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${v === 0 ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select></td>`; }).join('')}</tr>
         <tr class="adj"><td>Series <small>de más o de menos por ejercicio</small></td>${Array.from({ length: n }, (_, k) => { const cur = +(fd.get('ws' + k) || 0); return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="ws${k}" aria-label="Ajuste de series de la semana ${k + 1}">${[-2, -1, 0, 1, 2, 3].map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v > 0 ? '+' + v : v === 0 ? '±0' : v}</option>`).join('')}</select></td>`; }).join('')}</tr></tbody></table></div>
         <p class="muted small">Cambia el RIR o las series de cualquier semana y la tabla se recalcula. Después también puedes editar cada ejercicio de cada semana en Rutinas.</p>
         ${its.length > show.length ? `<p class="muted small">Y ${its.length - show.length} ejercicios más con la misma lógica.</p>` : ''}`;
@@ -1647,9 +1650,9 @@
     const adj = !!(week && (week.kind === 'deload' || week.kind === 'intensity'));
     const rows = items.map(i => { const x = Object.assign({}, i); if (adj && x.base) { const b = x.base; if (b.sets != null) x.sets = b.sets; x.target_rir = b.target_rir ?? null; if (b.load_kg !== undefined) x.load_kg = b.load_kg; } return legacyLoad(x); });
     rows.forEach(i => { i.prog = progKey(i.progression); i.scheme = schemeKey(i.progression); });
-    const intensOf = i => i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
+    const intensOf = i => isFailT(i) ? 'rir:F' : i.target_rir != null && i.target_rir !== '' ? 'rir:' + Number(i.target_rir) : i.target_rpe != null && i.target_rpe !== '' ? 'rpe:' + Number(i.target_rpe) : '';
     rows.forEach(i => { i.intens = intensOf(i); });
-    const INTENS = [['', '—'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
+    const INTENS = [['', '—'], ['rir:F', 'Al fallo'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
     const exOpts = S.exercises.map(e => `<option value="${esc(e.name)}">${esc(e.muscle || '')}</option>`).join('');
     let H = null;   // marcas anteriores del cliente (se cargan al abrir)
     const histHtml = name => {
@@ -1657,7 +1660,7 @@
       const h = H[String(name).trim().toLowerCase()]; if (!h || !h.length) return '<p class="ex-hist muted">Sin marcas todavía en este ejercicio.</p>';
       const st = stallOf(h), [cls, txt] = STALL_TXT[st.st], best = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]);
       const last = h[h.length - 1], prev = h[h.length - 2], d = (iso) => fmtDate(iso, { day: 'numeric', month: 'short' });
-      const setTxt = x => `${fmtKg(x.w)}×${x.r}${x.rir != null ? `<small> /RIR ${fmtKg(x.rir)}</small>` : x.rpe != null ? `<small> /RPE ${fmtKg(x.rpe)}</small>` : ''}`;
+      const setTxt = x => `${fmtKg(x.w)}×${x.r}${x.fail ? '<small> /Fallo</small>' : x.rir != null ? `<small> /RIR ${fmtKg(x.rir)}</small>` : x.rpe != null ? `<small> /RPE ${fmtKg(x.rpe)}</small>` : ''}`;
       let cmp = '';
       if (prev) {
         const pc = (last.e1 - prev.e1) / prev.e1 * 100, dw = last.w - prev.w, dr = last.r - prev.r;
@@ -1720,8 +1723,8 @@
             const d = {
               exercise_id: e ? e.id : null, exercise_name: x.exercise_name.trim(), media_url: x.media_url || (e && e.media_url) || '', position: i,
               sets: Number(x.sets) || 1, reps: String(x.reps || '').trim(), rest_sec: Number(x.rest_sec) || 0, notes: x.notes || '',
-              load_kg: num(x.load_kg), target_rir: kind === 'rir' ? Number(val) : null, target_rpe: kind === 'rpe' ? Number(val) : null,
-              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, progression: Object.assign(progVal(x.prog), schemeVal(x.scheme) ? { scheme: schemeVal(x.scheme) } : {}), ...repsRange(x.reps)
+              load_kg: num(x.load_kg), target_rir: kind === 'rir' ? (val === 'F' ? 0 : Number(val)) : null, target_rpe: kind === 'rpe' ? Number(val) : null,
+              tempo: /^[0-9X]-[0-9X]-[0-9X]-[0-9X]$/.test(tempo) ? tempo : null, progression: Object.assign(progVal(x.prog), schemeVal(x.scheme) ? { scheme: schemeVal(x.scheme) } : {}, kind === 'rir' && val === 'F' ? { fail: true } : {}), ...repsRange(x.reps)
             };
             d.load = loadLabel(d); // texto resumen para versiones antiguas de la app
             return d;
@@ -2124,7 +2127,7 @@
         const d = tp ? e1rm(+t.weight, +t.reps) - e1rm(+tp.weight, +tp.reps) : null;
         const st = stallOf((H[String(n).trim().toLowerCase()] || []).filter(x => String(x.date) <= String(s.started_at)));
         return `<div class="sx2"><div class="row gap"><b class="grow">${esc(n)}</b><span class="pill ${STALL_TXT[st.st][0]}">${STALL_TXT[st.st][1]}</span></div>
-          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
+          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
           ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
       modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
@@ -3045,7 +3048,7 @@
         routine_id: r.id, routine_name: r.name, notes: r.notes, started_at: new Date().toISOString(),
         ex: items.map(i => ({
           id: i.id, lin: i.lineage_id || null, name: i.exercise_name, media: i.media_url, reps: i.reps, load: loadLabel(i), rest: i.rest_sec, notes: i.notes,
-          it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe,
+          it: i.target_rir != null ? 'rir' : i.target_rpe != null ? 'rpe' : null, target: i.target_rir != null ? i.target_rir : i.target_rpe, tFail: isFailT(i),
           prev: (prev[i.id] || []).map(l => ({ w: l.weight, r: l.reps, x: l.failure ? 'F' : l.rir != null ? l.rir : l.rpe })), prevAt: prev[i.id] ? prev[i.id].at : null,
           scheme: schemeLabel(i.progression), sets: schemeSets(i.sets, i.progression)
         }))
@@ -3073,10 +3076,10 @@
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
           ${(() => { let n = 0; return e.sets.map(s => (s.tag === 'D' ? '' : String(++n))); })().map((lbl, si) => [lbl, e.sets[si], si]).map(([lbl, s, si]) => `<div class="set ${s.done ? 'done' : ''} ${s.tag ? 'tag-' + s.tag : ''}" data-si="${si}"><span class="sn">${s.tag === 'TOP' ? 'TOP' : s.tag === 'BO' ? 'BO' : s.tag === 'D' ? '↓' : lbl}</span>
-            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${e.prev[si].x === 'F' ? 'F' : fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
+            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${e.prev[si].x === 'F' ? 'Fallo' : fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
             <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="${s.pct ? '−' + s.pct + ' %' : '–'}" aria-label="Kilos serie ${si + 1}${s.tag === 'D' ? ' (bajada)' : s.tag === 'BO' ? ' (back-off)' : s.tag === 'TOP' ? ' (top set)' : ''}">
             <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="–" aria-label="Repeticiones serie ${si + 1}">
-            ${e.it === 'rir' ? `<select data-f="x" class="rir-sel ${s.x === 'F' ? 'fail' : ''}" aria-label="RIR serie ${si + 1} (F = fallo)"><option value="">${e.target != null ? esc(fmtKg(e.target)) : '–'}</option>${RIR_OPTS.map(v => `<option value="${v}" ${String(s.x) === v ? 'selected' : ''}>${v === 'F' ? 'F' : v}</option>`).join('')}</select>`
+            ${e.it === 'rir' ? `<select data-f="x" class="rir-sel ${s.x === 'F' ? 'fail' : ''}" aria-label="RIR serie ${si + 1}"><option value="">${e.tFail ? 'Fallo' : e.target != null ? esc(fmtKg(e.target)) : '–'}</option>${RIR_OPTS.map(v => `<option value="${v}" ${String(s.x) === v ? 'selected' : ''}>${v === 'F' ? 'Fallo' : v}</option>`).join('')}</select>`
               : e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>${s.hint ? `<p class="set-hint ${s.hint[0]}">${esc(s.hint[1])}</p>` : ''}`).join('')}</div>
           ${e.fb ? `<p class="wk-cmt">${ic('msg', 'xs')} <span>${esc(e.fb)}</span></p>` : ''}
@@ -3151,7 +3154,7 @@
     const r = parseInt(s.r, 10), kg = num(s.w);
     if (e.it === 'rir' && e.target != null && s.x !== '' && s.x != null && s.x !== 'F') {
       const x = num(s.x);
-      if (x != null && e.target <= 2 && x >= e.target + 2) return ['warn', `RIR ${fmtKg(x)} con RIR ${fmtKg(e.target)} pautado: para maximizar la hipertrofia, esta serie debe estar cerca del fallo. ¿Seguro que no puedes subir ${kg && kg >= 20 ? '2,5' : '1–2'} kg en la siguiente?`];
+      if (x != null && e.target <= 2 && x >= e.target + 2) return ['warn', `RIR ${fmtKg(x)} con ${e.tFail ? 'la serie al fallo' : 'RIR ' + fmtKg(e.target)} pautado: para maximizar la hipertrofia, esta serie debe estar cerca del fallo. ¿Seguro que no puedes subir ${kg && kg >= 20 ? '2,5' : '1–2'} kg en la siguiente?`];
     }
     const m = String(e.reps || '').match(/(\d+)\s*(?:[-–a]\s*(\d+))?/);
     if (m && !isNaN(r)) {
@@ -3159,7 +3162,7 @@
       if (r > hi + tol) return ['info', `${r} reps (pautado ${e.reps}): te sobra. Sube la carga en la siguiente serie${kg ? ` (≈ ${fmtKg(Math.round(kg * 1.05 * 2) / 2)} kg)` : ''}.`];
       if (r < lo - tol) return ['info', `${r} reps (pautado ${e.reps}): te cuesta. Baja un poco la carga en la siguiente${kg ? ` (≈ ${fmtKg(Math.round(kg * 0.92 * 2) / 2)} kg)` : ''}.`];
     }
-    if (s.x === 'F' && e.it === 'rir' && e.target != null && e.target >= 2) return ['info', `Serie al fallo con RIR ${fmtKg(e.target)} pautado: guarda algo de margen en la siguiente.`];
+    if (s.x === 'F' && e.it === 'rir' && e.target != null && e.target >= 2 && !e.tFail) return ['info', `Serie al fallo con RIR ${fmtKg(e.target)} pautado: guarda algo de margen en la siguiente.`];
     return null;
   }
   function nextSetLabel(w, ei, si) {
