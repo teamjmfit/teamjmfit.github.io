@@ -2657,7 +2657,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       if (!pics.length) return;
       const box = el.querySelector('[data-photos]'); box.hidden = false;
       box.innerHTML = pics.map((p, i) => `<figure data-pi="${i}"><div class="ph"></div>${label(p.pose) ? `<figcaption>${label(p.pose)}</figcaption>` : ''}</figure>`).join('');
-      pics.forEach((p, i) => DB.photoUrl(p.path).then(u => { box.querySelector(`[data-pi="${i}"] .ph`).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto ${esc(label(p.pose) || 'de progreso')}" loading="lazy"></a>`; }).catch(() => {}));
+      // archivadas (más de 3 meses): están en el Drive del entrenador, no en la app
+      pics.forEach((p, i) => { if (!p.archived_at) return; const ph = box.querySelector(`[data-pi="${i}"] .ph`); ph.classList.add('ph-drive');
+        ph.innerHTML = asCoach && p.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(p.drive_file_id)}/view" target="_blank" rel="noopener">📁<small>Ver en Drive</small></a>` : '<span>📁<small>Archivada</small></span>'; });
+      pics.forEach((p, i) => !p.archived_at && DB.photoUrl(p.path).then(u => { box.querySelector(`[data-pi="${i}"] .ph`).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto ${esc(label(p.pose) || 'de progreso')}" loading="lazy"></a>`; }).catch(() => {}));
       el._paths = pics.map(p => p.path);
     };
     if (photos) showPhotos(photos); else DB.list('checkin_photos', { eq: { checkin_id: k.id } }).then(showPhotos).catch(() => showPhotos([]));

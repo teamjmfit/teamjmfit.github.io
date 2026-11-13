@@ -18,6 +18,7 @@ lo que hay en el repositorio es exactamente lo que se sirve.
 | `sw.js`, `manifest.json`, `icon-*.png` | Instalación en el móvil y uso sin conexión. **Sube la versión de `CACHE` en `sw.js` en cada cambio** |
 | `supabase/migrations/` | SQL de la base de datos, en orden |
 | `apps-script/Codigo.gs` | Puente con la hoja de cobros de Google (el token real NO va aquí) |
+| `apps-script/ArchivarFotos.gs` | Archiva cada noche en Drive las fotos de check-in con más de 3 meses (la clave secreta va en las propiedades del script, NO aquí) |
 
 ## Base de datos (orden de migraciones)
 
