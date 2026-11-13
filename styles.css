@@ -1250,3 +1250,16 @@ details.r-fold > summary { color: var(--text); }
 .act-p { font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--card2); border: 1px solid var(--line); white-space: nowrap; }
 .act-t { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .act-i .dot { margin-top: 0; }
+
+/* Cambios de ejercicio (catálogo) */
+.alt-ed h4 { margin: 6px 0 2px; }
+.alt-list { margin: 6px 0 8px; padding-left: 22px; }
+.alt-list li { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.alt-list li .grow { flex: 1; }
+
+/* Perfil de resistencia */
+.prof { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px; white-space: nowrap; vertical-align: middle; }
+.prof.p0 { background: color-mix(in srgb, #ef4444 15%, transparent); color: #dc2626; }
+.prof.p1 { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.prof.p2 { background: color-mix(in srgb, #3b82f6 15%, transparent); color: #2563eb; }
+.ex-row-top .prof { flex: none; }

@@ -1805,7 +1805,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const prioBox = () => {
       const ms = [...new Set(rows.map(musOf).filter(m => m && m !== 'Sin grupo' && !PRE.test(m)))];
       prio.filter(p => !ms.includes(p)).forEach(p => ms.push(p));
-      return ms.length ? `<span class="muted small">Priorizar:</span> ${ms.map(m => { const k = prio.indexOf(m); return `<button type="button" class="chip ${k >= 0 ? 'on' : ''}" data-pm="${esc(m)}">${k >= 0 ? `<b>${k + 1}</b> ` : ''}${esc(m)}</button>`; }).join('')}`
+      const ord = window.JMSwap && rows.length > 2 ? `<button type="button" class="btn small ghost" data-porder title="Calentamiento → músculos prioritarios → estiramiento / multiarticulares → intermedios → acortamiento / aislamiento">⇅ Ordenar por perfil</button>` : '';
+      return ms.length ? `${ord}<span class="muted small">Priorizar:</span> ${ms.map(m => { const k = prio.indexOf(m); return `<button type="button" class="chip ${k >= 0 ? 'on' : ''}" data-pm="${esc(m)}">${k >= 0 ? `<b>${k + 1}</b> ` : ''}${esc(m)}</button>`; }).join('')}`
         : '<small class="muted">Añade ejercicios del catálogo para poder priorizar músculos.</small>';
     };
     const histHtml = name => {
@@ -1830,7 +1831,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <small class="muted">Mejor 1RM est.: ${Math.round(best.e1)} kg · ${h.length} ${h.length === 1 ? 'sesión' : 'sesiones'}</small></div>`;
     };
     const rowHtml = (i, idx) => `<div class="ex-row" data-idx="${idx}">
-        <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>
+        <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>${(() => { const k = window.JMSwap && i.exercise_name ? JMSwap.profileOf(i.exercise_name, S.exercises) : null; return k != null ? `<span class="prof p${k}" title="${esc(JMSwap.PROFILES[k].tip)}">${JMSwap.PROFILES[k].short}</span>` : ''; })()}
           <button type="button" class="icon-btn" data-up title="Subir">${ic('up')}</button><button type="button" class="icon-btn" data-down title="Bajar">${ic('down')}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${ic('trash')}</button></div>
         <div class="ex-row-fields">
           <label>Series<input name="sets" type="number" min="1" max="20" value="${i.sets || 3}"></label>
@@ -1913,6 +1914,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     function drawPrio() {
       pbox.innerHTML = prioBox();
       pbox.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { sync(); const m = b.dataset.pm, k = prio.indexOf(m); if (k >= 0) prio.splice(k, 1); else prio.push(m); prioOrder(); draw(); });
+      const po = pbox.querySelector('[data-porder]');
+      if (po) po.onclick = () => { sync(); const nw = JMSwap.sessionOrder(rows, S.exercises, x => x.exercise_name || '', prio, musOf); const moved = nw.some((x, i) => x !== rows[i]); rows.splice(0, rows.length, ...nw); draw(); toast(moved ? 'Ordenada: estiramiento y multiarticulares al principio, acortamiento al final' : 'Ya estaba en ese orden', 'ok'); };
     }
     function draw() {
       drawPrio();
@@ -2816,7 +2819,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const groups = {}; ex.forEach(e => { (groups[e.muscle || 'Otros'] = groups[e.muscle || 'Otros'] || []).push(e); });
     $app.querySelector('.content').innerHTML = `${PROGRAM_TABS('ejercicios')}<input class="search" placeholder="Buscar ejercicio…" data-q>
       <p class="muted small">Tu catálogo: aparece como sugerencia al crear rutinas. Añade un enlace a vídeo para que tus clientes vean la técnica.</p>
-      ${Object.keys(groups).sort().map(g => `<section class="card flush" data-g><h3 class="pad">${esc(g)}</h3><ul class="list">${groups[g].map(e => `<li><button type="button" class="lrow" data-id="${e.id}"><span class="grow"><b>${esc(e.name)}</b><small>${esc(e.equipment || '')}</small></span>${e.media_url ? ic('video') : ''}</button></li>`).join('')}</ul></section>`).join('')}`;
+      ${Object.keys(groups).sort().map(g => `<section class="card flush" data-g><h3 class="pad">${esc(g)}</h3><ul class="list">${groups[g].map(e => `<li><button type="button" class="lrow" data-id="${e.id}"><span class="grow"><b>${esc(e.name)}</b><small>${esc(e.equipment || '')}${(() => { const k = window.JMSwap ? JMSwap.profileOf(e.name, ex) : null; return k != null ? ` · <span class="prof p${k}">${JMSwap.PROFILES[k].short}</span>` : ''; })()}</small></span>${e.media_url ? ic('video') : ''}</button></li>`).join('')}</ul></section>`).join('')}`;
     $app.querySelectorAll('[data-id]').forEach(b => b.onclick = () => exerciseForm(byId(ex, b.dataset.id)));
     const q = $app.querySelector('[data-q]');
     q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('[data-g]').forEach(s => { let any = false; s.querySelectorAll('li').forEach(li => { const m = li.textContent.toLowerCase().includes(v); li.hidden = !m; any = any || m; }); s.hidden = !any; }); };
@@ -2828,16 +2831,44 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <label>Grupo muscular<input name="muscle" value="${esc(e.muscle)}" list="muscles"></label>
       <datalist id="muscles">${[...new Set(S.exercises.map(x => x.muscle).filter(Boolean))].map(m => `<option value="${esc(m)}">`).join('')}</datalist>
       <label>Material<input name="equipment" value="${esc(e.equipment)}"></label>
+      ${window.JMSwap ? `<label class="full">Perfil de resistencia<select name="profile"><option value="">Automático${(() => { const k = JMSwap.profileOf(e.name || '', []); return k != null ? ' (' + JMSwap.PROFILES[k].short.toLowerCase() + ')' : ''; })()}</option>${JMSwap.PROFILES.map(p => `<option value="${p.key}" ${e.profile === p.key ? 'selected' : ''}>${p.label}</option>`).join('')}</select><small class="muted">${JMSwap.PROFILES.map(p => `<b>${p.short}</b>: ${esc(p.tip)}`).join('<br>')}</small></label>` : ''}
       <label class="full">Vídeo o foto de la técnica (enlace)<input name="media_url" value="${esc(e.media_url)}" placeholder="YouTube, Vimeo, Drive…"></label>
       <div class="full" data-mprev>${mediaFacade(e.media_url)}</div>
-      <label class="full">Indicaciones técnicas<textarea name="notes" rows="3">${esc(e.notes)}</textarea></label></div>`, {
+      <label class="full">Indicaciones técnicas<textarea name="notes" rows="3">${esc(e.notes)}</textarea></label>
+      <div class="full alt-ed" data-alted></div></div>`, {
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox('¿Eliminar "' + e.name + '" del catálogo? Las rutinas que ya lo usan no cambian.')) { await safe(() => DB.remove('exercises', e.id), 'Eliminado'); render(); } } },
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); if (!d.name.trim()) return false;
-        if (isNew) await safe(() => DB.insert('exercises', d), 'Ejercicio añadido'); else await safe(() => DB.update('exercises', e.id, d), 'Guardado');
+        delete d.alt_add; d.alternatives = altCustom ? alts.slice() : null; if ('profile' in d) d.profile = d.profile || null;
+        // sin la actualización 023 las columnas no existen: se guarda el resto
+        const noAlt = er => /alternatives|profile/.test(er && er.message || '');
+        const run = x => (isNew ? DB.insert('exercises', x) : DB.update('exercises', e.id, x));
+        await safe(() => run(d).catch(er => { if (!noAlt(er)) throw er; const x = Object.assign({}, d); delete x.alternatives; delete x.profile; return run(x); }), isNew ? 'Ejercicio añadido' : 'Guardado');
         render();
       }
     });
+    // Cambios en el entreno: los que verá el cliente al pulsar «Cambiar» (automáticos por familia, o los que fijes tú)
+    const SW = window.JMSwap, ae = mf.querySelector('[data-alted]');
+    let altCustom = Array.isArray(e.alternatives) && e.alternatives.length > 0, alts = [];
+    const autoAlts = () => (SW ? SW.altsFor(mf.querySelector('[name=name]').value || e.name || '', S.exercises.map(x => Object.assign({}, x, { alternatives: null }))).list.map(x => x.name) : []);
+    alts = altCustom ? e.alternatives.slice() : autoAlts();
+    const drawAlt = () => {
+      const fam = SW && SW.familyOf(mf.querySelector('[name=name]').value || e.name || '');
+      ae.innerHTML = `<h4>Cambios en el entreno <small class="muted">· ${altCustom ? 'los has fijado tú' : fam ? 'automáticos: ' + esc(fam.title.toLowerCase()) : 'sin familia: añade los que quieras'}</small></h4>
+        <p class="muted small">Lo que verá el cliente al pulsar «Cambiar» si la máquina está ocupada, en este orden. Quita, ordena o añade; al tocar algo pasan a ser tuyos.</p>
+        <ol class="alt-list">${alts.map((n, i) => `<li><span class="grow">${esc(n)}</span><button type="button" class="icon-btn sm" data-aup="${i}" title="Subir">${ic('up')}</button><button type="button" class="icon-btn sm danger" data-adel="${i}" title="Quitar">${ic('trash')}</button></li>`).join('') || '<li class="muted small">Sin cambios: el cliente solo podrá escribir otro.</li>'}</ol>
+        <div class="row gap"><input name="alt_add" list="exlist-alt" placeholder="Añadir ejercicio…" class="grow"><button type="button" class="btn small" data-aadd>${ic('plus')} Añadir</button>${altCustom ? '<button type="button" class="btn small ghost" data-areset>Volver a automáticos</button>' : ''}</div>
+        <datalist id="exlist-alt">${S.exercises.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist>`;
+      const mine = () => { altCustom = true; };
+      ae.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { mine(); alts.splice(+b.dataset.adel, 1); drawAlt(); });
+      ae.querySelectorAll('[data-aup]').forEach(b => b.onclick = () => { const i = +b.dataset.aup; if (i > 0) { mine(); [alts[i - 1], alts[i]] = [alts[i], alts[i - 1]]; drawAlt(); } });
+      const add = () => { const inp = ae.querySelector('[name=alt_add]'), v = inp.value.trim(); if (!v) return; if (!alts.some(n => n.toLowerCase() === v.toLowerCase())) { mine(); alts.push(v); } drawAlt(); };
+      ae.querySelector('[data-aadd]').onclick = add;
+      ae.querySelector('[name=alt_add]').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); add(); } });
+      const rs = ae.querySelector('[data-areset]'); if (rs) rs.onclick = () => { altCustom = false; alts = autoAlts(); drawAlt(); };
+    };
+    drawAlt();
+    mf.querySelector('[name=name]').addEventListener('change', () => { if (!altCustom) { alts = autoAlts(); drawAlt(); } });
     const pv = mf.querySelector('[data-mprev]'), mi = mf.querySelector('[name=media_url]');
     let shown = mi.value; bindMedia(pv); mi.addEventListener('change', () => { if (mi.value === shown) return; shown = mi.value; pv.innerHTML = mediaFacade(mi.value); bindMedia(pv); });
   }
@@ -3421,11 +3452,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     lib.concat((window.JMFIT_EXERCISES || []).map(([name, muscle, equipment]) => ({ name, muscle, equipment }))).forEach(x => { const k = String(x.name).toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(x); } });
     const curName = e.orig || e.name, me = all.find(x => x.name.toLowerCase() === curName.toLowerCase()) || { name: curName };
     const pat = patternOf(curName), prof = profileOf(me.equipment), mus = String(me.muscle || '').split('/')[0].trim().toLowerCase();
-    const alts = all.filter(x => x.name.toLowerCase() !== curName.toLowerCase() && (pat ? patternOf(x.name) === pat : mus && String(x.muscle || '').toLowerCase().startsWith(mus)))
+    // 1.º los cambios que fijó el entrenador en el catálogo; si no, la familia del ejercicio (mismo movimiento, otro material)
+    const sw = window.JMSwap ? JMSwap.altsFor(curName, all) : { list: [] };
+    const alts = sw.list.length ? sw.list : all.filter(x => x.name.toLowerCase() !== curName.toLowerCase() && (pat ? patternOf(x.name) === pat : mus && String(x.muscle || '').toLowerCase().startsWith(mus)))
       .map(x => ({ x, sc: (profileOf(x.equipment) === prof ? 2 : 0) + (mus && String(x.muscle || '').toLowerCase().startsWith(mus) ? 1 : 0) }))
       .sort((a, b) => b.sc - a.sc || a.x.name.localeCompare(b.x.name)).slice(0, 3).map(a => a.x);
-    const m = modal(`Cambiar ${curName}`, `<p class="muted small">${pat ? `Alternativas con el mismo patrón (<b>${esc(pat.toLowerCase())}</b>)${prof ? ` y, si puede ser, el mismo perfil de resistencia (${esc(prof)})` : ''}.` : 'Alternativas para el mismo músculo.'} Tu entrenador verá el cambio.</p>
-      ${alts.length ? `<ul class="list swap-list">${alts.map((x, i) => `<li><button type="button" class="swap-opt" data-alt="${i}"><span class="grow"><b>${esc(x.name)}</b><small>${esc([x.equipment, profileOf(x.equipment)].filter(Boolean).join(' · '))}</small></span>${ic('swap')}</button></li>`).join('')}</ul>` : '<p class="empty small">No hay alternativas en la biblioteca para este ejercicio.</p>'}
+    const m = modal(`Cambiar ${curName}`, `<p class="muted small">${sw.list.length ? (sw.custom ? 'Los cambios que ha preparado tu entrenador para este ejercicio, por orden de preferencia.' : `Ejercicios que trabajan igual (<b>${esc(sw.family.title.toLowerCase())}</b>) con otro material o máquina${sw.profile != null ? `; primero los de perfil en <b>${esc(JMSwap.PROFILES[sw.profile].short.toLowerCase())}</b>, como el tuyo` : ''}.`) : pat ? `Alternativas con el mismo patrón (<b>${esc(pat.toLowerCase())}</b>)${prof ? ` y, si puede ser, el mismo perfil de resistencia (${esc(prof)})` : ''}.` : 'Alternativas para el mismo músculo.'} Tu entrenador verá el cambio.</p>
+      ${alts.length ? `<ul class="list swap-list">${alts.map((x, i) => `<li><button type="button" class="swap-opt" data-alt="${i}"><span class="grow"><b>${esc(x.name)}</b><small>${esc((x.equipment || '') + (x.profile != null && window.JMSwap ? ' · ' + JMSwap.PROFILES[x.profile].short : ''))}</small></span>${ic('swap')}</button></li>`).join('')}</ul>` : '<p class="empty small">No hay alternativas en la biblioteca para este ejercicio.</p>'}
       <label>Otro ejercicio<input name="other" list="swap-all" placeholder="Escribe el nombre"></label><datalist id="swap-all">${all.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist>
       <label>¿Por qué? (opcional)<input name="why" maxlength="200" placeholder="Máquina ocupada, molestia…"></label>`, {
       submitLabel: 'Usar este', onSubmit: (f, fd) => { const o = String(fd.get('other') || '').trim(); if (!o) { toast('Elige una alternativa o escribe otra', 'err'); return false; } apply(all.find(x => x.name.toLowerCase() === o.toLowerCase()) || { name: o }, fd.get('why')); }
