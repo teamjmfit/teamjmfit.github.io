@@ -444,6 +444,15 @@
     stack.prepend(sec);
   }
 
+  // Referidos nuevos (027): aviso en Inicio hasta que se les cambia el estado
+  async function refAlerts(stack) {
+    const n = (await DB.list('referrals', { eq: { status: 'nuevo' }, limit: 50 }).catch(() => [])).length;
+    if (!n || stack.querySelector('[data-refalert]')) return;
+    const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-refalert', '');
+    sec.innerHTML = `<h3>🎁 ${n} contacto${n > 1 ? 's' : ''} nuevo${n > 1 ? 's' : ''} por referidos</h3><p class="muted small">Gente que ha dejado sus datos con el enlace de un cliente.</p><a class="btn small" href="#/referidos">Ver referidos</a>`;
+    stack.prepend(sec);
+  }
+
   // Vencimientos (025): quién está en los 3 días de margen, quién tiene la app pausada y los «Ya he pagado» por revisar
   async function payAlerts(stack) {
     const cl = (S.clients || []).filter(c => !c.is_template && c.active !== false && 'grace_days' in c && c.pay_due && !c.billing_off && c.remind_payment !== false);
@@ -502,6 +511,12 @@
     if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     if (r0 === 'notas') { setTimeout(refreshReviewBadge, 0); return coachNotes(r1); }
+    if (r0 === 'referidos') {
+      shell(COACH_NAV, 'clientes', loading(), { title: 'Referidos', back: 'clientes' });
+      const rb = $app.querySelector('.content'), cl = await loadClients();
+      if (!window.JMRefer) return;
+      return JMRefer.page(rb, cl).catch(e => { rb.innerHTML = `<div class="hero-empty">${ic('send', 'xl')}<h2>Referidos</h2><p>${/referrals|public_texts|schema cache|does not exist/i.test(e.message) ? 'Falta ejecutar la actualización 027 en Supabase.' : esc(e.message)}</p></div>`; });
+    }
     go('#/');
   }
 
@@ -610,7 +625,7 @@
     drawActivity($app.querySelector('[data-act]'), feed);
     {
       const stack = $app.querySelector('.content .stack');
-      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); payAlerts(stack).catch(e => console.warn(e)); trainAlerts(stack).catch(e => console.warn(e)); };
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); payAlerts(stack).catch(e => console.warn(e)); refAlerts(stack); trainAlerts(stack).catch(e => console.warn(e)); };
       if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
     }
     // cobros (no bloquea)
@@ -681,7 +696,7 @@
 
   // ---------- Lista de clientes
   async function coachClients() {
-    shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<button class="btn ghost" data-backup title="Descargar un Excel con todos los datos">${ic('copy')}<span>Copia de seguridad</span></button><button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
+    shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<a class="btn ghost" href="#/referidos" title="Referidos: contactos que llegan por los enlaces de tus clientes">🎁<span>Referidos</span></a><button class="btn ghost" data-backup title="Descargar un Excel con todos los datos">${ic('copy')}<span>Copia de seguridad</span></button><button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
     $app.querySelector('[data-new]').onclick = () => clientForm();
     $app.querySelector('[data-backup]').onclick = e => window.JMBackup && window.JMBackup.run(e.currentTarget);
     const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { gte: { started_at: new Date(Date.now() - 35 * 864e5).toISOString() }, order: ['started_at', 'desc'], limit: 1500 })]);
@@ -3248,6 +3263,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     });
     wire(box.querySelector('.c-home'));
     wireInstall(box);
+    if (window.JMRefer && 'referred_by' in c) {   // migración 027
+      const home = box.querySelector('.c-home') || box; home.insertAdjacentHTML('beforeend', JMRefer.card(c));
+      const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(e => toast(e.message, 'err'));
+    }
     drawDay();
     noticePopup(c, notices.filter(nt => nt.k !== 'ck' || d === 5), t0);
   }
