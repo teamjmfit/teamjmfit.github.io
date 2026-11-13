@@ -2435,18 +2435,18 @@
           ${its.length ? `<details class="hx-list"><summary>Ver ejercicios</summary><ol>${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol></details>` : ''}
           <a class="btn primary big block" href="#/entreno/${r.id}">${ic('play')} ${done ? 'Repetir entreno' : 'Empezar entreno'}</a></section>`; };
       const rest = isToday
-        ? `<section class="hero-ink rest"><div class="hx-top"><small>Hoy</small></div><h2>Día de descanso 😌</h2><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`
-        : `<section class="hero-ink rest other"><div class="hx-top"><small>${esc(label)}</small></div><h2>Descanso</h2><p>Ese día no tienes entreno asignado.</p></section>`;
+        ? `<section class="hero-ink day-off"><div class="hx-top"><small>Hoy</small></div><h2>Día de descanso 😌</h2><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`
+        : `<section class="hero-ink day-off other"><div class="hx-top"><small>${esc(label)}</small></div><h2>Descanso</h2><p>Ese día no tienes entreno asignado.</p></section>`;
       const m = (dm || []).find(x => x.date === ds) || {}, wts = (dm || []).filter(x => x.weight != null);
       const avgW = wts.length ? wts.reduce((a, x) => a + Number(x.weight), 0) / wts.length : null;
-      dayBox.innerHTML = `${rs.length ? rs.map(heroD).join('') : evs.some(e => e.kind !== 'note') ? '' : rest}
-        ${evs.length ? `<section class="card"><h3>${isToday ? (rs.length ? 'Hoy también' : 'Hoy') : 'Ese día'}</h3><ul class="evlist">${evs.map(e => evRow(e, true)).join('')}</ul></section>` : ''}
-        ${dm && ds <= t0 ? `<section class="card dm-card"><h3>Registro ${isToday ? 'de hoy' : 'del ' + DIAS[n].toLowerCase() + ' ' + (+ds.slice(8))}${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
+      dayBox.innerHTML = `${dm && ds <= t0 ? `<section class="card dm-card"><h3>Registro ${isToday ? 'de hoy' : 'del ' + DIAS[n].toLowerCase() + ' ' + (+ds.slice(8))}${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
           <form class="dm-form" data-dm><label>Peso<span class="u-in"><input name="weight" type="number" step="0.05" min="20" max="350" inputmode="decimal" value="${m.weight ?? ''}" placeholder="–"><i>kg</i></span></label>
             <label>Pasos<input name="steps" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${m.steps ?? ''}" placeholder="–"></label>
             <label>Sueño<span class="u-in"><input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" value="${m.sleep_h ?? ''}" placeholder="–"><i>h</i></span></label>
             <button class="btn small primary">${m.date ? 'Actualizar' : 'Guardar'}</button></form>
-          <p class="muted small">${avgW != null ? `Media de la semana: <b>${fmtKg(avgW)} kg</b> (${wts.length} día${wts.length === 1 ? '' : 's'}). ` : ''}Pésate en ayunas, nada más levantarte: lo que cuenta es la media semanal.</p></section>` : ''}`;
+          <p class="muted small">${avgW != null ? `Media de la semana: <b>${fmtKg(avgW)} kg</b> (${wts.length} día${wts.length === 1 ? '' : 's'}).` : 'Pésate en ayunas, nada más levantarte: lo que cuenta es la media semanal.'}</p></section>` : ''}
+        ${rs.length ? rs.map(heroD).join('') : evs.some(e => e.kind !== 'note') ? '' : rest}
+        ${evs.length ? `<section class="card"><h3>${isToday ? (rs.length ? 'Hoy también' : 'Hoy') : 'Ese día'}</h3><ul class="evlist">${evs.map(e => evRow(e, true)).join('')}</ul></section>` : ''}`;
       wire(dayBox);
       const fm = dayBox.querySelector('[data-dm]');
       if (fm) fm.onsubmit = async e => {
