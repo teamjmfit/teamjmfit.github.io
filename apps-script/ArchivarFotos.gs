@@ -21,7 +21,8 @@ const POSE = { front: 'frente', side: 'lateral', back: 'espalda' };
 
 function cfg_() {
   const p = PropertiesService.getScriptProperties();
-  const c = { url: (p.getProperty('SUPABASE_URL') || '').replace(/\/+$/, ''), key: p.getProperty('SUPABASE_SERVICE_KEY'), root: p.getProperty('CARPETA_ID') };
+  const c = { url: (p.getProperty('SUPABASE_URL') || '').replace(/\/+$/, ''), key: (p.getProperty('SUPABASE_SERVICE_KEY') || '').replace(/[^\x21-\x7e]/g, ''),   // quita espacios o saltos pegados sin querer
+    root: p.getProperty('CARPETA_ID') };
   if (!c.url || !c.key || !c.root) throw new Error('Faltan propiedades del script: SUPABASE_URL, SUPABASE_SERVICE_KEY y CARPETA_ID');
   return c;
 }
