@@ -481,15 +481,78 @@
   async function loadClients() { const all = await DB.list('clients', { order: ['name', 'asc'] }); S.templates = all.filter(c => c.is_template); S.clients = all.filter(c => !c.is_template); return S.clients; }
   async function loadExercises() { S.exercises = await DB.list('exercises', { order: ['name', 'asc'] }); return S.exercises; }
 
+  // ---------- Actividad reciente: Hoy / Ayer / Anteriores, filtrable por Entrenos · Métricas · Formularios
+  const ACT_T = { train: ['Entrenos', 'dumbbell'], metric: ['Métricas', 'chart'], form: ['Formularios', 'inbox'] };
+  function activityFeed({ clients, sessions, checkins, metrics, forms, since }) {
+    const cl = id => byId(clients, id) || {}, nm = id => cl(id).name || 'Cliente';
+    const pill = t => `<span class="act-p">${t}</span>`;
+    const out = [];
+    sessions.filter(x => x.finished_at && x.finished_at >= since).forEach(x => {
+      const min = Math.max(1, Math.round((new Date(x.finished_at) - new Date(x.started_at)) / 6e4));
+      out.push({ k: 'train', t: x.finished_at, cid: x.client_id, who: nm(x.client_id), what: `completó <b>${esc(x.routine_name || 'entreno')}</b>`,
+        pills: [min < 600 ? pill(`⏱ ${min} min`) : '', x.volume ? pill(`🏋️ ${Math.round(x.volume).toLocaleString('es-ES')} kg`) : '', x.rpe ? pill(`RPE ${x.rpe}`) : ''].join(''),
+        href: `#/cliente/${x.client_id}/progreso`, unseen: !x.coach_seen });
+    });
+    metrics.filter(m => m.weight != null || m.steps != null || m.sleep_h != null).forEach(m => {
+      const t = m.created_at && String(m.created_at).slice(0, 10) === String(m.date).slice(0, 10) ? m.created_at : String(m.date).slice(0, 10) + 'T12:00:00';
+      out.push({ k: 'metric', t, day: String(m.date).slice(0, 10), cid: m.client_id, who: nm(m.client_id), what: 'registró sus métricas',
+        pills: [m.weight != null ? pill(`⚖️ ${fmtKg(m.weight)} kg`) : '', m.steps != null ? pill(`👟 ${Number(m.steps).toLocaleString('es-ES')}`) : '', m.sleep_h != null ? pill(`😴 ${fmtKg(m.sleep_h)} h`) : ''].join(''),
+        href: `#/cliente/${m.client_id}/progreso` });
+    });
+    checkins.filter(c => c.created_at >= since || !c.coach_seen).forEach(c => out.push({ k: 'form', t: c.created_at, cid: c.client_id, who: nm(c.client_id), what: 'envió su <b>check-in semanal</b>',
+      pills: [c.weight ? pill(`⚖️ ${fmtKg(c.weight)} kg`) : '', c.adherence ? pill(`✅ adherencia ${c.adherence}/10`) : '', c.energy ? pill(`⚡ energía ${c.energy}/10`) : ''].join(''),
+      href: `#/cliente/${c.client_id}/revisiones`, unseen: !c.coach_seen }));
+    forms.filter(f => f.submitted_at >= since || !f.seen).forEach(f => out.push({ k: 'form', t: f.submitted_at, cid: f.client_id, who: f.client_id ? nm(f.client_id) : (f.name || 'Sin nombre'),
+      what: `rellenó <b>${f.form === 'plan' ? 'Plan 1:1' : f.form === 'salud' ? 'Datos Base y Salud' : esc(f.form)}</b>`, pills: '', href: '#/formularios', unseen: !f.seen }));
+    return out.sort((a, b) => (a.t < b.t ? 1 : -1));
+  }
+  function drawActivity(card, feed) {
+    if (!card) return;
+    const body = card.querySelector('[data-actbody]'), td = today(), yd = ymd(new Date(Date.now() - 864e5));
+    let f = S.actF || 'all', more = false;
+    const dayOf = x => x.day || ymd(new Date(x.t));
+    const hhmm = x => (x.k === 'metric' && !String(x.t).includes(':') ? '' : new Date(x.t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }));
+    const item = x => `<li class="act-i ${x.k}${x.unseen ? ' new' : ''}"><a href="${x.href}">
+        <span class="act-av">${esc(initials(x.who))}<i class="act-k">${ic(ACT_T[x.k][1])}</i></span>
+        <div class="act-tx"><div class="act-l1"><b>${esc(x.who)}</b> <span>${x.what}</span></div>${x.pills ? `<div class="act-ps">${x.pills}</div>` : ''}</div>
+        <small class="act-t">${x.g === 'old' ? fmtDate(dayOf(x), { weekday: 'short', day: 'numeric' }) : hhmm(x)}</small>${x.unseen ? '<i class="dot"></i>' : ''}</a></li>`;
+    const sumItem = ms => { const ws = [...new Set(ms.map(x => x.who))];
+      return `<li class="act-i metric"><a href="#" data-actf="metric"><span class="act-av">${ws.length}<i class="act-k">${ic('chart')}</i></span>
+        <div class="act-tx"><div class="act-l1"><b>${ws.length} cliente${ws.length > 1 ? 's' : ''}</b> <span>registraron sus métricas</span></div><div class="act-ps">${ws.slice(0, 6).map(w => `<span class="act-p">${esc(w.split(' ')[0])}</span>`).join('')}${ws.length > 6 ? `<span class="act-p">+${ws.length - 6}</span>` : ''}</div></div>
+        <small class="act-t">Ver ›</small></a></li>`; };
+    const draw = () => {
+      const list = feed.filter(x => f === 'all' || x.k === f).map(x => Object.assign(x, { g: dayOf(x) === td ? 'today' : dayOf(x) === yd ? 'yday' : 'old' }));
+      const cnt = k => feed.filter(x => k === 'all' || x.k === k).length;
+      const groups = [['today', 'Hoy'], ['yday', 'Ayer'], ['old', 'Anteriores']].map(([g, l]) => {
+        let xs = list.filter(x => x.g === g);
+        // en «Todo», si hay muchas métricas se resumen en una fila (con 20 clientes serían 20 al día)
+        const ms = f === 'all' ? xs.filter(x => x.k === 'metric') : [];
+        if (ms.length > 3) { const i0 = xs.indexOf(ms[0]); xs = xs.filter(x => x.k !== 'metric'); xs.splice(Math.min(i0, xs.length), 0, { sum: ms }); }
+        const total = xs.length; if (g === 'old' && !more) xs = xs.slice(0, 10);
+        const tc = k => list.filter(x => x.g === g && x.k === k).length;
+        return total ? `<div class="act-g"><div class="act-gh"><b>${l}</b><span class="act-sum">${Object.keys(ACT_T).filter(tc).map(k => `<span class="act-c ${k}">${ic(ACT_T[k][1])} ${tc(k)}</span>`).join('')}</span></div>
+          <ul class="act-list">${xs.map(x => x.sum ? sumItem(x.sum) : item(x)).join('')}</ul>${g === 'old' && total > xs.length ? `<button class="btn small ghost block" data-actmore>Ver ${total - xs.length} más</button>` : ''}</div>` : '';
+      }).join('');
+      body.innerHTML = `<div class="act-f">${[['all', 'Todo'], ...Object.entries(ACT_T).map(([k, v]) => [k, v[0]])].map(([k, l]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-actf="${k}">${l} <small>${cnt(k)}</small></button>`).join('')}</div>
+        ${groups || `<p class="empty">${f === 'all' ? 'Aún no hay actividad esta semana. Cuando tus clientes entrenen, registren métricas o envíen formularios, aparecerá aquí.' : 'Nada de esto en los últimos 8 días.'}</p>`}`;
+      body.querySelectorAll('[data-actf]').forEach(b => b.onclick = e => { e.preventDefault(); f = S.actF = b.dataset.actf; more = false; draw(); });
+      const m = body.querySelector('[data-actmore]'); if (m) m.onclick = () => { more = true; draw(); };
+    };
+    draw();
+  }
+
   // ---------- Inicio
   async function coachHome() {
     shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
-    const [clients, sessions, checkins] = await Promise.all([
+    const d8 = new Date(Date.now() - 8 * 864e5), d8i = d8.toISOString();
+    const [clients, sessions, checkins, metrics, forms] = await Promise.all([
       loadClients(),
-      DB.list('sessions', { order: ['started_at', 'desc'], limit: 60 }),
-      DB.list('checkins', { order: ['created_at', 'desc'], limit: 60 })
+      DB.list('sessions', { gte: { started_at: d8i }, order: ['started_at', 'desc'], limit: 400 }),
+      DB.list('checkins', { order: ['created_at', 'desc'], limit: 60 }),
+      DB.list('daily_metrics', { gte: { date: ymd(d8) }, order: ['date', 'desc'], limit: 400 }).catch(() => []),
+      DB.list('form_responses', { order: ['submitted_at', 'desc'], limit: 30 }).catch(() => [])
     ]);
     const name = id => (byId(clients, id) || {}).name || 'Cliente';
     const active = clients.filter(c => c.active);
@@ -498,11 +561,7 @@
     const trainedIds = new Set(week.map(s => s.client_id));
     const idle = active.filter(c => !trainedIds.has(c.id));
 
-    const feed = [
-      ...sessions.slice(0, 15).filter(s => s.finished_at).map(s => ({ t: s.finished_at, html: `<b>${esc(name(s.client_id))}</b> completó <i>${esc(s.routine_name || 'entreno')}</i>${s.rpe ? ` · RPE ${s.rpe}` : ''}`, href: `cliente/${s.client_id}/progreso`, icon: 'dumbbell', unseen: !s.coach_seen })),
-      ...checkins.slice(0, 15).map(c => ({ t: c.created_at, html: `<b>${esc(name(c.client_id))}</b> envió su check-in${c.weight ? ` · ${fmtKg(c.weight)} kg` : ''}`, href: `cliente/${c.client_id}/progreso`, icon: 'chart', unseen: !c.coach_seen }))
-    ].sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14);
-
+    const feed = activityFeed({ clients, sessions, checkins, metrics, forms, since: d8i });
     const html = `
       <div class="kpis">
         <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${active.length}</b><span>${clients.length - active.length} en pausa</span></a>
@@ -511,9 +570,7 @@
         <div class="kpi ${idle.length ? 'warn' : ''}"><small>Sin entrenar en 7 días</small><b>${idle.length}</b><span>clientes activos</span></div>
       </div>
       <div class="grid2">
-        <section class="card"><h3>Actividad reciente</h3>
-          ${feed.length ? `<ul class="feed">${feed.map(f => `<li><a href="#/${f.href}">${ic(f.icon)}<div>${f.html}<small>${ago(f.t)}</small></div>${f.unseen ? '<i class="dot"></i>' : ''}</a></li>`).join('')}</ul>` : '<p class="empty">Aún no hay actividad. Cuando tus clientes entrenen o envíen su check-in, aparecerá aquí.</p>'}
-        </section>
+        <section class="card act-card" data-act><h3>Actividad reciente</h3><div data-actbody></div></section>
         <div class="stack">
           <section class="card" id="venc"><h3>Próximos cobros</h3>${loading()}</section>
           <section class="card"><h3>Sin entrenar en 7 días</h3>
@@ -522,6 +579,7 @@
         </div>
       </div>`;
     $app.querySelector('.content').innerHTML = html;
+    drawActivity($app.querySelector('[data-act]'), feed);
     {
       const stack = $app.querySelector('.content .stack');
       const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); trainAlerts(stack).catch(e => console.warn(e)); };

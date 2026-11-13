@@ -1223,3 +1223,30 @@ details.r-fold > summary { color: var(--text); }
 
 .prio-ms { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
 .prio-ms .chip b { font-weight: 800; }
+
+/* Actividad reciente */
+.act-f { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
+.act-f .chip small { color: var(--muted); font-weight: 700; margin-left: 2px; }
+.act-g { margin-top: 10px; }
+.act-gh { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.act-gh > b { font: 700 13px var(--body); text-transform: uppercase; letter-spacing: .05em; }
+.act-sum { display: flex; gap: 6px; margin-left: auto; }
+.act-c { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.act-c .ic { width: 13px; height: 13px; }
+.act-c.train, .act-i.train .act-k { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.act-c.metric, .act-i.metric .act-k { background: color-mix(in srgb, #3b82f6 16%, transparent); color: #3b82f6; }
+.act-c.form, .act-i.form .act-k { background: color-mix(in srgb, #a855f7 16%, transparent); color: #a855f7; }
+.act-list { list-style: none; margin: 0; padding: 0; }
+.act-i a { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-radius: 12px; color: var(--text); text-decoration: none; }
+.act-i a:hover { background: var(--card2); }
+.act-i.new a { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.act-av { position: relative; flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--body); background: var(--card2); border: 1px solid var(--line); }
+.act-k { position: absolute; right: -5px; bottom: -4px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--card); }
+.act-k .ic { width: 11px; height: 11px; }
+.act-tx { flex: 1; min-width: 0; }
+.act-l1 { font-size: 14px; line-height: 1.3; }
+.act-l1 span { color: var(--muted); } .act-l1 span b { color: var(--text); font-weight: 600; }
+.act-ps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.act-p { font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--card2); border: 1px solid var(--line); white-space: nowrap; }
+.act-t { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.act-i .dot { margin-top: 0; }
