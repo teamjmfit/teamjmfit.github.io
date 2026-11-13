@@ -1286,3 +1286,27 @@ details.r-fold > summary { color: var(--text); }
 .an-st.stall { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #b45309; } .an-st.eq { background: var(--card2); color: var(--muted); }
 .an h4 { margin: 4px 0 0; } .an-good, .an-watch { margin: 0; }
 .an-dec { margin: 0; padding-left: 20px; display: grid; gap: 8px; } .an-dec li b { display: block; } .an-dec li small { color: var(--muted); display: block; } .an-dec .btn { margin-top: 4px; }
+/* Vencimientos */
+.pay-warn { display: grid; gap: 10px; text-align: center; }
+.pay-warn .pw-ic { justify-self: center; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.pay-warn p { margin: 0; } .pay-warn label { text-align: left; }
+.pw-left b { color: #b45309; }
+.paywall { max-width: 520px; margin: 24px auto; text-align: center; display: grid; gap: 12px; padding: 28px 22px; }
+.paywall .pw-lock { font-size: 46px; } .paywall h2 { margin: 0; } .paywall p { margin: 0; } .paywall form { text-align: left; }
+/* Post-entreno */
+.post-back { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; overflow-y: auto; animation: fadeIn .2s ease; }
+.post { position: relative; width: min(440px, 100%); background: var(--card); color: var(--text); border-radius: 22px; padding: 26px 20px 18px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.35); display: grid; gap: 14px; }
+.post-x { position: absolute; top: 10px; right: 10px; }
+.post-burst { font-size: 54px; line-height: 1; animation: postPop .5s cubic-bezier(.2,1.6,.4,1); }
+@keyframes postPop { from { transform: scale(.3) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.post-msg { font-size: 16px; line-height: 1.45; margin: 0; }
+.post-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.post-stats div { background: var(--card2); border: 1px solid var(--line); border-radius: 14px; padding: 10px 4px; display: grid; }
+.post-stats b { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.post-stats small { color: var(--muted); font-size: 12px; }
+.post-ups { margin: 0; font-size: 14px; color: var(--muted); }
+.post-photo { display: grid; gap: 10px; }
+.post-photo img { width: 100%; border-radius: 14px; aspect-ratio: 4 / 5; object-fit: cover; background: var(--card2); }
+.post .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; justify-self: center; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.post-photo label.row { display: flex; justify-content: center; align-items: center; gap: 8px; }

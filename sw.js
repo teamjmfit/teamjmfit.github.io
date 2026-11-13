@@ -1,7 +1,7 @@
 // TEAM JMFIT · service worker: abre la app al instante desde el móvil y la actualiza en segundo plano.
 const CACHE = 'jmfit-v58';
 const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'exercises.js', 'data.js', 'app.js',
-  'fix.js', 'invite.js', 'features.js', 'nutri.js', 'backup.js', 'forms.js', 'carga.js', 'cambios.js', 'analisis.js', 'meso.js', 'analitica.js', 'objetivos.js', 'splash.js', 'manifest.json', 'icon-192.png', 'logo.webp'];
+  'fix.js', 'invite.js', 'features.js', 'nutri.js', 'backup.js', 'forms.js', 'carga.js', 'cambios.js', 'analisis.js', 'postentreno.js', 'meso.js', 'analitica.js', 'objetivos.js', 'splash.js', 'manifest.json', 'icon-192.png', 'logo.webp'];
 // Archivos de fuera que no cambian nunca (versión fija): se guardan una vez
 const IMMUTABLE = /^https:\/\/(cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@[\d.]+\/|fonts\.gstatic\.com\/)/;
 const FONTS_CSS = /^https:\/\/fonts\.googleapis\.com\//;
