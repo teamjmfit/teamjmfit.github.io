@@ -1263,3 +1263,8 @@ details.r-fold > summary { color: var(--text); }
 .prof.p1 { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
 .prof.p2 { background: color-mix(in srgb, #3b82f6 15%, transparent); color: #2563eb; }
 .ex-row-top .prof { flex: none; }
+
+/* Fotos de check-in archivadas en Drive */
+.ph-drive { display: grid; place-items: center; background: var(--card2); border: 1px dashed var(--line); border-radius: 10px; aspect-ratio: 3 / 4; font-size: 26px; }
+.ph-drive a, .ph-drive span { display: grid; place-items: center; gap: 4px; color: var(--text); text-decoration: none; }
+.ph-drive small { font-size: 12px; color: var(--muted); }
