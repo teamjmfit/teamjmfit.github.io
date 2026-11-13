@@ -65,7 +65,7 @@
       const k = String(l.exercise_name || '').trim().toLowerCase(); if (!k) return;
       const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0, sets: [] });
       ss.n++; const e = e1rm(Number(l.weight), Number(l.reps));
-      ss.sets.push({ no: l.set_no, w: Number(l.weight), r: Number(l.reps), rir: l.rir, rpe: l.rpe });
+      ss.sets.push({ no: l.set_no, w: Number(l.weight), r: Number(l.reps), rir: l.rir, rpe: l.rpe, fail: !!l.failure });
       if (e > ss.e1) Object.assign(ss, { e1: e, w: Number(l.weight), r: Number(l.reps) });
     });
     const out = {}; for (const k in by) out[k] = Object.values(by[k]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -1657,7 +1657,7 @@
       const h = H[String(name).trim().toLowerCase()]; if (!h || !h.length) return '<p class="ex-hist muted">Sin marcas todavía en este ejercicio.</p>';
       const st = stallOf(h), [cls, txt] = STALL_TXT[st.st], best = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]);
       const last = h[h.length - 1], prev = h[h.length - 2], d = (iso) => fmtDate(iso, { day: 'numeric', month: 'short' });
-      const setTxt = x => `${fmtKg(x.w)}×${x.r}${x.rir != null ? `<small> /RIR ${fmtKg(x.rir)}</small>` : x.rpe != null ? `<small> /RPE ${fmtKg(x.rpe)}</small>` : ''}`;
+      const setTxt = x => `${fmtKg(x.w)}×${x.r}${x.fail ? '<small> /Fallo</small>' : x.rir != null ? `<small> /RIR ${fmtKg(x.rir)}</small>` : x.rpe != null ? `<small> /RPE ${fmtKg(x.rpe)}</small>` : ''}`;
       let cmp = '';
       if (prev) {
         const pc = (last.e1 - prev.e1) / prev.e1 * 100, dw = last.w - prev.w, dr = last.r - prev.r;
@@ -2124,7 +2124,7 @@
         const d = tp ? e1rm(+t.weight, +t.reps) - e1rm(+tp.weight, +tp.reps) : null;
         const st = stallOf((H[String(n).trim().toLowerCase()] || []).filter(x => String(x.date) <= String(s.started_at)));
         return `<div class="sx2"><div class="row gap"><b class="grow">${esc(n)}</b><span class="pill ${STALL_TXT[st.st][0]}">${STALL_TXT[st.st][1]}</span></div>
-          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
+          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
           ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
       modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
@@ -3073,10 +3073,10 @@
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
           <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
           ${(() => { let n = 0; return e.sets.map(s => (s.tag === 'D' ? '' : String(++n))); })().map((lbl, si) => [lbl, e.sets[si], si]).map(([lbl, s, si]) => `<div class="set ${s.done ? 'done' : ''} ${s.tag ? 'tag-' + s.tag : ''}" data-si="${si}"><span class="sn">${s.tag === 'TOP' ? 'TOP' : s.tag === 'BO' ? 'BO' : s.tag === 'D' ? '↓' : lbl}</span>
-            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${e.prev[si].x === 'F' ? 'F' : fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
+            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${e.prev[si].x === 'F' ? 'Fallo' : fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
             <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="${s.pct ? '−' + s.pct + ' %' : '–'}" aria-label="Kilos serie ${si + 1}${s.tag === 'D' ? ' (bajada)' : s.tag === 'BO' ? ' (back-off)' : s.tag === 'TOP' ? ' (top set)' : ''}">
             <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="–" aria-label="Repeticiones serie ${si + 1}">
-            ${e.it === 'rir' ? `<select data-f="x" class="rir-sel ${s.x === 'F' ? 'fail' : ''}" aria-label="RIR serie ${si + 1} (F = fallo)"><option value="">${e.target != null ? esc(fmtKg(e.target)) : '–'}</option>${RIR_OPTS.map(v => `<option value="${v}" ${String(s.x) === v ? 'selected' : ''}>${v === 'F' ? 'F' : v}</option>`).join('')}</select>`
+            ${e.it === 'rir' ? `<select data-f="x" class="rir-sel ${s.x === 'F' ? 'fail' : ''}" aria-label="RIR serie ${si + 1}"><option value="">${e.target != null ? esc(fmtKg(e.target)) : '–'}</option>${RIR_OPTS.map(v => `<option value="${v}" ${String(s.x) === v ? 'selected' : ''}>${v === 'F' ? 'Fallo' : v}</option>`).join('')}</select>`
               : e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>${s.hint ? `<p class="set-hint ${s.hint[0]}">${esc(s.hint[1])}</p>` : ''}`).join('')}</div>
           ${e.fb ? `<p class="wk-cmt">${ic('msg', 'xs')} <span>${esc(e.fb)}</span></p>` : ''}
