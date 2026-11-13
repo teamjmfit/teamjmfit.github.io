@@ -79,8 +79,15 @@
       var pend = [].some.call(document.querySelectorAll('.list.big li > a[href^="#/cliente/"]'), function (a) { return !a.querySelector('[data-cmp]'); });
       if (!pend) return;
       if (!cmpCache || Date.now() - cmpCache.at > 60000) {
-        var q = await Promise.all([sb.from('routines').select('client_id,day'), sb.from('sessions').select('client_id,started_at,finished_at').gte('started_at', new Date(Date.now() - 28 * 864e5).toISOString())]);
-        cmpCache = { at: Date.now(), r1: q[0].data || [], r2: q[1].data || [] };
+        // Semanas planificadas: solo la semana en curso de cada cliente (o sus rutinas fijas), no todas las de sus mesociclos
+        var q0 = await Promise.all([sb.from('programs').select('id,status'), sb.from('program_weeks').select('id,client_id,program_id,start_date,week_no').eq('published', true).lte('start_date', iso(Date.now()))]);
+        var act = {}; (q0[0].data || []).forEach(function (p) { if (p.status === 'active') act[p.id] = 1; });
+        var cur = {}; (q0[1].data || []).forEach(function (w) { if (!act[w.program_id]) return; var c = cur[w.client_id]; if (!c || w.start_date > c.start_date || (w.start_date === c.start_date && w.week_no > c.week_no)) cur[w.client_id] = w; });
+        var ids = Object.keys(cur).map(function (k) { return cur[k].id; });
+        var rq = sb.from('routines').select('client_id,day,program_week_id').not('day', 'is', null);
+        rq = ids.length ? rq.or('program_week_id.is.null,program_week_id.in.(' + ids.join(',') + ')') : rq.is('program_week_id', null);
+        var q = await Promise.all([rq, sb.from('sessions').select('client_id,started_at,finished_at').gte('started_at', new Date(Date.now() - 28 * 864e5).toISOString())]);
+        cmpCache = { at: Date.now(), r1: (q[0].data || []).filter(function (r) { var w = cur[r.client_id]; return w ? r.program_week_id === w.id : !r.program_week_id; }), r2: q[1].data || [] };
       }
       var r1 = cmpCache.r1, r2 = cmpCache.r2;
       var plan = {}, d7 = {}, d28 = {};
