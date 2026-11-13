@@ -1269,6 +1269,13 @@ details.r-fold > summary { color: var(--text); }
 .ph-drive a, .ph-drive span { display: grid; place-items: center; gap: 4px; color: var(--text); text-decoration: none; }
 .ph-drive small { font-size: 12px; color: var(--muted); }
 
+/* Vencimientos */
+.pay-warn { display: grid; gap: 10px; text-align: center; }
+.pay-warn .pw-ic { justify-self: center; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.pay-warn p { margin: 0; } .pay-warn label { text-align: left; }
+.pw-left b { color: #b45309; }
+.paywall { max-width: 520px; margin: 24px auto; text-align: center; display: grid; gap: 12px; padding: 28px 22px; }
+.paywall .pw-lock { font-size: 46px; } .paywall h2 { margin: 0; } .paywall p { margin: 0; } .paywall form { text-align: left; }
 /* Post-entreno */
 .post-back { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; overflow-y: auto; animation: fadeIn .2s ease; }
 .post { position: relative; width: min(440px, 100%); background: var(--card); color: var(--text); border-radius: 22px; padding: 26px 20px 18px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.35); display: grid; gap: 14px; }
