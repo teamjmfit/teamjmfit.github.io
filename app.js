@@ -755,10 +755,18 @@
 
   function appUrl() { return location.origin + location.pathname; }
   function invite(c) {
-    const msg = `¡Hola ${c.name.split(' ')[0]}! Ya tienes tu app de ${BRAND} 💪\n\n1. Entra aquí: ${appUrl()}\n2. Pulsa "Soy atleta nuevo" y usa este correo: ${c.email}\n3. En el móvil, añádela a la pantalla de inicio (Compartir → Añadir a pantalla de inicio).\n\nAhí verás tus entrenos, tu plan de nutrición y podrás enviarme tus check-ins.`;
+    const msg = `¡Hola, ${c.name.trim().split(/\s+/)[0]}! 💪 Desde ahora tus entrenos, tu nutrición y tus revisiones van en la app de TEAM JMFIT.
+
+1️⃣ Abre el enlace de invitación que te llega por correo (mira también en spam) o entra en https://teamjmfit.github.io con tu correo de siempre.
+2️⃣ Instálala en el móvil:
+   • iPhone: ábrela en Safari → botón Compartir → «Añadir a pantalla de inicio».
+   • Android: ábrela en Chrome → menú ⋮ → «Instalar aplicación».
+3️⃣ En «Entreno» tienes lo de cada día: apunta tus series, kilos y RIR. Los viernes te pedirá el check-in.
+
+Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     modal('Invita a ' + c.name, `
       <p>Envíale este mensaje para que cree su cuenta con <b>${esc(c.email)}</b>. En cuanto se registre, verá su plan.</p>
-      <textarea class="mono" rows="8" readonly>${esc(msg)}</textarea>
+      <textarea class="mono" rows="13" readonly>${esc(msg)}</textarea>
       <div class="row gap">
         <button type="button" class="btn" data-copy>${ic('copy')} Copiar</button>
         ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}?text=${encodeURIComponent(msg)}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
