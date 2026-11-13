@@ -816,13 +816,14 @@
     const ns = await DB.list('client_notes', { order: ['created_at', 'desc'], limit: 60 }).catch(() => null);
     if (!ns) { host.innerHTML = '<p class="empty">El diario necesita la actualización 020 de la base de datos.</p>'; return; }
     const name = id => (S.clients.find(c => c.id === id) || {}).name || '—';
-    host.innerHTML = ns.length ? `<section class="card"><h3>Últimas notas</h3><ul class="notes">${ns.map(n => `<li><div class="note-h"><a href="#/notas/${n.client_id}"><b>${esc(name(n.client_id))}</b></a><small class="muted">${fmtDate(n.note_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}</div><p>${nl2br(n.body)}</p></li>`).join('')}</ul></section>`
+    host.innerHTML = ns.length ? `<section class="card"><h3>Últimas notas</h3><ul class="notes">${ns.map(n => `<li class="note-fold"><div class="note-h" data-ntog title="Desplegar o plegar"><span class="n-chev">${ic('back')}</span><a href="#/notas/${n.client_id}"><b>${esc(name(n.client_id))}</b></a><small class="muted">${fmtDate(n.note_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}</div><p class="n-prev">${esc(String(n.body).split('\n')[0])}</p><p class="n-body">${nl2br(n.body)}</p></li>`).join('')}</ul></section>`
       : `<div class="hero-empty">${ic('edit', 'xl')}<h2>Sin notas todavía</h2><p>Elige un cliente y apunta lo que quieras: cambios que le haces, lo que habláis, ideas para su próximo bloque…</p></div>`;
+    host.querySelectorAll('[data-ntog]').forEach(h => h.onclick = e => { if (!e.target.closest('a')) h.parentNode.classList.toggle('open'); });
   }
   async function notesBox(c, host) {
     let ns = await DB.list('client_notes', { eq: { client_id: c.id }, order: ['note_date', 'desc'] }).catch(() => null);
     if (!ns) { host.innerHTML = '<p class="empty">El diario necesita la actualización 020 de la base de datos.</p>'; return; }
-    let q = '', edit = null;
+    let q = '', edit = null; const open = new Set();   // notas plegadas: se ve la cabecera y la primera línea
     const sort = () => ns.sort((a, b) => (!!b.pinned - !!a.pinned) || String(b.note_date).localeCompare(String(a.note_date)) || String(b.created_at).localeCompare(String(a.created_at)));
     const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const form = n => `<form class="note-form" data-nf="${n ? n.id : ''}">
@@ -834,13 +835,14 @@
       sort();
       const words = norm(q).split(/\s+/).filter(Boolean);
       const list = ns.filter(n => words.every(w => norm(n.body + ' ' + (n.tag || '')).includes(w)));
-      let mo = '';
+      let mo = ''; const allOpen = list.length && list.every(n => open.has(n.id));
       host.innerHTML = `<section class="card notes-card"><h3>Diario de ${esc(c.name)} <small class="muted">· solo lo ves tú</small></h3>${form(null)}</section>
         <section class="card">${ns.length > 4 ? `<input type="search" class="notes-q" placeholder="Buscar en sus notas…" value="${esc(q)}" data-nq>` : ''}
+        ${list.length > 1 ? `<div class="row"><span class="grow"></span><button class="btn small ghost" data-nall>${allOpen ? 'Plegar todas' : 'Desplegar todas'}</button></div>` : ''}
         ${list.length ? `<ul class="notes">${list.map(n => {
           const m = n.pinned ? '📌 Fijadas' : fmtDate(n.note_date, { month: 'long', year: 'numeric' }), hd = m !== mo ? `<li class="note-mo">${m}</li>` : ''; mo = m;
-          return hd + (edit === n.id ? `<li>${form(n)}</li>` : `<li data-n="${n.id}"><div class="note-h"><b>${fmtDate(n.note_date, { weekday: 'short', day: 'numeric', month: 'short' })}</b>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}<span class="grow"></span>
-            <button class="icon-btn sm ${n.pinned ? 'on' : ''}" data-npin title="${n.pinned ? 'Quitar de fijadas' : 'Fijar arriba'}">📌</button><button class="icon-btn sm" data-nedit title="Editar">${ic('edit')}</button><button class="icon-btn sm" data-ndel title="Borrar">${ic('trash')}</button></div><p>${nl2br(n.body)}</p></li>`);
+          return hd + (edit === n.id ? `<li>${form(n)}</li>` : `<li data-n="${n.id}" class="note-fold ${open.has(n.id) || words.length ? 'open' : ''}"><div class="note-h" data-ntog title="Desplegar o plegar"><span class="n-chev">${ic('back')}</span><b>${fmtDate(n.note_date, { weekday: 'short', day: 'numeric', month: 'short' })}</b>${n.tag ? `<span class="pill">${esc(n.tag)}</span>` : ''}<span class="grow"></span>
+            <button class="icon-btn sm ${n.pinned ? 'on' : ''}" data-npin title="${n.pinned ? 'Quitar de fijadas' : 'Fijar arriba'}">📌</button><button class="icon-btn sm" data-nedit title="Editar">${ic('edit')}</button><button class="icon-btn sm" data-ndel title="Borrar">${ic('trash')}</button></div><p class="n-prev">${esc(String(n.body).split('\n')[0])}</p><p class="n-body">${nl2br(n.body)}</p></li>`);
         }).join('')}</ul>` : `<p class="empty">${ns.length ? 'Nada con esa búsqueda.' : 'Aún no hay notas de este cliente.'}</p>`}</section>`;
       host.querySelectorAll('[data-nf]').forEach(f => {
         const ta = f.querySelector('textarea'); ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) f.requestSubmit(); });
@@ -852,15 +854,17 @@
           const fd = new FormData(f), body = String(fd.get('body') || '').trim(); if (!body) return;
           const row = { body, note_date: fd.get('note_date') || today(), tag: fd.get('tag') || null };
           await safe(async () => {
-            if (f.dataset.nf) { Object.assign(ns.find(n => n.id === f.dataset.nf), row, { updated_at: new Date().toISOString() }); await DB.update('client_notes', f.dataset.nf, Object.assign({ updated_at: new Date().toISOString() }, row)); edit = null; }
+            if (f.dataset.nf) { Object.assign(ns.find(n => n.id === f.dataset.nf), row, { updated_at: new Date().toISOString() }); await DB.update('client_notes', f.dataset.nf, Object.assign({ updated_at: new Date().toISOString() }, row)); open.add(f.dataset.nf); edit = null; }
             else { const [n] = await DB.insert('client_notes', Object.assign({ client_id: c.id }, row)); ns.push(n); }
           }, 'Nota guardada');
           draw();
         };
       });
+      const na = host.querySelector('[data-nall]'); if (na) na.onclick = () => { if (allOpen) list.forEach(n => open.delete(n.id)); else list.forEach(n => open.add(n.id)); draw(); };
       const sq = host.querySelector('[data-nq]'); if (sq) sq.oninput = () => { q = sq.value; const pos = sq.selectionStart; draw(); const n2 = host.querySelector('[data-nq]'); n2.focus(); n2.setSelectionRange(pos, pos); };
       host.querySelectorAll('[data-n]').forEach(li => {
         const n = ns.find(x => x.id === li.dataset.n);
+        li.querySelector('[data-ntog]').onclick = e => { if (e.target.closest('button')) return; li.classList.toggle('open'); if (li.classList.contains('open')) open.add(n.id); else open.delete(n.id); };
         li.querySelector('[data-nedit]').onclick = () => { edit = n.id; draw(); const t = host.querySelector(`[data-nf="${n.id}"] textarea`); if (t) t.focus(); };
         li.querySelector('[data-npin]').onclick = async () => { n.pinned = !n.pinned; await safe(() => DB.update('client_notes', n.id, { pinned: n.pinned })); draw(); };
         li.querySelector('[data-ndel]').onclick = async () => { if (!(await confirmBox('¿Borrar esta nota?'))) return; await safe(() => DB.remove('client_notes', n.id), 'Nota borrada'); ns = ns.filter(x => x.id !== n.id); draw(); };

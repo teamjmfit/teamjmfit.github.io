@@ -1126,6 +1126,12 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .note-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .note-h .icon-btn.on { background: var(--accent-soft); }
 .notes-q { width: 100%; margin-bottom: 6px; }
+.note-fold > .note-h { cursor: pointer; }
+.note-fold .n-chev { display: inline-flex; color: var(--muted); transition: transform .15s; transform: rotate(180deg); }
+.note-fold.open .n-chev { transform: rotate(270deg); }
+.note-fold .n-prev { color: var(--muted); white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
+.note-fold .n-body, .note-fold.open .n-prev { display: none; }
+.note-fold.open .n-body { display: block; }
 
 /* Barra superior nítida (cliente y entrenador): fondo sólido, sin desenfoque ni halo en el logo */
 .top, .wk-top { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 rgba(0, 0, 0, .04); }
