@@ -200,5 +200,5 @@
     return { html: sug + body, wire(root, onDeload) { const b = root.querySelector('[data-dl]'); if (b) b.onclick = () => onDeload(b.dataset.dl); } };
   }
 
-  window.JMLoad = { load, wellness, panel, weekVolume, doneVolume, plannedSets };
+  window.JMLoad = { load, wellness, panel, weekVolume, doneVolume, plannedSets, muscleOf };
 })();

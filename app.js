@@ -510,7 +510,27 @@
     (d.clientes || []).forEach(c => { ['alta', 'ultimoPago', 'vence'].forEach(k => { c[k] = sheetDay(c[k]); }); });
     d._norm = true; return d;
   };
-  async function getSheet(force) { return normSheet(await getSheetRaw(force)); }
+  async function getSheet(force) { const d = normSheet(await getSheetRaw(force)); syncPayDue(d); return d; }
+  // Copia en cada cliente su próxima renovación (fecha, plan y cuota) para que su app le avise. Solo el entrenador.
+  let paySyncAt = 0;
+  async function syncPayDue(d) {
+    if (!d || !Array.isArray(d.clientes) || !S.profile || S.profile.role !== 'coach' || Date.now() - paySyncAt < 60000) return;
+    paySyncAt = Date.now();
+    try {
+      const cl = S.clients && S.clients.length ? S.clients : await loadClients();
+      if (!cl.length || !('pay_due' in cl[0])) return;   // migración 017 aún sin aplicar
+      const money = v => (typeof v === 'number' ? v : Number(String(v || '').replace(/[^\d,.-]/g, '').replace(',', '.')) || null);
+      for (const c of cl) {
+        if (c.is_template) continue;
+        const key = String(c.sheet_name || c.name || '').trim().toLowerCase();
+        const r = d.clientes.find(x => String(x.nombre).trim().toLowerCase() === key);
+        const want = r && /^\d{4}-\d{2}-\d{2}$/.test(String(r.vence || '')) && r.estado !== 'BAJA / PAUSA'
+          ? { pay_due: r.vence, pay_plan: String(r.plan || '').slice(0, 80) || null, pay_amount: money(r.cuota) } : { pay_due: null, pay_plan: null, pay_amount: null };
+        if ((c.pay_due || null) === want.pay_due && (c.pay_plan || null) === want.pay_plan && Number(c.pay_amount || 0) === Number(want.pay_amount || 0)) continue;
+        await DB.update('clients', c.id, want).then(() => Object.assign(c, want)).catch(() => {});
+      }
+    } catch (e) { /* el aviso de pago es opcional */ }
+  }
   async function getSheetRaw(force) {
     if (!S.sheet && !force) { try { const c = JSON.parse(localStorage.getItem('jmfit-sheet') || 'null'); if (c && c.data) S.sheet = c; } catch (e) {} }
     if (S.sheet && !force && Date.now() - S.sheet.at < 120000) return S.sheet.data;
@@ -558,11 +578,16 @@
         <label class="full">Objetivo<input name="goal" value="${esc(c.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
         <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
         <label class="check full"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Cliente activo</label>
+        ${!isNew && 'remind_checkin' in c ? `<fieldset class="full rem-set"><legend>Avisos en su app</legend>
+          <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Recordarle el check-in el viernes si aún no lo ha hecho</label>
+          <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
+          <small class="muted">La fecha de renovación sale de tu hoja de cobros.</small></fieldset>` : ''}
       </div>`, {
       submitLabel: isNew ? 'Crear cliente' : 'Guardar',
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se borrarán ${c.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)) { await safe(() => DB.remove('clients', c.id), 'Cliente eliminado'); go('#/clientes'); } } },
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
+        if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
         if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
         await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
@@ -663,7 +688,8 @@
           <button class="btn small ghost" data-newprog ${fixed.length ? '' : 'disabled'}>Programa abierto</button></div></section>`
       : `<section class="card prog-card">
           <div class="row gap wrap"><span class="grow"><b>${esc(prog.name)}</b>${prog.meso_weeks ? ` <span class="pill">Mesociclo · ${prog.meso_weeks} semanas</span>` : ''}<small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) + (prog.meso_weeks ? ` (${live.week_no}/${prog.meso_weeks})` : '') : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span>
-            <button class="btn small ${mesoEnd ? 'primary' : 'ghost'}" data-meso>${ic('plus')} ${prog.meso_weeks ? 'Siguiente mesociclo' : 'Nuevo mesociclo'}</button></div>
+            <button class="btn small ${mesoEnd ? 'primary' : 'ghost'}" data-meso>${ic('plus')} ${prog.meso_weeks ? 'Siguiente mesociclo' : 'Nuevo mesociclo'}</button>
+            ${prog.meso_weeks ? `<button class="btn small ghost danger" data-delmeso title="Quitar este mesociclo">${ic('trash')} Quitar</button>` : ''}</div>
           ${mesoEnd ? `<p class="note small">${live && live.kind === 'deload' ? 'Está en la semana de descarga: ' : 'El bloque ha terminado: '}prepara el siguiente mesociclo para que no se quede sin plan.</p>` : ''}
           ${prog.meso_weeks ? `<div class="meso-line">${pweeks.map(w => `<span class="${w.kind === 'deload' ? 'dl' : ''} ${live && live.id === w.id ? 'now' : ''} ${live && w.week_no < live.week_no ? 'past' : ''}" title="${esc(weekLabel(w))}">${w.kind === 'deload' ? 'Descarga' : 'Carga ' + w.week_no}</span>`).join('')}</div>`
             : `<label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>`}
@@ -700,6 +726,7 @@
     const st = box.querySelector('[data-savetpl]'); if (st) st.onclick = () => saveAsTemplate(c, routines, items);
     const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
     const ms = box.querySelector('[data-meso]'); if (ms) ms.onclick = () => mesoForm(c, { after: () => tabRoutines(c, box) });
+    const dms = box.querySelector('[data-delmeso]'); if (dms) dms.onclick = () => deleteMeso(c, prog, pweeks, allRoutines, () => { S.weekSel[c.id] = null; tabRoutines(c, box); });
     box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
     const au = box.querySelector('[data-auto]');
     if (au) au.onchange = async () => {
@@ -867,8 +894,31 @@
     el.querySelectorAll('[data-gdel]').forEach(b => b.onclick = async () => { if (await confirmBox('Se borrará este objetivo.')) { await safe(() => DB.remove('goals', b.dataset.gdel), 'Objetivo borrado'); redraw(); } });
   }
 
+  // ----- Quitar un mesociclo publicado (migración 017): las semanas con entrenos se conservan como historial
+  async function deleteMeso(c, prog, pweeks, routines, after) {
+    const ses = await DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 400 }).catch(() => []);
+    const trainedR = new Set(ses.map(x => x.routine_id)), trained = new Set(routines.filter(r => trainedR.has(r.id)).map(r => r.program_week_id));
+    const x = new Date(today() + 'T12:00:00'); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); const mon = ymd(x);
+    const fut = pweeks.filter(w => w.start_date >= mon && !trained.has(w.id)).length, all = pweeks.filter(w => !trained.has(w.id)).length;
+    const kept = pweeks.filter(w => trained.has(w.id)).length;
+    if (!all) { toast('Todas sus semanas tienen entrenos: no hay nada que quitar', 'err'); return; }
+    modal('Quitar mesociclo', `<p>«<b>${esc(prog.name)}</b>» · ${pweeks.length} semanas.</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="scope" value="future" ${fut ? 'checked' : 'disabled'}><span><b>Desde esta semana</b><small>Quita ${fut} semana${fut === 1 ? '' : 's'} (la actual y las siguientes) que aún no ha entrenado.</small></span></label>
+        <label class="choice"><input type="radio" name="scope" value="all" ${fut ? '' : 'checked'}><span><b>Todo lo que no ha entrenado</b><small>Quita ${all} semana${all === 1 ? '' : 's'}, también las pasadas sin entrenos.</small></span></label>
+      </div>
+      <p class="muted small">${kept ? `Las ${kept} semana${kept === 1 ? '' : 's'} con entrenos se guardan como historial. ` : ''}El cliente vuelve a ver lo que tenía antes (su programa anterior o sus rutinas fijas). No se puede deshacer.</p>`, {
+      submitLabel: 'Quitar mesociclo',
+      onSubmit: async (f, fd) => {
+        const n = await safe(() => DB.rpc('delete_mesocycle', { p_program: prog.id, p_scope: fd.get('scope') || 'future' }));
+        toast(`Mesociclo quitado (${n || 0} semana${n === 1 ? '' : 's'})`, 'ok'); after && after();
+      }
+    });
+  }
+
   // ----- Mesociclo cerrado: 4 o 6 semanas, progresión proyectada y descarga final automática (meso.js + migración 012)
   async function mesoForm(c, { start = null, after = null } = {}) {
+    if (!S.exercises.length) await loadExercises().catch(() => []);
     const [routines, items, programs, weeks, goalsM] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('routine_items', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
@@ -904,11 +954,26 @@
         <label>Subida por semana<span class="row gap"><input name="inc_kg" type="number" step="0.25" min="0" max="20" value="${D.inc_kg}" aria-label="kg por semana"><small>kg</small><input name="inc_reps" type="number" step="1" min="0" max="5" value="${D.inc_reps}" aria-label="reps por semana"><small>reps</small></span></label>
       </div>
       ${foM ? `<p class="note small">Enfoque del objetivo principal: <b>${esc(foM.l)}</b>. ${esc(foM.train)}</p>` : ''}
-      <label class="check"><input type="checkbox" name="rir_ramp" ${D.rir_ramp ? 'checked' : ''}> El RIR baja durante el bloque (p. ej. 3 → 2 → 1)</label>
+      <div class="form-grid">
+        <label>RIR en las semanas de carga<select name="rir_mode">
+          <option value="range" selected>Rango (normal: de RIR 2 a RIR 1)</option><option value="routine">El de cada ejercicio, bajando hasta 1</option><option value="keep">El de cada ejercicio, sin cambios</option></select></label>
+        <label data-rng>Rango<span class="row gap"><small>de RIR</small>${rirSel('rir_hi', 2)}<small>a</small>${rirSel('rir_lo', 1)}</span></label>
+        <label>Tope de repeticiones<select name="rep_cap"><option value="1" selected>Subir como mucho +1 rep (p. ej. 8-10 → 9-11)</option><option value="2">Como mucho +2 reps</option><option value="">Sin tope</option></select>
+          <small class="muted">Al llegar al tope se mantiene el rango y sube la carga.</small></label>
+      </div>
+      <fieldset class="prio-set"><legend>Músculos prioritarios <small class="muted">(opcional)</small></legend>
+        <div class="prio-chips" data-prio></div>
+        <div class="form-grid" data-prio-opts hidden>
+          <label>RIR de los prioritarios<span class="row gap"><small>de</small>${rirSel('prio_rir_hi', 1)}<small>a</small>${rirSel('prio_rir_lo', 0)}</span></label>
+          <label>Series de los prioritarios<select name="prio_sets">${[[0, 'Igual'], [1, '+1 por ejercicio'], [2, '+2 por ejercicio']].map(([v, l]) => `<option value="${v}" ${v === 1 ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label>Series del resto<select name="other_sets">${[[0, 'Igual'], [-1, '−1 por ejercicio (mín. 1)']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+          <label>RIR en la descarga<span class="row gap"><small>prioritarios</small>${rirSel('prio_dl_rir', 2)}<small>resto</small>${rirSel('dl_rir', 3)}</span></label>
+        </div>
+        <small class="muted" data-prio-hint>Elige los grupos que quieres priorizar en este bloque: más series y más cerca del fallo; el resto se mantiene.</small></fieldset>
       <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
         <label>Menos volumen (series)<span class="row gap"><input name="dvol" type="number" min="0" max="80" step="5" value="${D.deload_vol * 100}"><small>%</small></span></label>
         <label>Menos intensidad (carga)<span class="row gap"><input name="dint" type="number" min="0" max="50" step="5" value="${D.deload_int * 100}"><small>%</small></span></label>
-      </div><small class="muted">Y RIR 2 en todas las series. Parte de la última semana de carga.</small></fieldset>
+      </div><small class="muted" data-dlnote>Y RIR 2 en todas las series. Parte de la última semana de carga.</small></fieldset>
       <label class="check"><input type="checkbox" name="publish" checked> Publicar ya las semanas (el cliente ve cada una cuando llega)</label>
       <div data-prev class="meso-prev"></div>
       <p class="note small" data-warn hidden></p>
@@ -924,17 +989,39 @@
         return after ? after() : render();
       }
     });
+    function rirSel(name, def) { return `<select name="${name}" aria-label="RIR">${[0, 1, 2, 3, 4].map(v => `<option value="${v}" ${v === def ? 'selected' : ''}>${v}</option>`).join('')}</select>`; }
+    // ejercicios de las rutinas de partida y su grupo muscular principal
+    const srcItems = src => routines.filter(r => (src ? r.program_week_id === src : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position)
+      .flatMap(r => items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position));
+    const mOf = it => { const m = window.JMLoad && JMLoad.muscleOf ? JMLoad.muscleOf(it.exercise_name, S.exercises)[0] : null; return m && !/^(sin grupo|movilidad|cardio|estiramiento|calentamiento)$/i.test(m) ? m : null; };
     function opts(fd) {
-      const pct = (v, mx) => Math.max(0, Math.min(mx, +v || 0)) / 100;
-      return { offset: +fd.get('offset') || 0, prog: fd.get('prog'), inc_kg: Math.max(0, +fd.get('inc_kg') || 0), inc_reps: Math.max(0, Math.round(+fd.get('inc_reps') || 0)),
-        rir_ramp: !!fd.get('rir_ramp'), deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish'),
+      const pct = (v, mx) => Math.max(0, Math.min(mx, +v || 0)) / 100, mode = fd.get('rir_mode') || 'range';
+      const pm = new Set(fd.getAll('prio_m')), prio = pm.size ? srcItems(fd.get('src') || null).filter(it => pm.has(mOf(it))).map(it => it.id) : [];
+      const o = { offset: +fd.get('offset') || 0, prog: fd.get('prog'), inc_kg: Math.max(0, +fd.get('inc_kg') || 0), inc_reps: Math.max(0, Math.round(+fd.get('inc_reps') || 0)),
+        rir_mode: mode, rir_ramp: mode === 'routine', deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish'),
         weeks: Array.from({ length: +fd.get('weeks') || 4 }, (_, k) => { const r = fd.get('wr' + k), z = +fd.get('ws' + k) || 0; return Object.assign({}, r != null && r !== '' ? { rir: +r } : {}, z ? { sets: z } : {}); }) };
+      if (mode === 'range') { o.rir_hi = +fd.get('rir_hi'); o.rir_lo = Math.min(+fd.get('rir_lo'), o.rir_hi); }
+      if (fd.get('rep_cap') !== '' && fd.get('rep_cap') != null) o.rep_cap = +fd.get('rep_cap');
+      if (prio.length) {
+        o.prio = prio; o.prio_muscles = [...pm];
+        o.prio_rir_hi = +fd.get('prio_rir_hi'); o.prio_rir_lo = Math.min(+fd.get('prio_rir_lo'), o.prio_rir_hi);
+        o.prio_sets = +fd.get('prio_sets') || 0; o.other_sets = +fd.get('other_sets') || 0; o.prio_dl_rir = +fd.get('prio_dl_rir'); o.dl_rir = +fd.get('dl_rir');
+      }
+      return o;
     }
+    let prioKey = null;
     const draw = () => {
-      const fd = new FormData(f), o = opts(fd), n = +fd.get('weeks'), src = fd.get('src') || null;
-      const rs = routines.filter(r => (src ? r.program_week_id === src : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
-      const its = rs.flatMap(r => items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position));
-      const P = window.JMMeso.project, show = its.slice(0, 6);
+      const fd0 = new FormData(f), src = fd0.get('src') || null, its = srcItems(src);
+      // grupos musculares de la semana de partida (se mantienen los marcados al cambiar de origen)
+      const ms = [...new Set(its.map(mOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), key = ms.join('|');
+      if (key !== prioKey) { prioKey = key; const on = new Set(fd0.getAll('prio_m'));
+        f.querySelector('[data-prio]').innerHTML = ms.length ? ms.map(m => `<label class="chip-ck"><input type="checkbox" name="prio_m" value="${esc(m)}" ${on.has(m) ? 'checked' : ''}><span>${esc(m)}</span></label>`).join('') : '<small class="muted">Sus ejercicios no tienen grupo muscular en el catálogo.</small>'; }
+      const fd = new FormData(f), o = opts(fd), n = +fd.get('weeks');
+      const hasP = !!(o.prio && o.prio.length), pset = new Set(o.prio || []);
+      f.querySelector('[data-prio-opts]').hidden = !hasP; f.querySelector('[data-prio-hint]').hidden = hasP;
+      f.querySelector('[data-rng]').hidden = fd.get('rir_mode') !== 'range';
+      f.querySelector('[data-dlnote]').textContent = hasP ? `RIR ${o.prio_dl_rir} en los prioritarios y RIR ${o.dl_rir} en el resto. Parte de la última semana de carga.` : 'Y RIR 2 en todas las series. Parte de la última semana de carga.';
+      const P = window.JMMeso.project, show = its.filter(it => pset.has(it.id)).concat(its.filter(it => !pset.has(it.id))).slice(0, 8);
       const cell = v => `${v.sets}×${esc(v.reps || '')}${v.load_kg != null ? ' · ' + nf(v.load_kg) + ' kg' : ''}${v.target_rir != null ? ' · RIR ' + nf(v.target_rir) : ''}`;
       const sets = Array.from({ length: n }, (_, k) => its.reduce((a, it) => a + P(it, k, n, o).sets, 0));
       const ld = window.JMMeso.weekLoads(its, n, o), mx = Math.max(...ld, 1);
@@ -942,7 +1029,7 @@
       f.querySelector('[data-prev]').innerHTML = `<h4>Proyección del bloque</h4>
         <div class="meso-bars" aria-hidden="true">${ld.map((x, k) => `<span class="${k === n - 1 ? 'dl' : ''}" style="height:${Math.max(8, Math.round(x / mx * 100))}%"><i>S${k + 1}</i></span>`).join('')}</div>
         <div class="table-wrap"><table class="meso-table"><thead><tr><th>Ejercicio</th>${Array.from({ length: n }, (_, k) => `<th class="${k === n - 1 ? 'dl' : ''}">S${k + 1}${k === n - 1 ? ' ↓' : ''}<small>${fmtDate(addDays(mon(sd), 7 * k), { day: 'numeric', month: 'short' })}</small></th>`).join('')}</tr></thead>
-        <tbody>${show.map(it => `<tr><td>${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
+        <tbody>${show.map(it => `<tr class="${pset.has(it.id) ? 'prio' : ''}"><td>${pset.has(it.id) ? '★ ' : ''}${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
         <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr>
         <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>RIR ${v}</option>`).join('')}</select></td>`; }).join('')}</tr>
         <tr class="adj"><td>Series <small>de más o de menos por ejercicio</small></td>${Array.from({ length: n }, (_, k) => { const cur = +(fd.get('ws' + k) || 0); return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="ws${k}" aria-label="Ajuste de series de la semana ${k + 1}">${[-2, -1, 0, 1, 2, 3].map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v > 0 ? '+' + v : v === 0 ? '±0' : v}</option>`).join('')}</select></td>`; }).join('')}</tr></tbody></table></div>
@@ -2265,15 +2352,6 @@
     const next = routines.filter(r => r.day && r.day > d)[0] || routines.filter(r => r.day)[0];
     const mins = its => Math.round(its.reduce((s, i) => s + i.sets * (45 + i.rest_sec), 0) / 60);
     const doneWk = new Set(doneWeek.map(s => s.routine_id));
-    // Tarjeta principal del día: oscura y con acento dorado; la lista de ejercicios va plegada
-    const hero = r => {
-      const its = items.filter(i => i.routine_id === r.id), dn = doneToday.has(r.id);
-      return `<section class="hero-ink ${dn ? 'done' : ''}"><div class="hx-top"><small>Hoy · ${r.day ? DIAS[r.day] : 'cuando quieras'}</small>${dn ? '<span class="pill green">Hecho ✓</span>' : ''}</div>
-        <h2>${esc(r.name)}</h2>
-        <div class="hx-meta"><span>${ic('dumbbell', 'xs')} ${its.length} ejercicios</span><span>${ic('clock', 'xs')} ~${mins(its)} min</span>${cw ? `<span>${esc(weekLabel(cw))}</span>` : ''}</div>
-        ${its.length ? `<details class="hx-list"><summary>Ver ejercicios</summary><ol>${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol></details>` : ''}
-        <a class="btn primary big block" href="#/entreno/${r.id}">${ic('play')} ${dn ? 'Repetir entreno' : 'Empezar entreno'}</a></section>`;
-    };
     const rrow = r => { const its = items.filter(i => i.routine_id === r.id);
       return `<li><a href="#/entreno/${r.id}" class="${doneWk.has(r.id) ? 'did' : ''}"><span class="rday">${r.day ? esc(DIAS[r.day].slice(0, 3)) : '—'}</span><span class="grow"><b>${esc(r.name)}</b><small>${its.length} ejercicios · ~${mins(its)} min${doneWk.has(r.id) ? ' · hecho esta semana' : ''}</small></span><span class="rgo">${ic(doneWk.has(r.id) ? 'check' : 'play')}</span></a></li>`; };
     const pending = getActiveWorkout();
@@ -2290,21 +2368,101 @@
     };
     const pctW = planned ? Math.min(100, Math.round(doneWeek.length / planned * 100)) : 0;
     const others = routines.filter(r => !todays.includes(r));
-    const hasToday = evToday.some(e => e.kind !== 'note');
+    const dateOf = n => addDays(wkS, n - 1);
+    // día elegido en la semana (por defecto, hoy): se ve lo que toca y se puede apuntar el peso de ese día
+    let sel = S.daySel && S.daySel.wk === wkS ? S.daySel.n : d;
+    let dm = await DB.list('daily_metrics', { eq: { client_id: c.id }, gte: { date: wkS }, order: ['date', 'asc'] }).catch(() => null);
+    const notices = clientNotices(c, ckins, wkS, d, t0);
+    const stripHtml = () => [1, 2, 3, 4, 5, 6, 7].map(n => { const ds = dateOf(n), has = routines.some(r => r.day === n), hasEv = events.some(e => e.date === ds && e.kind !== 'note');
+      const did = doneWeek.some(s => String(s.started_at).slice(0, 10) === ds) || events.some(e => e.date === ds && e.kind !== 'note' && evDone(e, sessions, ckins));
+      return `<button type="button" data-dsel="${n}" aria-pressed="${n === sel}" aria-label="${esc(DIAS[n])} ${+ds.slice(8)}" class="${n === d ? 'today' : ''} ${n === sel ? 'sel' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${+ds.slice(8)}</b><i></i></button>`; }).join('');
     $app.querySelector('.content').innerHTML = `<div class="c-home">
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
-      <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw && !todays.length ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
+      ${notices.map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
+      <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
-        <div class="weekstrip">${[1, 2, 3, 4, 5, 6, 7].map(n => { const has = routines.some(r => r.day === n); const dd = new Date(weekStart.getTime() + (n - 1) * 864e5); const did = doneWeek.some(s => new Date(s.started_at).toDateString() === dd.toDateString()) || events.some(e => e.date === ymd(dd) && e.kind !== 'note' && evDone(e, sessions, ckins)); const hasEv = events.some(e => e.date === ymd(dd) && e.kind !== 'note'); return `<div class="${n === d ? 'today' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${dd.getDate()}</b><i></i></div>`; }).join('')}</div></section>
-      ${todays.length ? todays.map(hero).join('') : hasToday ? '' : `<section class="hero-ink rest"><div class="hx-top"><small>Hoy</small></div><h2>Día de descanso 😌</h2><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`}
-      ${evLate.length + evToday.length ? `<section class="card"><h3>${todays.length ? 'Hoy también' : 'Hoy'}</h3><ul class="evlist">${[...evLate, ...evToday].map(e => evRow(e, true)).join('')}</ul></section>` : ''}
+        <div class="weekstrip" data-strip>${stripHtml()}</div></section>
+      <div data-day></div>
       ${pg ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
       ${others.length ? `<section class="card rlist-card"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
       ${evNext.length ? `<section class="card"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
       ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}</div>`;
-    const box = $app.querySelector('.content');
-    box.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
-    box.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { b.disabled = true; try { await safe(() => DB.rpc('set_event_done', { p_id: b.dataset.evdone, p_done: b.dataset.on === '1' }), b.dataset.on === '1' ? '¡Hecho! 💪' : ''); } catch (e) { b.disabled = false; return; } clientToday(); });
+    const box = $app.querySelector('.content'), dayBox = box.querySelector('[data-day]');
+    const wire = root => {
+      root.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
+      root.querySelectorAll('[data-evdone]').forEach(b => b.onclick = async () => { b.disabled = true; try { await safe(() => DB.rpc('set_event_done', { p_id: b.dataset.evdone, p_done: b.dataset.on === '1' }), b.dataset.on === '1' ? '¡Hecho! 💪' : ''); } catch (e) { b.disabled = false; return; } clientToday(); });
+    };
+    function drawDay() {
+      const n = sel, ds = dateOf(n), isToday = n === d, rs = routines.filter(r => r.day === n);
+      const dn = r => (isToday ? doneToday.has(r.id) : sessions.some(s => s.finished_at && s.routine_id === r.id && String(s.started_at).slice(0, 10) === ds));
+      const label = isToday ? 'Hoy · ' + DIAS[n] : `${DIAS[n]} ${+ds.slice(8)}${ds < t0 ? ' · ya pasó' : ''}`;
+      const evs = isToday ? [...evLate, ...evToday] : events.filter(e => e.date === ds);
+      const heroD = r => { const its = items.filter(i => i.routine_id === r.id), done = dn(r);
+        return `<section class="hero-ink ${done ? 'done' : ''} ${isToday ? '' : 'other'}"><div class="hx-top"><small>${esc(label)}</small>${done ? '<span class="pill green">Hecho ✓</span>' : ''}</div>
+          <h2>${esc(r.name)}</h2>
+          <div class="hx-meta"><span>${ic('dumbbell', 'xs')} ${its.length} ejercicios</span><span>${ic('clock', 'xs')} ~${mins(its)} min</span>${cw ? `<span>${esc(weekLabel(cw))}</span>` : ''}</div>
+          ${its.length ? `<details class="hx-list"><summary>Ver ejercicios</summary><ol>${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}</span></li>`).join('')}</ol></details>` : ''}
+          <a class="btn primary big block" href="#/entreno/${r.id}">${ic('play')} ${done ? 'Repetir entreno' : 'Empezar entreno'}</a></section>`; };
+      const rest = isToday
+        ? `<section class="hero-ink rest"><div class="hx-top"><small>Hoy</small></div><h2>Día de descanso 😌</h2><p>${next ? `Tu próximo entreno es <b>${esc(next.name)}</b> el ${DIAS[next.day].toLowerCase()}.` : 'Tu entrenador aún no te ha asignado entrenos con día.'}</p></section>`
+        : `<section class="hero-ink rest other"><div class="hx-top"><small>${esc(label)}</small></div><h2>Descanso</h2><p>Ese día no tienes entreno asignado.</p></section>`;
+      const m = (dm || []).find(x => x.date === ds) || {}, wts = (dm || []).filter(x => x.weight != null);
+      const avgW = wts.length ? wts.reduce((a, x) => a + Number(x.weight), 0) / wts.length : null;
+      dayBox.innerHTML = `${rs.length ? rs.map(heroD).join('') : evs.some(e => e.kind !== 'note') ? '' : rest}
+        ${evs.length ? `<section class="card"><h3>${isToday ? (rs.length ? 'Hoy también' : 'Hoy') : 'Ese día'}</h3><ul class="evlist">${evs.map(e => evRow(e, true)).join('')}</ul></section>` : ''}
+        ${dm && ds <= t0 ? `<section class="card dm-card"><h3>Registro ${isToday ? 'de hoy' : 'del ' + DIAS[n].toLowerCase() + ' ' + (+ds.slice(8))}${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
+          <form class="dm-form" data-dm><label>Peso<span class="u-in"><input name="weight" type="number" step="0.05" min="20" max="350" inputmode="decimal" value="${m.weight ?? ''}" placeholder="–"><i>kg</i></span></label>
+            <label>Pasos<input name="steps" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${m.steps ?? ''}" placeholder="–"></label>
+            <label>Sueño<span class="u-in"><input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" value="${m.sleep_h ?? ''}" placeholder="–"><i>h</i></span></label>
+            <button class="btn small primary">${m.date ? 'Actualizar' : 'Guardar'}</button></form>
+          <p class="muted small">${avgW != null ? `Media de la semana: <b>${fmtKg(avgW)} kg</b> (${wts.length} día${wts.length === 1 ? '' : 's'}). ` : ''}Pésate en ayunas, nada más levantarte: lo que cuenta es la media semanal.</p></section>` : ''}`;
+      wire(dayBox);
+      const fm = dayBox.querySelector('[data-dm]');
+      if (fm) fm.onsubmit = async e => {
+        e.preventDefault();
+        const v = k => { const x = String(fm[k].value).replace(',', '.').trim(); return x === '' ? null : Number(x); };
+        const row = { client_id: c.id, date: ds, weight: v('weight'), steps: v('steps') == null ? null : Math.round(v('steps')), sleep_h: v('sleep_h') };
+        if (row.weight == null && row.steps == null && row.sleep_h == null) { toast('Apunta al menos un dato', 'err'); return; }
+        const btn = fm.querySelector('button'); btn.disabled = true;
+        try { await safe(() => DB.upsert('daily_metrics', row, 'client_id,date'), 'Guardado ✓'); } catch (er) { btn.disabled = false; return; }
+        dm = (dm || []).filter(x => x.date !== ds).concat(row); drawDay();
+      };
+    }
+    box.querySelector('[data-strip]').addEventListener('click', e => {
+      const b = e.target.closest('[data-dsel]'); if (!b) return;
+      sel = +b.dataset.dsel; S.daySel = { wk: wkS, n: sel };
+      box.querySelector('[data-strip]').innerHTML = stripHtml(); drawDay();
+    });
+    wire(box.querySelector('.c-home'));
+    drawDay();
+    noticePopup(c, notices.filter(nt => nt.k !== 'ck' || d === 5), t0);
+  }
+
+  // ---------- Avisos al cliente: check-in pendiente (desde el viernes) y renovación del plan (2 días antes, 1 día antes y el día)
+  // El entrenador los activa o desactiva por cliente en «Editar cliente».
+  function clientNotices(c, ckins, wkS, d, t0) {
+    const out = [];
+    if (c.remind_checkin !== false && d >= 5 && !(ckins || []).some(k => String(k.date) >= wkS))
+      out.push({ k: 'ck', ic: 'inbox', t: d === 5 ? 'Hoy toca tu check-in semanal' : 'Tienes el check-in semanal pendiente', s: 'Cuéntale a tu entrenador cómo ha ido la semana: peso, sensaciones y fotos.', btn: 'Hacer check-in' });
+    if (c.remind_payment !== false && c.pay_due) {
+      const dd = Math.round((new Date(c.pay_due + 'T12:00:00') - new Date(t0 + 'T12:00:00')) / 864e5);
+      if (dd >= 0 && dd <= 2) out.push({ k: 'pay', ic: 'euro', t: dd === 0 ? 'Hoy toca renovar tu plan' : dd === 1 ? 'Mañana toca renovar tu plan' : 'Tu plan se renueva en 2 días',
+        s: `${c.pay_plan ? c.pay_plan + ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) + ' · ' : ''}${cap1(fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' }))}. Si ya lo has pagado, ignora este aviso.` });
+    }
+    return out;
+  }
+  // Ventana al entrar, una vez al día por aviso
+  function noticePopup(c, list, t0) {
+    if (!list.length || document.querySelector('.modal-back')) return;
+    const key = 'jmfit-avisos-' + t0; let seen = [];
+    try { seen = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { seen = []; }
+    const fresh = list.filter(nt => !seen.includes(nt.k)); if (!fresh.length) return;
+    try { localStorage.setItem(key, JSON.stringify(seen.concat(fresh.map(nt => nt.k)))); } catch (e) { /* sin almacenamiento: se volverá a mostrar */ }
+    const ck = fresh.some(nt => nt.k === 'ck');
+    modal(fresh.length > 1 ? 'Tienes avisos' : 'Aviso', `<div class="notice-list">${fresh.map(nt => `<div class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></div>`).join('')}</div>`, {
+      submitLabel: ck ? 'Hacer check-in ahora' : 'Entendido',
+      onSubmit: () => { if (ck) setTimeout(() => checkinForm(c), 60); }
+    });
   }
 
   async function clientNutrition() {

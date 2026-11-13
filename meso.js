@@ -37,15 +37,29 @@
   function project(it, k, n, opts) {
     const o = Object.assign({}, DEF, opts || {}), s = start(it), A = n - 1;
     const off = Math.max(0, Math.min(+o.offset || 0, 6));   // pasos por encima del bloque anterior (no toca el RIR)
+    const hasPrio = Array.isArray(o.prio) && o.prio.length > 0, isPrio = hasPrio && o.prio.includes(it.id);
+    const cap = typeof o.rep_cap === 'number' ? Math.max(0, Math.round(o.rep_cap)) : null;
     const acc = kk => {
       const ks = kk + off, r = ruleFor(it, o), v = { sets: s.sets, target_rir: s.target_rir, load_kg: s.load_kg, reps_min: s.reps_min, reps_max: s.reps_max, reps: s.reps };
       if (r.t === 'load') v.load_kg = roundLoad(s.load_kg + ks * r.kg);
-      else if (r.t === 'reps') { v.reps_min = s.reps_min + ks * r.r; v.reps_max = (s.reps_max ?? s.reps_min) + ks * r.r; v.reps = repsText(v.reps_min, v.reps_max); }
+      else if (r.t === 'reps') {
+        let step = ks * r.r;
+        // tope de repeticiones: pasado el tope se mantiene el rango y sube la carga (si la tiene)
+        if (cap != null && step > cap) { const extra = step - cap; step = cap; if (s.load_kg != null) v.load_kg = roundLoad(s.load_kg + Math.ceil(extra / Math.max(r.r, 1)) * r.kg); }
+        v.reps_min = s.reps_min + step; v.reps_max = (s.reps_max ?? s.reps_min) + step; v.reps = repsText(v.reps_min, v.reps_max);
+      }
       else if (r.t === 'sets') v.sets = s.sets + Math.min(2, Math.floor(ks / 2));
-      if (o.rir_ramp && s.target_rir != null && A > 1) {
+      const ramp = (hi, lo) => (A > 1 ? hi - Math.round(kk * (hi - lo) / (A - 1)) : lo);
+      if (isPrio) v.target_rir = ramp(num(o.prio_rir_hi) ?? 1, num(o.prio_rir_lo) ?? 0);
+      else if (o.rir_mode === 'range') v.target_rir = ramp(num(o.rir_hi) ?? 2, num(o.rir_lo) ?? 1);
+      else if (o.rir_mode === 'keep') v.target_rir = s.target_rir;
+      else if (o.rir_ramp && s.target_rir != null && A > 1) {
         const floor = s.target_rir >= 1 ? 1 : 0;
         v.target_rir = Math.max(floor, s.target_rir - Math.round(kk * (s.target_rir - floor) / (A - 1)));
       }
+      // volumen: más series en los prioritarios y, si se quiere, menos en el resto
+      if (isPrio) v.sets = Math.max(1, v.sets + (num(o.prio_sets) ?? 1));
+      else if (hasPrio) v.sets = Math.max(1, v.sets + (num(o.other_sets) ?? 0));
       return v;
     };
     // Ajuste manual de cada semana: RIR fijo y/o series de más o de menos (opts.weeks[k] = { rir, sets })
@@ -60,7 +74,8 @@
       kind: 'deload',
       sets: Math.max(1, Math.round(p.sets * (1 - o.deload_vol))),
       load_kg: p.load_kg == null ? null : roundLoad(p.load_kg * (1 - o.deload_int)),
-      target_rir: Math.max(p.target_rir ?? 2, 2),   // descarga a RIR 2 (si ya era más alto, se mantiene)
+      // descarga a RIR 2 (si ya era más alto, se mantiene); con prioridades, el RIR de descarga de cada grupo
+      target_rir: isPrio && o.prio_dl_rir != null ? +o.prio_dl_rir : !isPrio && o.dl_rir != null ? +o.dl_rir : Math.max(p.target_rir ?? 2, 2),
       base: { sets: p.sets, target_rir: p.target_rir, load_kg: p.load_kg }
     }));
   }
