@@ -1187,3 +1187,30 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .tri-cats b { text-align: right; }
 .tri-h { scroll-margin-top: 80px; }
 .set .rir-sel.fail { font-size: 12.5px; letter-spacing: -.01em; }
+
+/* Editar entreno (entrenador) */
+.sx-acts { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.se-ex { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.se-ex > b { display: block; margin-bottom: 6px; }
+.se-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.se-row input, .se-row select { min-width: 0; width: 100%; }
+
+/* Rutinas plegables (entrenador) */
+.r-tog { margin: 4px 0 -4px; justify-content: flex-end; }
+details.r-fold > summary { list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+details.r-fold > summary::-webkit-details-marker { display: none; }
+details.r-fold > summary b { font: 700 19px var(--head); text-transform: uppercase; display: block; letter-spacing: .02em; }
+details.r-fold > summary small { color: var(--muted); font-size: 12px; display: block; }
+details.r-fold > summary .r-names { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52vw; }
+details.r-fold[open] > summary .r-names { display: none; }
+details.r-fold > summary .grow { min-width: 0; }
+.r-chev { display: inline-flex; transform: rotate(180deg); transition: transform .15s; color: var(--muted); }
+details.r-fold[open] .r-chev { transform: rotate(270deg); }
+details.r-fold[open] > summary { margin-bottom: 10px; }
+/* Calendario: rutinas y entrenos que se pueden abrir */
+.cev-link { cursor: pointer; }
+.cev-link:hover em { text-decoration: underline; }
+.link-b { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.link-b:hover b { text-decoration: underline; }
+.pill-btn { border: 0; cursor: pointer; font: inherit; }
+details.r-fold > summary { color: var(--text); }

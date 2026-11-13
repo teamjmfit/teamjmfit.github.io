@@ -935,17 +935,25 @@
         const prevIds = pw ? new Set(allRoutines.filter(r => r.program_week_id === pw.id).map(r => r.id)) : null;
         return JMLoad.weekVolume(items.filter(i => ids.has(i.routine_id)), prevIds ? items.filter(i => prevIds.has(i.routine_id)) : null, S.exercises, { label: view ? weekLabel(view) : 'rutinas fijas' }); })() : ''}
       <div class="row gap wrap"><button class="btn primary" data-add>${ic('plus')} Nueva rutina</button>${view || c.is_template ? '' : `<button class="btn ghost" data-copyall>${ic('copy')} Copiar plan o plantilla</button>`}${!c.is_template && routines.length ? `<button class="btn ghost" data-savetpl>${ic('copy')} Guardar como plantilla</button>` : ''}</div>
+      ${routines.length > 1 ? `<div class="row gap r-tog"><button type="button" class="btn small ghost" data-ropen="1">Desplegar todas</button><button type="button" class="btn small ghost" data-ropen="0">Plegar todas</button></div>` : ''}
       <div class="routines">${routines.map(r => {
-        const its = items.filter(i => i.routine_id === r.id);
-        return `<section class="card routine">
-          <header><div><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios</small></div><span class="grow"></span>
+        const its = items.filter(i => i.routine_id === r.id), names = its.map(i => i.exercise_name);
+        return `<details class="card routine r-fold" data-rk="${esc(r.name)}" ${S.rOpen && S.rOpen.has(c.id + '|' + r.name) ? 'open' : ''}>
+          <summary><span class="r-chev">${ic('back')}</span><div class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios</small><small class="r-names">${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` y ${names.length - 3} más` : ''}</small></div>
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
-            <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></header>
+            <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></summary>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
           <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.${progKey(i.progression) !== 'none' ? ' · ↑ ' + esc((PROG_RULES.find(p => p[0] === progKey(i.progression)) || [0, progKey(i.progression)])[1]) : ''}${schemeLabel(i.progression) ? ' · ' + esc(schemeLabel(i.progression)) : ''}</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios todavía</li>'}</ol>
-        </section>`;
+        </details>`;
       }).join('') || `<p class="empty">${view ? 'Esta semana no tiene rutinas.' : 'Este cliente aún no tiene rutinas. Crea la primera.'}</p>`}</div>`;
     const opts = { week: view, laterDrafts };
+    // rutinas plegadas: se recuerda cuáles abriste (por nombre, así sigue igual al cambiar de semana)
+    S.rOpen = S.rOpen || new Set();
+    box.querySelectorAll('details.r-fold').forEach(d => {
+      d.addEventListener('toggle', () => { const k = c.id + '|' + d.dataset.rk; if (d.open) S.rOpen.add(k); else S.rOpen.delete(k); });
+      d.querySelectorAll('summary button').forEach(b => b.addEventListener('click', e => e.preventDefault()));
+    });
+    box.querySelectorAll('[data-ropen]').forEach(b => b.onclick = () => box.querySelectorAll('details.r-fold').forEach(d => { d.open = b.dataset.ropen === '1'; }));
     box.querySelector('[data-add]').onclick = () => routineEditor(c, null, [], opts);
     box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = byId(routines, b.dataset.edit); routineEditor(c, r, items.filter(i => i.routine_id === r.id), opts); });
     box.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => duplicateRoutines(c, [byId(routines, b.dataset.dup)], items));
@@ -1370,7 +1378,7 @@
     const r = e.routine_id && byId(routines || [], e.routine_id);
     return [EV_KINDS[e.kind] ? EV_KINDS[e.kind][0] : '', r ? r.name : '', e.minutes ? e.minutes + ' min' : '', e.visible === false ? 'privada' : '', e.series_id ? 'semanal' : ''].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i && x !== evTitle(e)).join(' · ');
   }
-  function eventForm(c, { date, ev = null, routines = [], weeks = [], fixedCount = 0, after }) {
+  function eventForm(c, { date, ev = null, routines = [], weeks = [], fixedCount = 0, after, planHas = null }) {
     const pubW = new Map(weeks.map(w => [w.id, w]));
     // solo rutinas que el cliente puede abrir: fijas o de la semana publicada de ese día (o la última publicada)
     const pub = weeks.filter(w => w.published).sort((a, b) => a.week_no - b.week_no);
@@ -1409,12 +1417,20 @@
         if (kind === 'note' && !row.title && !row.notes) { toast('Escribe la nota', 'err'); return false; }
         if (ev) { await safe(() => DB.update('calendar_events', ev.id, row), 'Guardado'); return after && after(row.date); }
         let rows = [row];
+        const until = fd.get('repeat') ? fd.get('until') || addDays(d0, 27) : d0;
         if (fd.get('repeat')) {
-          const until = fd.get('until') || addDays(d0, 27), sid = crypto.randomUUID();
+          const sid = crypto.randomUUID();
           rows = [];
           for (let d = d0, n = 0; d <= until && n < 26; d = addDays(d, 7), n++) rows.push(Object.assign({}, row, { date: d, series_id: sid }));
         }
-        await safe(() => DB.insert('calendar_events', rows), rows.length > 1 ? `${rows.length} semanas añadidas` : 'Añadido');
+        // sin duplicados: no se añade donde ese día ya tiene esa rutina en su plan o un evento igual
+        const nk = x => String(x || '').trim().toLowerCase();
+        const have = (await loadEvents(c.id, d0, until)) || [];
+        const dup = x => (planHas && (x.kind === 'workout' || x.kind === 'mobility') && planHas(x.date, x.routine_id, x.title))
+          || have.some(e => e.date === x.date && e.kind === x.kind && (x.routine_id ? e.routine_id === x.routine_id : nk(e.title) === nk(x.title) && !!x.title));
+        const skip = rows.filter(dup).length; rows = rows.filter(x => !dup(x));
+        if (!rows.length) { toast(skip > 1 ? 'Ya lo tiene esos días (en su plan o en el calendario): no se ha añadido nada' : 'Ya lo tiene ese día (en su plan o en el calendario)', 'err'); return false; }
+        await safe(() => DB.insert('calendar_events', rows), (rows.length > 1 ? `${rows.length} semanas añadidas` : 'Añadido') + (skip ? ` · ${skip} día${skip > 1 ? 's' : ''} que ya lo tenía${skip > 1 ? 'n' : ''}, sin repetir` : ''));
         return after && after(row.date);
       }
     });
@@ -1471,7 +1487,8 @@
     const msOn = iso => gls.flatMap(g => JMGoals.blocks(g).filter(b => b.to === iso).map(b => ({ g, b })));
     const reload = iso => { if (iso) { S.calSel = iso; S.calMonth[c.id] = iso.slice(0, 7); } tabCalendar(c, box); };
     const noTable = () => { toast('Falta ejecutar la migración 011 en Supabase', 'err'); };
-    const addOn = iso => events0 === null ? noTable() : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload });
+    const planHas = (iso, rid, title) => plan(iso).rs.some(r => (rid && r.id === rid) || (title && r.name.trim().toLowerCase() === String(title).trim().toLowerCase()));
+    const addOn = iso => events0 === null ? noTable() : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload, planHas });
     const plan = iso => {
       const dow = ((new Date(iso + 'T12:00:00').getDay() + 6) % 7) + 1;
       const w = pweeks.find(x => x.start_date <= iso && iso <= addDays(x.start_date, 6));
@@ -1483,6 +1500,13 @@
       return { kind: 'fixed', rs: fixed.filter(r => r.day === dow) };
     };
     const doneOn = iso => sessions.filter(s => s.finished_at && ymd(new Date(s.started_at)) === iso);
+    // Eventos del día sin duplicados: un entreno o movilidad que ya está en su plan ese día (misma rutina o mismo nombre)
+    // no se pinta dos veces, y tampoco dos eventos iguales el mismo día
+    const nk = x => String(x || '').trim().toLowerCase();
+    const evsOn = iso => { const rs = plan(iso).rs, seen = new Set();
+      return evOn(iso).filter(e => {
+        if ((e.kind === 'workout' || e.kind === 'mobility') && rs.some(r => (e.routine_id && r.id === e.routine_id) || (nk(evTitle(e)) && nk(r.name) === nk(evTitle(e))))) return false;
+        const k = e.kind + '|' + (e.routine_id || nk(evTitle(e))); if (e.kind !== 'note' && seen.has(k)) return false; seen.add(k); return true; }); };
     const cap = x => x.charAt(0).toUpperCase() + x.slice(1);
     const doneInWeek = (r, iso) => { const a = mondayOf(iso), z = addDays(a, 6);
       return sessions.some(s => { const sd = s.finished_at && ymd(new Date(s.started_at)); return sd && sd >= a && sd <= z && (s.routine_id === r.id || (s.routine_name || '') === r.name); }); };
@@ -1495,12 +1519,12 @@
       const p = plan(iso), done = doneOn(iso), out = [];
       if (shown('train')) {
         p.rs.forEach(r => { const dn = done.some(s => s.routine_id === r.id || (s.routine_name || '') === r.name), mv = !dn && doneInWeek(r, iso);
-          out.push({ cls: `cev ${p.kind} ${dn ? 'done' : mv ? 'moved' : iso < t ? 'missed' : ''}`, txt: r.name, st: dn || mv ? 'ok' : iso < t ? 'miss' : 'todo' }); });
-        done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id))
-          .forEach(s => out.push({ cls: 'cev done', txt: s.routine_name || 'Entreno', st: 'ok' }));
+          out.push({ cls: `cev ${p.kind} ${dn ? 'done' : mv ? 'moved' : iso < t ? 'missed' : ''}`, txt: r.name, st: dn || mv ? 'ok' : iso < t ? 'miss' : 'todo', rt: r.id }); });
+        done.filter(s => !p.rs.some(r => r.id === s.routine_id || r.name === s.routine_name) && !evsOn(iso).some(e => e.routine_id && e.routine_id === s.routine_id))
+          .forEach(s => out.push({ cls: 'cev done', txt: s.routine_name || 'Entreno', st: 'ok', sid: s.id }));
       }
-      evOn(iso).filter(e => shown(fk(e))).forEach(e => { const dn = evDone(e, sessions, checkins);
-        out.push({ cls: `cev k-${e.kind} ${dn ? 'done' : ''}`, txt: evTitle(e), ic: EV_KINDS[e.kind][1], id: e.id, st: e.kind === 'note' ? null : dn ? 'ok' : iso < t ? 'miss' : 'todo' }); });
+      evsOn(iso).filter(e => shown(fk(e))).forEach(e => { const dn = evDone(e, sessions, checkins);
+        out.push({ cls: `cev k-${e.kind} ${dn ? 'done' : ''}`, txt: evTitle(e), ic: EV_KINDS[e.kind][1], id: e.id, rt: e.routine_id || null, st: e.kind === 'note' ? null : dn ? 'ok' : iso < t ? 'miss' : 'todo' }); });
       if (shown('goal')) msOn(iso).forEach(({ g, b }) => out.push({ cls: 'cev k-goal', txt: `🎯 ${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}`, title: g.title }));
       return out;
     };
@@ -1526,7 +1550,7 @@
         const vis = tk.slice(0, 3), more = tk.length - vis.length;
         days.push(`<div class="cday ${iso.slice(0, 7) !== ym ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''} ${iso < t ? 'past' : ''}" data-day="${iso}" role="button" tabindex="0" aria-label="${esc(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}${tk.length ? ', ' + tk.length + ' tareas' : ''}">
           <span class="cnum"><b>${d.getDate()}</b><button type="button" class="cadd" data-add="${iso}" aria-label="Añadir el ${d.getDate()}" title="Añadir">${ic('plus')}</button></span>
-          ${vis.map(x => `<span class="${x.cls}" ${x.id ? `draggable="true" data-ev="${x.id}"` : ''} ${x.title ? `title="${esc(x.title)}"` : ''}>${x.ic ? ic(x.ic) : ''}<em>${esc(x.txt)}</em></span>`).join('')}
+          ${vis.map(x => `<span class="${x.cls} ${x.rt || x.sid ? 'cev-link' : ''}" ${x.id ? `draggable="true" data-ev="${x.id}"` : ''} ${x.rt ? `data-rt="${x.rt}"` : ''} ${x.sid ? `data-sid="${x.sid}"` : ''} data-iso="${iso}" ${x.title ? `title="${esc(x.title)}"` : ''}>${x.ic ? ic(x.ic) : ''}<em>${esc(x.txt)}</em></span>`).join('')}
           ${more > 0 ? `<span class="cmore">+${more} más</span>` : ''}</div>`);
       }
       rows.push(`<div class="cweek"><div class="pbar ${bcls}"><span class="grow">${bar}</span>
@@ -1586,6 +1610,32 @@
         await safe(() => DB.update('calendar_events', id, { date: to }), `Movido al ${fmtDate(to, { weekday: 'long', day: 'numeric' })}`); reload(to);
       });
     });
+    // Pinchar una rutina del calendario: si ese día la hizo, lo que hizo (series); si no, lo que le toca
+    const openSession = async s => {
+      if (!s) return;
+      const ls = await DB.list('set_logs', { eq: { session_id: s.id }, order: ['set_no', 'asc'] }).catch(() => []);
+      const g = {}; ls.forEach(l => { (g[l.exercise_name] = g[l.exercise_name] || []).push(l); });
+      modal(`✓ ${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</p>
+        ${Object.entries(g).map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b><div class="sx-sets">${xs.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
+        ${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
+        <a class="btn small" href="#/cliente/${c.id}/progreso">Editar en Progreso</a>`, { wide: true });
+    };
+    const openRoutine = async (iso, rid) => {
+      const r = byId(routines, rid); if (!r) return;
+      const s = doneOn(iso).find(x => x.routine_id === r.id || (x.routine_name || '') === r.name);
+      if (s) return openSession(s);
+      let its = items.filter(i => i.routine_id === r.id);
+      if (!its.length) its = await DB.list('routine_items', { eq: { routine_id: r.id }, order: ['position', 'asc'] }).catch(() => []);
+      const w = weeks.find(x => x.id === r.program_week_id);
+      modal(`${r.name} · ${fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+        `<p class="muted small">${w ? esc(weekLabel(w)) : 'Rutina fija'} · ${iso < t ? 'no consta que la hiciera' : 'lo que le toca'}</p>${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
+        <ol class="ex-list">${its.map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets} × ${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''} · ${i.rest_sec}" desc.</span>${i.notes ? `<small>${esc(i.notes)}</small>` : ''}</li>`).join('') || '<li class="empty">Sin ejercicios</li>'}</ol>`, { wide: true });
+    };
+    box.querySelectorAll('.cday [data-rt], .cday [data-sid]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation();
+      if (el.dataset.sid) openSession(byId(sessions, el.dataset.sid)); else openRoutine(el.dataset.iso, el.dataset.rt);
+    }));
     const info = box.querySelector('[data-dayinfo]');
     const showDay = iso => {
       S.calSel = iso; box.querySelectorAll('.cday').forEach(x => x.classList.toggle('sel', x.dataset.day === iso));
@@ -1596,9 +1646,11 @@
         ${msOn(iso).map(({ g, b }) => `<p class="note small">🎯 Fin del bloque ${b.i} de «${esc(g.title)}»: llegar a <b>${JMGoals.nf(b.target)} ${JMGoals.METRICS[g.metric].u}</b>.</p>`).join('')}
         ${evs.length ? `<ul class="evlist">${evs.map(e => { const dn = evDone(e, sessions, checkins); return `<li class="ev k-${e.kind} ${dn ? 'done' : ''}"><span class="evic">${ic(EV_KINDS[e.kind][1])}</span><div class="grow"><b>${esc(evTitle(e))}</b><small>${esc(evDetail(e, routines))}${dn ? ' · ✓ hecho' : ''}</small>${e.notes ? `<p class="small">${nl2br(e.notes)}</p>` : ''}</div>
           <button class="icon-btn" data-evdone="${e.id}" aria-label="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}" title="${e.done_at ? 'Desmarcar' : 'Marcar hecho'}">${ic('check')}</button><button class="icon-btn" data-evdup="${e.id}" aria-label="Duplicar" title="Duplicar al día siguiente">${ic('copy')}</button><button class="icon-btn" data-evedit="${e.id}" aria-label="Editar o mover" title="Editar o mover">${ic('edit')}</button><button class="icon-btn danger" data-evdel="${e.id}" aria-label="Borrar" title="Borrar">${ic('trash')}</button></li>`; }).join('')}</ul>` : ''}
-        ${p.rs.map(r => `<div class="routine-mini"><b>${ic('dumbbell')} ${esc(r.name)}</b><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
-        ${done.map(s => `<p class="pill green">✓ ${esc(s.routine_name || 'Entreno')} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''}</p>`).join('')}
+        ${p.rs.map(r => `<div class="routine-mini"><button type="button" class="link-b" data-rtp="${r.id}" title="Ver lo que le toca o lo que hizo"><b>${ic('dumbbell')} ${esc(r.name)}</b></button><ol class="ex-list compact">${items.filter(i => i.routine_id === r.id).map(i => `<li><b>${esc(i.exercise_name)}</b><span>${i.sets}×${esc(i.reps)}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</span></li>`).join('')}</ol></div>`).join('') || (done.length || evs.length ? '' : '<p class="empty">Descanso · pulsa «Añadir» para poner algo este día</p>')}
+        ${done.map(s => `<button type="button" class="pill green pill-btn" data-sidp="${s.id}" title="Ver lo que hizo">✓ ${esc(s.routine_name || 'Entreno')} · ${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg vol.' : ''} ›</button>`).join('')}
         ${p.rs.length ? `<button class="btn small" data-goweek>${ic('edit')} Editar ${p.week && p.kind !== 'auto' ? esc(weekLabel(p.week)) : p.kind === 'auto' ? 'la última semana' : 'rutinas fijas'}</button>` : ''}</section>`;
+      info.querySelectorAll('[data-rtp]').forEach(b => b.onclick = () => openRoutine(iso, b.dataset.rtp));
+      info.querySelectorAll('[data-sidp]').forEach(b => b.onclick = () => openSession(byId(sessions, b.dataset.sidp)));
       const g = info.querySelector('[data-goweek]');
       if (g) g.onclick = () => { S.weekSel = S.weekSel || {}; S.weekSel[c.id] = p.week ? p.week.id : 'fixed'; go('#/cliente/' + c.id + '/rutinas'); };
       info.querySelector('[data-addday]').onclick = () => addOn(iso);
@@ -2130,9 +2182,74 @@
           <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
           ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
-      modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}`, { wide: true });
+      const m0 = modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
+        ${asCoach ? `<div class="row gap wrap sx-acts"><button type="button" class="btn small" data-sedit>${ic('edit')} Editar entreno</button><button type="button" class="btn small ghost danger" data-sdel>${ic('trash')} Borrar entreno</button></div>` : ''}`, { wide: true });
+      if (asCoach) {
+        m0.querySelector('[data-sedit]').onclick = () => editSession(s, sets);
+        m0.querySelector('[data-sdel]').onclick = async () => {
+          if (!(await confirmBox(`Se borrará «${s.routine_name || 'Entreno'}» del ${fmtDate(s.started_at, { day: 'numeric', month: 'long' })} con sus ${sets.length} series. No se puede deshacer.`, 'Borrar'))) return;
+          await safe(() => DB.remove('sessions', s.id), 'Entreno borrado');
+          tabProgress(c, box, asCoach);
+        };
+      }
       if (asCoach && !s.coach_seen) { s.coach_seen = true; li && li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
+    }
+    // Entrenador: corregir un entreno mal registrado (fecha, duración, RPE, nota y cada serie) o añadir/quitar series
+    function editSession(s, sets0) {
+      const rows = sets0.map(l => ({ id: l.id, ex: l.exercise_name, w: l.weight ?? '', r: l.reps ?? '', x: l.failure ? 'F' : l.rir != null ? String(Number(l.rir)) : '', rpe: l.rpe, rid: l.routine_item_id, lin: l.lineage_id }));
+      const dur0 = Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4));
+      const loc = d => { const x = new Date(d); return new Date(x.getTime() - x.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
+      const exs = () => [...new Set(rows.map(r => r.ex))];
+      const rowHtml = (r, k) => `<div class="se-row" data-k="${k}"><input inputmode="decimal" data-f="w" value="${esc(r.w)}" placeholder="kg" aria-label="kg"><span>×</span><input inputmode="numeric" data-f="r" value="${esc(r.r)}" placeholder="reps" aria-label="reps">
+        <select data-f="x" aria-label="RIR"><option value="">RIR –</option>${['F', '0', '1', '2', '3', '4', '5', '6'].map(v => `<option value="${v}" ${r.x === v ? 'selected' : ''}>${v === 'F' ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select>
+        <button type="button" class="icon-btn sm" data-rm aria-label="Quitar serie">${ic('trash')}</button></div>`;
+      const m = modal('Editar entreno', `
+        <div class="form-grid">
+          <label>Rutina<input name="rn" value="${esc(s.routine_name || '')}" maxlength="120"></label>
+          <label>Fecha y hora<input type="datetime-local" name="at" value="${loc(s.started_at)}" required></label>
+          <label>Duración (min)<input type="number" name="dur" min="5" max="300" value="${dur0}"></label>
+          <label>RPE de la sesión<input type="number" name="rpe" min="1" max="10" value="${esc(s.rpe ?? '')}"></label>
+        </div>
+        <label>Comentario<textarea name="notes" rows="2">${esc(s.notes || '')}</textarea></label>
+        <div data-sets></div>
+        <div class="row gap wrap"><input class="grow" list="se-ex" data-newex placeholder="Añadir otro ejercicio…"><datalist id="se-ex">${(S.exercises || []).map(e => `<option value="${esc(e.name)}">`).join('')}</datalist><button type="button" class="btn small" data-addex>${ic('plus')} Añadir</button></div>`, {
+        submitLabel: 'Guardar cambios', wide: true,
+        onSubmit: async (f, fd) => {
+          const at = new Date(fd.get('at')), dur = Math.max(5, Math.min(300, parseInt(fd.get('dur'), 10) || dur0));
+          if (isNaN(at)) { toast('Pon una fecha válida', 'err'); return false; }
+          const ok = rows.filter(r => r.ex && (num(r.w) != null || parseInt(r.r, 10) > 0));
+          let vol = 0; const n = {};
+          await safe(async () => {
+            const keep = new Set(ok.filter(r => r.id).map(r => r.id));
+            for (const l of sets0) if (!keep.has(l.id)) await DB.remove('set_logs', l.id);
+            for (const r of ok) {
+              n[r.ex] = (n[r.ex] || 0) + 1;
+              const kg = num(r.w), reps = parseInt(r.r, 10);
+              const d = { exercise_name: r.ex, set_no: n[r.ex], weight: kg, reps: isNaN(reps) ? null : reps, rir: r.x === 'F' ? 0 : r.x === '' ? null : Number(r.x) };
+              if (r.x === 'F') d.failure = true; else if (sets0.some(l => l.failure)) d.failure = false;
+              if (kg && !isNaN(reps)) vol += kg * reps;
+              if (r.id) await DB.update('set_logs', r.id, d);
+              else await DB.insert('set_logs', [Object.assign({ session_id: s.id, client_id: c.id, created_at: at.toISOString() }, r.rid ? { routine_item_id: r.rid } : {}, r.lin ? { lineage_id: r.lin } : {}, d)]);
+            }
+            await DB.update('sessions', s.id, { routine_name: String(fd.get('rn') || '').trim() || s.routine_name, started_at: at.toISOString(), finished_at: new Date(at.getTime() + dur * 6e4).toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes') || null, volume: Math.round(vol) });
+          }, 'Entreno corregido');
+          tabProgress(c, box, asCoach);
+        }
+      });
+      const host = m.querySelector('[data-sets]');
+      const draw = () => {
+        host.innerHTML = exs().map(ex => `<div class="se-ex"><b>${esc(ex)}</b>${rows.map((r, k) => [r, k]).filter(([r]) => r.ex === ex).map(([r, k]) => rowHtml(r, k)).join('')}
+          <button type="button" class="btn small ghost" data-adds="${esc(ex)}">${ic('plus')} Serie</button></div>`).join('') || '<p class="empty small">Sin series.</p>';
+        host.querySelectorAll('.se-row').forEach(el => {
+          const r = rows[+el.dataset.k];
+          el.querySelectorAll('[data-f]').forEach(i => { i.oninput = i.onchange = () => { r[i.dataset.f] = String(i.value).replace(',', '.'); }; });
+          el.querySelector('[data-rm]').onclick = () => { rows.splice(+el.dataset.k, 1); draw(); };
+        });
+        host.querySelectorAll('[data-adds]').forEach(b => b.onclick = () => { const ex = b.dataset.adds, last = [...rows].reverse().find(r => r.ex === ex) || {}; rows.splice(rows.lastIndexOf(last) + 1 || rows.length, 0, { ex, w: last.w ?? '', r: '', x: '', rid: last.rid, lin: last.lin }); draw(); });
+      };
+      m.querySelector('[data-addex]').onclick = () => { const i = m.querySelector('[data-newex]'), ex = i.value.trim(); if (!ex) return; rows.push({ ex, w: '', r: '', x: '' }); i.value = ''; draw(); };
+      draw();
     }
     function perfHtml() {
       if (!perf.length) return '';
