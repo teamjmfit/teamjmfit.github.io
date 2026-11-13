@@ -1100,3 +1100,71 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .notice.n-inst { box-shadow: 0 0 0 1px var(--line); background: var(--card); }
 .notice.n-inst .icon-btn { width: 32px; height: 32px; flex: none; }
 .consent .check a, .modal-body p a { color: var(--accent); text-decoration: underline; }
+
+/* 020 · ajuste rápido por comida, ritmos y cambio esperado */
+.np-adjbtn { padding: 4px 10px; font-size: 12.5px; white-space: nowrap; }
+.np-adj { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.np-adjprev .list li small .bad { color: var(--red, #c0392b); }
+.np-adjprev .list li b { font-size: 13px; white-space: nowrap; }
+.rate-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.rate-chips .chip { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.2; padding: 6px 10px; }
+.rate-chips .chip small { font-size: 11px; opacity: .75; }
+.kpi.exp b { color: var(--accent, #b8862d); }
+.kpis.small .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 760px) { .kpis.small .kpi:last-child:nth-child(odd) { grid-column: auto; } }
+/* Diario del entrenador */
+.notes-pick select { width: 100%; }
+.note-form textarea { width: 100%; margin-bottom: 8px; }
+.note-form input[type=date] { width: auto; }
+.note-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.note-tags .chip { cursor: pointer; } .note-tags .chip input { display: none; }
+.note-tags .chip:has(input:checked) { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
+.notes { list-style: none; padding: 0; margin: 0; }
+.notes > li { padding: 10px 0; border-top: 1px solid var(--line); }
+.notes > li.note-mo { border: 0; padding: 14px 0 2px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.notes > li p { margin: 6px 0 0; white-space: normal; }
+.note-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note-h .icon-btn.on { background: var(--accent-soft); }
+.notes-q { width: 100%; margin-bottom: 6px; }
+
+/* Barra superior nítida (cliente y entrenador): fondo sólido, sin desenfoque ni halo en el logo */
+.top, .wk-top { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 rgba(0, 0, 0, .04); }
+.top .brand-logo.sm { filter: none; image-rendering: -webkit-optimize-contrast; }
+.top h1, .wk-top b { text-shadow: none; }
+
+/* Entreno en vivo: RIR con F, avisos por serie, comentario, cambio de ejercicio y globo al acabar el descanso */
+.set .rir-sel { width: 100%; min-width: 0; padding: 6px 2px; text-align: center; text-align-last: center; font: inherit; font-weight: 700; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); -webkit-appearance: none; appearance: none; }
+.set .rir-sel.fail { background: var(--red, #c0392b); color: #fff; border-color: transparent; }
+.set-hint { margin: 2px 0 6px; padding: 6px 10px; border-radius: 10px; font-size: 12.5px; line-height: 1.35; }
+.set-hint.warn { background: color-mix(in srgb, var(--amber, #d68910) 18%, transparent); border-left: 3px solid var(--amber, #d68910); }
+.set-hint.info { background: color-mix(in srgb, var(--accent) 12%, transparent); border-left: 3px solid var(--accent); }
+.wk-acts { margin-top: 6px; align-items: center; }
+.wk-acts .icon-btn.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.wk-cmt { display: flex; gap: 6px; align-items: flex-start; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.wk-swapped { display: block; color: var(--accent); font-weight: 600; }
+.wk-swapped .link { background: none; border: 0; padding: 0 0 0 4px; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
+.swap-list .swap-opt { display: flex; width: 100%; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); text-align: left; font: inherit; cursor: pointer; margin-bottom: 8px; }
+.swap-list .swap-opt small { display: block; color: var(--muted); }
+.swap-list li { border: 0; padding: 0; }
+.rest-done { position: fixed; z-index: 60; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(92vw, 380px); padding: 14px 18px; border-radius: 18px; background: #16130d; color: #f6efe2; box-shadow: 0 12px 34px rgba(0, 0, 0, .35); display: flex; flex-direction: column; gap: 3px; cursor: pointer; border: 1px solid rgba(217, 169, 79, .5); }
+.rest-done::after { content: ''; position: absolute; bottom: -8px; left: 50%; margin-left: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #16130d; }
+.rest-done b { font-size: 16px; color: #e6b75a; } .rest-done small { opacity: .8; } .rest-done span { font-size: 14px; }
+.rest-done.show { animation: rdpop .35s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes rdpop { from { transform: translateX(-50%) scale(.85); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+
+/* Triaje de clientes */
+.tri-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.tri-h small { font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.av.tri-red { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--red, #c0392b); }
+.av.tri-amber { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--amber, #d68910); }
+.av.tri-green { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--green, #27ae60); }
+.tri-why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tri-why i { font-style: normal; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.tri-why .tri-red { background: color-mix(in srgb, var(--red, #c0392b) 15%, transparent); color: var(--red, #c0392b); }
+.tri-why .tri-amber { background: color-mix(in srgb, var(--amber, #d68910) 18%, transparent); color: color-mix(in srgb, var(--amber, #d68910) 80%, var(--text)); }
+.tri-why .tri-green { background: color-mix(in srgb, var(--green, #27ae60) 15%, transparent); color: var(--green, #27ae60); }
+/* Meta del cliente y avisos del inicio */
+.gl-req { padding: 12px 14px; margin: 8px 0 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 9%, transparent); border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); }
+.gl-req p { margin: 0 0 6px; } .gl-req .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
+.gl-reqf { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; } .gl-reqf label { flex: 1 1 220px; }
+.talerts li { display: flex; align-items: center; gap: 10px; } .talerts li a { color: inherit; text-decoration: none; min-width: 0; } .talerts li small { display: block; color: var(--muted); }
