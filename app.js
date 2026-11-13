@@ -2662,6 +2662,38 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ----- Tarjeta de check-in (Progreso del cliente y bandeja de Revisiones)
+  // ---------- Analizador semanal (026): check-in + entrenos de esa semana y de las 4 anteriores
+  async function openAnalysis(k, asCoach, who) {
+    const cid = k.client_id, c = (who && who.id === cid ? who : null) || (S.clients || []).find(x => x.id === cid) || S.client || { id: cid };
+    const m = modal(asCoach ? `Análisis · ${c.name || ''}` : 'Tu semana', `<div data-anbox>${loading()}</div>`, { submitLabel: 'Cerrar', wide: true, onSubmit: () => {} });
+    const box = document.querySelector('[data-anbox]');
+    try {
+      let saved = await DB.list('checkin_analysis', { eq: { checkin_id: k.id } }).catch(() => []);
+      saved = saved && saved[0];
+      let a = saved && saved.result && saved.result.v === JMAnalysis.RULES_V ? saved.result : null;
+      const compute = async () => {
+        const end = String(k.date).slice(0, 10);
+        const [logs, sessions, checkins, weeks] = await Promise.all([clientLogs(cid), clientSessions(cid), DB.list('checkins', { eq: { client_id: cid }, order: ['date', 'desc'], limit: 40 }), DB.list('program_weeks', { eq: { client_id: cid } }).catch(() => [])]);
+        const wk = (weeks || []).find(w => w.start_date <= end && addDays(w.start_date, 6) >= end);
+        const rts = await DB.list('routines', { eq: { client_id: cid } }).catch(() => []);
+        const ids = rts.filter(r => (wk ? r.program_week_id === wk.id : !r.program_week_id)).map(r => r.id);
+        const items = ids.length ? await DB.list('routine_items', { in: { routine_id: ids } }).catch(() => []) : [];
+        const res = JMAnalysis.run({ client: c, checkin: k, checkins, sessions, logs, items });
+        const row = { checkin_id: k.id, client_id: cid, light: res.light, rules_v: res.v, result: res };
+        DB.upsert('checkin_analysis', row, 'checkin_id').catch(e => console.warn('checkin_analysis', e));   // sin la 026 se ve igual, sin guardarse
+        return res;
+      };
+      if (!a) a = await compute();
+      const draw = () => {
+        box.innerHTML = JMAnalysis.render(a, asCoach) + (asCoach ? `<button type="button" class="link small" data-anre>Recalcular con los datos de ahora</button>` : '');
+        box.querySelectorAll('[data-an-go]').forEach(b => b.onclick = () => { closeModal(); go(`#/cliente/${cid}/${b.dataset.anGo}`); });
+        const re = box.querySelector('[data-anre]'); if (re) re.onclick = async () => { box.innerHTML = loading(); a = await compute(); draw(); };
+      };
+      draw();
+    } catch (e) { box.innerHTML = `<p class="empty">No se pudo hacer el análisis: ${esc(e.message)}</p>`; }
+    return m;
+  }
+
   function checkinCard(k, asCoach, { who, prev, photos } = {}) {
     const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
     const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh], ['Gemelo', k.calf], ['Cuello', k.neck], ['Hombros', k.shoulders], ['% grasa', k.body_fat]].filter(m => m[1]);
@@ -2680,8 +2712,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
       ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
       <div class="ck-pics" data-photos hidden></div>
+      ${window.JMAnalysis ? `<button type="button" class="btn small an-btn" data-analyze>📊 ${asCoach ? 'Análisis de la semana' : 'Analizar mi semana'}</button>` : ''}
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
       ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
+    const anb = el.querySelector('[data-analyze]'); if (anb) anb.onclick = () => openAnalysis(k, asCoach, who || (asCoach ? null : S.client));
     // fotos: las de cada postura y, si es antiguo, la única foto que tenía
     const order = p => { const i = CK_POSES.findIndex(x => x[0] === p); return i < 0 ? 10 + (parseInt(String(p).replace(/\D/g, ''), 10) || 0) : i; };
     const label = p => (CK_POSES.find(x => x[0] === p) || [, ''])[1];
@@ -3331,6 +3365,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           if (rows.length) { await DB.insert('checkin_photos', rows); await DB.update('checkins', k.id, { photo_path: rows[0].path }); }
         }, '¡Check-in enviado! 💪'); } catch (e) { return false; }
         render();
+        if (window.JMAnalysis) { const kk = Object.assign({}, d); DB.list('checkins', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 1 }).then(r => { if (r && r[0]) setTimeout(() => openAnalysis(r[0], false, c), 700); }).catch(() => {}); void kk; }
       }
     });
     f.querySelectorAll('.ck-ph input').forEach(inp => inp.onchange = () => {
