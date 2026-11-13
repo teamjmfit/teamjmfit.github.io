@@ -598,20 +598,46 @@
     const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { order: ['started_at', 'desc'], limit: 300 })]);
     const last = {}; sessions.forEach(s => { if (s.finished_at && !last[s.client_id]) last[s.client_id] = s.finished_at; });
     const act = clients.filter(c => c.active), off = clients.filter(c => !c.active);
+    if (!clients.length) {
+      $app.querySelector('.content').innerHTML = `<div class="hero-empty">${ic('users', 'xl')}<h2>Da de alta a tu primer cliente</h2><p>Pon su nombre y su correo. Después le mandas el enlace de la app para que cree su cuenta con ese mismo correo.</p><button class="btn primary" data-new2>${ic('plus')} Nuevo cliente</button></div>`;
+      $app.querySelector('[data-new2]').onclick = () => clientForm(); return;
+    }
     const tri = await triage(act, sessions).catch(e => { console.warn('triaje', e); return null; });
-    const row = c => { const t = tri && tri[c.id]; return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
-        <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
+    const tv = c => (tri && tri[c.id]) || null;
+    const row = (c, why) => { const t = tv(c); return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
+        <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
         <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${privPill(c)}</span></a></li>`; };
-    const LV = [['red', '🔴 Atender ya', 'Más de 3 días sin datos, molestias o caída de rendimiento'], ['amber', '🟡 Vigilar', 'Entreno fallado, peso raro o estancado'], ['green', '🟢 Bien', 'Cumpliendo y progresando'], ['none', '⚪ Sin acceso todavía', 'Aún no han creado su cuenta']];
-    const groups = tri ? LV.map(([lv, h, sub]) => ({ lv, h, sub, cs: act.filter(c => (tri[c.id] || {}).lv === lv).sort((a, b) => (tri[b.id].score - tri[a.id].score) || a.name.localeCompare(b.name)) })).filter(g => g.cs.length) : [{ lv: '', h: '', cs: act }];
-    $app.querySelector('.content').innerHTML = clients.length ? `
-      <input class="search" placeholder="Buscar cliente…" data-q>
-      ${groups.map(g => `${g.h ? `<h3 class="sub tri-h">${g.h} <small class="muted">${g.cs.length} · ${esc(g.sub)}</small></h3>` : ''}<section class="card flush"><ul class="list big" data-list>${g.cs.map(row).join('')}</ul></section>`).join('')}
-      ${off.length ? `<h3 class="sub">En pausa</h3><section class="card flush"><ul class="list big">${off.map(row).join('')}</ul></section>` : ''}`
-      : `<div class="hero-empty">${ic('users', 'xl')}<h2>Da de alta a tu primer cliente</h2><p>Pon su nombre y su correo. Después le mandas el enlace de la app para que cree su cuenta con ese mismo correo.</p><button class="btn primary" data-new2>${ic('plus')} Nuevo cliente</button></div>`;
-    const n2 = $app.querySelector('[data-new2]'); if (n2) n2.onclick = () => clientForm();
-    const q = $app.querySelector('[data-q]');
-    if (q) q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('.list.big li').forEach(li => { li.hidden = !li.textContent.toLowerCase().includes(v); }); };
+    const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
+    const inApp = act.filter(c => c.user_id), pend = act.filter(c => !c.user_id);
+    const LV = [['red', '🔴 Atender ya', 'Más de 3 días sin datos, molestias o caída de rendimiento'], ['amber', '🟡 Vigilar', 'Entreno fallado, peso raro o estancado'], ['green', '🟢 Bien', 'Cumpliendo y progresando']];
+    const cnt = lv => inApp.filter(c => (tv(c) || {}).lv === lv).length;
+    const TABS = [['activos', 'Activos', inApp.length], ['semaforo', 'Semáforo', tri ? cnt('red') : null], ['inactivos', 'Inactivos', off.length]];
+    let tab = S.cliTab || (() => { try { return localStorage.getItem('jmfit-cli-tab'); } catch (e) { return null; } })() || 'activos';
+    if (!TABS.some(t => t[0] === tab)) tab = 'activos';
+    const CAT = [[/sin registrar|sin datos/, 'Días sin registrar'], [/molestia/, 'Molestias'], [/rendimiento/, 'Caída de rendimiento'], [/sin hacer/, 'Entrenos sin hacer'], [/peso/, 'Peso atípico'], [/estancado/, 'Estancado']];
+    const body = () => {
+      if (tab === 'activos') return `<p class="muted small cli-sub">${inApp.length} con la app${pend.length ? ` · ${pend.length} con la invitación pendiente` : ''}. El punto de color es su semáforo.</p>
+        ${inApp.length ? list(inApp, false) : '<p class="empty">Ningún cliente activo ha entrado todavía en la app.</p>'}
+        ${pend.length ? `<h3 class="sub">Invitación pendiente <small class="muted">· aún no han creado su cuenta</small></h3>${list(pend, false)}` : ''}`;
+      if (tab === 'inactivos') return off.length ? `<p class="muted small cli-sub">Clientes en pausa o de baja. Para reactivar uno: entra en su ficha → Editar cliente → Activo.</p>${list(off, false)}` : '<p class="empty">No tienes clientes inactivos.</p>';
+      if (!tri) return '<p class="empty">No se pudo calcular el semáforo ahora mismo.</p>';
+      const n = inApp.length || 1, cats = CAT.map(([re, l]) => [l, inApp.filter(c => (tv(c) || { why: [] }).why.some(w => w[0] !== 'green' && re.test(w[1]))).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]), mx = Math.max(1, ...cats.map(x => x[1]));
+      return `<section class="card tri-chart"><h3>Semáforo de ${inApp.length} cliente${inApp.length === 1 ? '' : 's'} con la app</h3>
+          <div class="tri-bar">${LV.map(([lv]) => cnt(lv) ? `<i class="tri-${lv}" style="flex:${cnt(lv)}" title="${cnt(lv)}">${cnt(lv)}</i>` : '').join('')}</div>
+          <div class="tri-kpis">${LV.map(([lv, h, sub]) => `<button type="button" class="tri-k tri-${lv}" data-jump="${lv}"><b>${cnt(lv)}</b><span>${h.replace(/^\S+\s/, '')}</span><small>${Math.round(cnt(lv) / n * 100)} %</small></button>`).join('')}</div>
+          ${cats.length ? `<h4>Motivos más frecuentes</h4><ul class="tri-cats">${cats.map(([l, v]) => `<li><span>${esc(l)}</span><i><em style="width:${Math.round(v / mx * 100)}%"></em></i><b>${v}</b></li>`).join('')}</ul>` : '<p class="muted small">Ningún aviso: todos van bien. 💪</p>'}
+        </section>
+        ${LV.map(([lv, h, sub]) => { const cs = inApp.filter(c => (tv(c) || {}).lv === lv).sort((a, b) => (tv(b).score - tv(a).score) || a.name.localeCompare(b.name)); return cs.length ? `<h3 class="sub tri-h" id="tri-${lv}">${h} <small class="muted">${cs.length} · ${esc(sub)}</small></h3>${list(cs, true)}` : ''; }).join('')}`;
+    };
+    const draw = () => {
+      $app.querySelector('.content').innerHTML = `<div class="seg cli-tabs" role="tablist">${TABS.map(([k, l, n]) => `<button type="button" role="tab" class="${k === tab ? 'on' : ''}" data-ctab="${k}">${l}${n != null ? ` <span class="${k === 'semaforo' && n ? 'cnt red' : 'cnt'}">${n}</span>` : ''}</button>`).join('')}</div>
+        <input class="search" placeholder="Buscar cliente…" data-q>${body()}`;
+      $app.querySelectorAll('[data-ctab]').forEach(b => b.onclick = () => { tab = S.cliTab = b.dataset.ctab; try { localStorage.setItem('jmfit-cli-tab', tab); } catch (e) {} draw(); });
+      $app.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const h = $app.querySelector('#tri-' + b.dataset.jump); if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      const q = $app.querySelector('[data-q]');
+      q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('.list.big li').forEach(li => { li.hidden = !li.textContent.toLowerCase().includes(v); }); };
+    };
+    draw();
   }
 
   // ---------- Triaje de clientes (semáforo)
