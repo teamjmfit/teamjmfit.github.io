@@ -5,6 +5,10 @@
 --            'meso': las de la primera semana del mesociclo. Si no hay bloque anterior, usa las del mesociclo.
 --   Solo si el mesociclo empieza esta semana o más adelante, no tiene entrenos y no hay nada planificado después.
 --   client_notes: diario / bloc de notas del entrenador por cliente (solo lo ve el entrenador). Entra en la copia diaria.
+--   set_logs.failure: serie llevada al fallo («F» en el RIR).
+--   workout_feedback: comentarios del cliente por ejercicio y ejercicios cambiados en el entreno (avisos al entrenador).
+--   goals: el cliente ya no crea objetivos S.M.A.R.T.; escribe una meta (clients.goal_request) y el entrenador la estructura.
+--   stagnation_alerts(): mismo peso y repeticiones 3 semanas seguidas en un ejercicio principal.
 --   Aditiva: no cambia nada hasta que se usa.
 begin;
 
@@ -70,6 +74,81 @@ end $$;
 revoke all on function public.delay_mesocycle(uuid, boolean, text) from public, anon;
 grant execute on function public.delay_mesocycle(uuid, boolean, text) to authenticated;
 
+-- Fallo muscular
+alter table public.set_logs add column if not exists failure boolean not null default false;
+
+-- Comentarios y cambios de ejercicio durante el entreno
+create table if not exists public.workout_feedback (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  session_id uuid references public.sessions(id) on delete cascade,
+  routine_item_id uuid references public.routine_items(id) on delete set null,
+  exercise_name text not null check (length(exercise_name) <= 200),
+  kind text not null check (kind in ('comment', 'swap')),
+  body text check (length(body) <= 2000),
+  swap_to text check (length(swap_to) <= 200),
+  seen_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists wfb_client on public.workout_feedback (client_id, created_at desc);
+create index if not exists wfb_unseen on public.workout_feedback (created_at desc) where seen_at is null;
+alter table public.workout_feedback enable row level security;
+drop policy if exists p_wfb_coach on public.workout_feedback;
+create policy p_wfb_coach on public.workout_feedback for all using (public.is_coach()) with check (public.is_coach());
+drop policy if exists p_wfb_self_r on public.workout_feedback;
+create policy p_wfb_self_r on public.workout_feedback for select using (client_id = public.my_client_id());
+drop policy if exists p_wfb_self_i on public.workout_feedback;
+create policy p_wfb_self_i on public.workout_feedback for insert with check (client_id = public.my_client_id() and seen_at is null);
+revoke all on public.workout_feedback from anon;
+grant select, insert, update, delete on public.workout_feedback to authenticated;
+
+-- Objetivos: el cliente solo los ve; su meta va en clients.goal_request
+alter table public.clients add column if not exists goal_request text check (length(goal_request) <= 500);
+alter table public.clients add column if not exists goal_request_at timestamptz;
+drop policy if exists p_goals_self on public.goals;
+create policy p_goals_self on public.goals for select using (client_id = public.my_client_id());
+create or replace function public.set_goal_request(p_text text)
+returns void language plpgsql security definer set search_path = public as $$
+declare cid uuid := public.my_client_id(); t text := nullif(trim(coalesce(p_text, '')), '');
+begin
+  if cid is null then raise exception 'Tu cuenta no está vinculada a un cliente'; end if;
+  update public.clients set goal_request = left(t, 500), goal_request_at = case when t is null then null else now() end where id = cid;
+end $$;
+revoke all on function public.set_goal_request(text) from public, anon;
+grant execute on function public.set_goal_request(text) to authenticated;
+
+-- Estancamiento: la mejor serie (más kilos y, con esos kilos, más reps) de cada semana es idéntica 3 semanas seguidas
+-- en un ejercicio principal (de los 2 primeros de su rutina). Solo cuenta si la última es de los últimos 10 días.
+create or replace function public.stagnation_alerts()
+returns table (client_id uuid, exercise_name text, weight numeric, reps int, last_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_coach() then raise exception 'Solo el entrenador'; end if;
+  return query
+  with logs as (
+    select l.client_id, coalesce(l.lineage_id::text, lower(l.exercise_name)) as k, l.exercise_name, l.weight, l.reps, l.created_at,
+           date_trunc('week', l.created_at)::date as wk
+      from public.set_logs l join public.routine_items it on it.id = l.routine_item_id
+     where l.created_at >= now() - interval '35 days' and l.weight > 0 and l.reps > 0 and it.position <= 1
+  ), best as (
+    select distinct on (b.client_id, b.k, b.wk) b.client_id, b.k, b.wk, b.exercise_name, b.weight, b.reps, b.created_at
+      from logs b order by b.client_id, b.k, b.wk, b.weight desc, b.reps desc, b.created_at desc
+  ), seq as (
+    select b.*, lag(b.weight, 1) over w w1, lag(b.reps, 1) over w r1, lag(b.wk, 1) over w k1,
+           lag(b.weight, 2) over w w2, lag(b.reps, 2) over w r2, lag(b.wk, 2) over w k2,
+           row_number() over (partition by b.client_id, b.k order by b.wk desc) rn
+      from best b window w as (partition by b.client_id, b.k order by b.wk)
+  )
+  select s.client_id, s.exercise_name, s.weight, s.reps, s.created_at
+    from seq s
+   where s.rn = 1 and s.created_at >= now() - interval '10 days'
+     and s.w1 = s.weight and s.r1 = s.reps and s.w2 = s.weight and s.r2 = s.reps
+     and s.k1 = s.wk - 7 and s.k2 = s.wk - 14
+   order by s.created_at desc;
+end $$;
+revoke all on function public.stagnation_alerts() from public, anon;
+grant execute on function public.stagnation_alerts() to authenticated;
+
 -- Diario del entrenador por cliente
 create table if not exists public.client_notes (
   id uuid primary key default gen_random_uuid(),
@@ -98,7 +177,7 @@ begin
   foreach t in array array['clients','checkins','checkin_photos','daily_metrics','nutrition_plans','meal_plans',
     'meal_blocks','meal_options','option_items','meal_choices','foods','programs','program_weeks','routines',
     'routine_items','sessions','set_logs','messages','exercises','profiles','form_responses','calendar_events','goals',
-    'consents','client_notes'] loop
+    'consents','client_notes','workout_feedback'] loop
     if to_regclass('public.' || t) is not null then
       execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]''::jsonb) from public.%I x', t) into v;
       out := out || jsonb_build_object(t, v);

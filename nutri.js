@@ -226,6 +226,10 @@
         <p class="muted small">Igual que en Harbiz: cada comida puede tener varias opciones; las cantidades se pueden cambiar cuando quieras y los macros se recalculan solos.</p>
         ${planBar()}
         <div class="np-sum" data-sum>${summary()}</div>
+        ${blocksOf().some(b => optsOf(b.id).length) ? `<div class="np-quick"><small class="muted">Ajuste rápido${st.plans.length > 1 && cur() ? ' de «' + esc(cur().name) + '»' : ' del día'}:</small>
+          <button type="button" class="chip" data-qa="carbs:kcal:-200">−200 kcal C</button><button type="button" class="chip" data-qa="carbs:kcal:200">+200 kcal C</button>
+          <button type="button" class="chip" data-qa="carbs:pct:-10">−10 % C</button><button type="button" class="chip" data-qa="carbs:pct:10">+10 % C</button>
+          <button type="button" class="chip" data-qa="fat:pct:-10">−10 % G</button><button type="button" class="chip dashed" data-qa="">Otro…</button></div>` : ''}
         <datalist id="np-meals">${MEALS.map(m => `<option value="${m}">`).join('')}</datalist>
         <div class="np-blocks">${blocksOf().map(blockHtml).join('') || '<p class="empty">Todavía no hay comidas. Empieza añadiendo el desayuno.</p>'}</div>
         <div class="row gap wrap"><button type="button" class="btn dashed" data-addblock>${ic('plus')} Añadir comida</button></div>
@@ -275,6 +279,7 @@
     }
 
     function wire() {
+      host.querySelectorAll('[data-qa]').forEach(b => b.onclick = () => { const [macro, mode, v] = (b.dataset.qa || '').split(':'); dayAdjustModal(c, blocksOf(), optsOf, itemsOf, st, () => draw(), macro ? { macro, mode, v: Number(v) } : null); });
       host.querySelector('[data-addblock]').onclick = () => run(addBlock);
       host.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { N.plan[c.id] = b.dataset.plan; draw(); });
       host.querySelector('[data-addplan]').onclick = () => run(addPlan);
@@ -362,8 +367,10 @@
   const MAC = { carbs: ['Hidratos', 4, 'c'], protein: ['Proteína', 4, 'p'], fat: ['Grasas', 9, 'f'] };
   function planAdjust(options, itemsOf, F, { macro, grams, foodId }) {
     const kpg = MAC[macro][1];
+    const G0 = grams;
     return options.map((o, k) => {
       const its = itemsOf(o.id);
+      const grams = typeof G0 === 'function' ? G0(o, its) : G0;
       let it = null, f = null, bp = -1;
       if (foodId) { f = F.get(foodId); it = its.find(i => i.food_id === foodId) || null; }
       else {
@@ -373,6 +380,7 @@
           if (!it || pur > bp + 1e-9 || (Math.abs(pur - bp) < 1e-9 && Number(ff[macro]) > Number(f[macro]))) { it = i; f = ff; bp = pur; } });
       }
       const row = { o, k, it, f };
+      if (!grams) return Object.assign(row, { skip: 'esta opción no lleva ' + MAC[macro][0].toLowerCase() });
       if (!f || !(Number(f[macro]) > 0)) return Object.assign(row, { skip: foodId ? 'ese alimento no tiene ' + MAC[macro][0].toLowerCase() : 'ningún alimento aporta ' + MAC[macro][0].toLowerCase() });
       const per = Number(f[macro]) / 100, g0 = it ? gramsOf(it, f) : 0;
       let g1 = g0 + grams / per;
@@ -422,6 +430,52 @@
       m.querySelector('[data-prev]').innerHTML = `<ul class="list">${rows.map(r => `<li><span class="grow">Opción ${r.k + 1}<small>${r.skip ? `<span class="bad">No se cambia: ${esc(r.skip)}</span>`
         : `${esc(r.f.name)}: ${r.it ? (r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`) : `se añaden ${r0(r.g)} g`}${r.it && r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${MAC[macro][2].toUpperCase()} · ${r.real >= 0 ? '+' : ''}${r0(r.real * MAC[macro][1])} kcal</b>`}</li>`).join('')}</ul>
         <p class="muted small">Las kcal son las del macro; el alimento también aporta algo de los otros. Redondeado a 1 g (o a media unidad).</p>`;
+    };
+    m.addEventListener('input', draw); m.addEventListener('change', draw); draw();
+  }
+
+  // Ajuste rápido de TODO el día (plan elegido): ±kcal o ±% de un macro, repartido en proporción.
+  //  · kcal: cada comida recibe la parte que le toca según cuánto aporta de ese macro al día.
+  //  · %: cada opción cambia ese % de su propio macro.
+  // Dentro de cada opción se cambia el alimento que más aporta de ese macro (igual que «± Macros»).
+  function dayAdjustModal(c, blocks, optsOf, itemsOf, st, after, preset) {
+    const { esc, toast, modal } = U();
+    const P = preset || { macro: 'carbs', mode: 'kcal', v: -200 };
+    const lst = blocks.map(b => ({ b, os: optsOf(b.id) })).filter(x => x.os.length);
+    const m = modal('Ajuste rápido del día', `
+      <p class="muted small">Se reparte entre todas las comidas en proporción y se aplica a <b>todas sus opciones</b>. Revisa abajo cómo queda antes de aplicar.</p>
+      <div class="form-grid np-adj">
+        <label>Qué<select name="dir"><option value="1" ${P.v > 0 ? 'selected' : ''}>Añadir</option><option value="-1" ${P.v < 0 ? 'selected' : ''}>Quitar</option></select></label>
+        <label>Cantidad<input name="amt" type="number" inputmode="decimal" min="0" step="5" value="${Math.abs(P.v) || 200}" required></label>
+        <label>En<select name="mode"><option value="kcal" ${P.mode === 'kcal' ? 'selected' : ''}>kcal</option><option value="pct" ${P.mode === 'pct' ? 'selected' : ''}>% del macro</option></select></label>
+        <label>De<select name="macro">${Object.entries(MAC).map(([k, v]) => `<option value="${k}" ${P.macro === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+      </div><div data-prev class="np-adjprev"></div>`, { submitLabel: 'Aplicar', onSubmit: async (form, fd) => {
+        const rows = plan(fd).flatMap(x => x.rows.map(r => Object.assign(r, { b: x.b }))).filter(r => !r.skip && r.g !== r.g0);
+        if (!rows.length) { toast('No hay nada que cambiar con estos datos', 'err'); return false; }
+        try {
+          for (const r of rows) {
+            if (r.it && r.g <= 0) { await DB().remove('option_items', r.it.id); st.items = st.items.filter(i => i.id !== r.it.id); }
+            else if (r.it) { r.it.grams = r.g; r.it.units = r.unit ? r.units : null; await DB().update('option_items', r.it.id, { grams: r.it.grams, units: r.it.units }); }
+          }
+          toast(`Día ajustado: ${rows.length} alimento${rows.length === 1 ? '' : 's'} cambiado${rows.length === 1 ? '' : 's'}`, 'ok'); after();
+        } catch (e) { console.error(e); toast('Error: ' + e.message, 'err'); after(); return false; }
+      } });
+    const plan = fd => {
+      const F = foodMap(), macro = fd.get('macro'), key = MAC[macro][2], kpg = MAC[macro][1];
+      const amt = Math.abs(pos(fd.get('amt'))) || 0, sign = Number(fd.get('dir')) || 1, mode = fd.get('mode');
+      const mOf = o => sumMacros(itemsOf(o.id), F)[key];
+      // aporte medio de cada comida (media de sus opciones) para repartir las kcal
+      const share = lst.map(x => x.os.reduce((s, o) => s + mOf(o), 0) / x.os.length), tot = share.reduce((s, v) => s + v, 0);
+      return lst.map((x, i) => ({ b: x.b, rows: planAdjust(x.os, itemsOf, F, { macro, grams: mode === 'pct'
+        ? (o => Math.round(sign * mOf(o) * amt / 100 * 10) / 10)
+        : (tot ? sign * amt / kpg * share[i] / tot : 0) }) }));
+    };
+    const draw = () => {
+      const fd = new FormData(m), macro = fd.get('macro'), L = MAC[macro][2].toUpperCase(), res = plan(fd);
+      const day = res.reduce((s, x) => s + (x.rows[0] && !x.rows[0].skip ? x.rows[0].real : 0), 0);
+      m.querySelector('[data-prev]').innerHTML = res.map(x => `<h4>${esc(x.b.name)}</h4><ul class="list">${x.rows.map(r => `<li><span class="grow">Opción ${r.k + 1}<small>${r.skip ? `<span class="bad">No se cambia: ${esc(r.skip)}</span>`
+        : `${esc(r.f.name)}: ${r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`}${r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${L}</b>`}</li>`).join('')}</ul>`).join('')
+        + `<p class="small"><b>Día (opción 1 de cada comida): ${day >= 0 ? '+' : ''}${f1(day)} g ${L} · ${day >= 0 ? '+' : ''}${r0(day * MAC[macro][1])} kcal</b></p><p class="muted small">Si un alimento va por unidades se redondea a media unidad.</p>`;
     };
     m.addEventListener('input', draw); m.addEventListener('change', draw); draw();
   }
@@ -597,11 +651,20 @@
     m.querySelector('[data-clear]').onclick = () => { saved.checked = {}; draw(); };
     draw();
   }
-  function wireClient(root, d, cid) {
+  // Planes del cliente en el mismo orden que sus botones, con su objetivo (si lo tiene) y lo que suma la opción 1 de cada comida
+  function planGroups(d) {
+    const blocks = (d && d.blocks) || [];
+    const plans = (d && d.plans || []).filter(p => blocks.some(b => b.plan_id === p.id));
+    const groups = plans.length ? plans.map(p => ({ p, bs: blocks.filter(b => b.plan_id === p.id) })) : [{ p: null, bs: blocks }];
+    return groups.map(g => { const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 }; g.bs.forEach(b => { const o = (b.options || [])[0]; if (o && o.macros) for (const k in t) t[k] += Number(o.macros[k]) || 0; });
+      return { name: g.p ? g.p.name : null, targets: g.p && g.p.targets && g.p.targets.kcal != null ? g.p.targets : null, sum: t }; });
+  }
+  function wireClient(root, d, cid, onPlan) {
     const sb = root.querySelector('[data-compra]'); if (sb && d) sb.onclick = () => shoppingModal(root, d, cid);
     root.querySelectorAll('[data-cplan]').forEach(btn => btn.onclick = () => {
       root.querySelectorAll('[data-cplan]').forEach(b => b.classList.toggle('on', b === btn));
       root.querySelectorAll('[data-cg]').forEach(g => { g.hidden = g.dataset.cg !== btn.dataset.cplan; });
+      if (onPlan) onPlan(Number(btn.dataset.cplan));
     });
     root.querySelectorAll('[data-cb]').forEach(cb => cb.querySelectorAll('[data-copt]').forEach(btn => btn.onclick = () => {
       cb.querySelectorAll('[data-copt]').forEach(b => b.classList.toggle('on', b === btn));
@@ -609,5 +672,5 @@
     }));
   }
 
-  window.JMNutri = { planAdjust, coachEditor, clientView, wireClient, syncFoods, loadFoods, fetchSheet, sheetIdOf };
+  window.JMNutri = { planAdjust, planGroups, coachEditor, clientView, wireClient, syncFoods, loadFoods, fetchSheet, sheetIdOf };
 })();

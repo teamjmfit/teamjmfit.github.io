@@ -69,7 +69,7 @@
       async update(t, id, patch, key = 'id') { try { return ok(await sb.from(t).update(patch).eq(key, id).select()); } finally { dropW(t); } },
       async upsert(t, row, key = 'id') { try { return ok(await sb.from(t).upsert(row, { onConflict: key }).select()); } finally { dropW(t); } },
       async remove(t, id, key = 'id') { try { ok(await sb.from(t).delete().eq(key, id)); } finally { dropW(t); } },
-      async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence|storage_usage)$/.test(fn)) drop(); } },
+      async rpc(fn, args) { try { return ok(await sb.rpc(fn, args)); } finally { if (!/^(get_my_nutrition|shopping_list|weekly_adherence|storage_usage|stagnation_alerts)$/.test(fn)) drop(); } },
       async uploadPhoto(clientId, blob) {
         const path = `${clientId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         ok(await sb.storage.from('checkins').upload(path, blob, { contentType: 'image/jpeg' }));
@@ -217,6 +217,7 @@
         const arr = (Array.isArray(rows) ? rows : [rows]).map(r => {
           const row = Object.assign({}, (defaults[t] || (() => ({})))(), r);
           if (keyOf(t) === 'id' && !row.id) row.id = uuid();
+          if (!row.created_at && t !== 'settings') row.created_at = now();
           return row;
         });
         T(t).push(...arr); save(); return clone(arr);
@@ -289,6 +290,24 @@
           save(); return prog.id;
         }
         if (fn === 'storage_usage') return { photo_bytes: 0, photos: 0, db_bytes: 0 };
+        if (fn === 'set_goal_request') {
+          const me = T('clients').find(c => c.user_id === 'demo-client'); if (!me) throw new Error('Tu cuenta no está vinculada a un cliente');
+          const t = String(a.p_text || '').trim(); me.goal_request = t ? t.slice(0, 500) : null; me.goal_request_at = t ? now() : null; save(); return null;
+        }
+        if (fn === 'stagnation_alerts') {
+          const items = new Map(T('routine_items').map(i => [i.id, i])), lim = Date.now() - 35 * 864e5;
+          const wkOf = d => monday(String(d).slice(0, 10)), best = new Map();
+          T('set_logs').forEach(l => {
+            const it = items.get(l.routine_item_id); if (!it || it.position > 1 || !(l.weight > 0) || !(l.reps > 0) || new Date(l.created_at) < lim) return;
+            const key = l.client_id + '|' + (l.lineage_id || String(l.exercise_name).toLowerCase()) + '|' + wkOf(l.created_at), b = best.get(key);
+            if (!b || l.weight > b.weight || (l.weight === b.weight && l.reps > b.reps)) best.set(key, l);
+          });
+          const by = {}; best.forEach((l, key) => { const k = key.split('|').slice(0, 2).join('|'); (by[k] = by[k] || []).push(Object.assign({ wk: key.split('|')[2] }, l)); });
+          return Object.values(by).map(a => a.sort((x, y) => y.wk.localeCompare(x.wk))).filter(a => a.length >= 3
+            && Date.now() - new Date(a[0].created_at) < 10 * 864e5 && a[1].wk === plus(a[0].wk, -7) && a[2].wk === plus(a[0].wk, -14)
+            && [a[1], a[2]].every(x => x.weight === a[0].weight && x.reps === a[0].reps))
+            .map(a => ({ client_id: a[0].client_id, exercise_name: a[0].exercise_name, weight: a[0].weight, reps: a[0].reps, last_at: a[0].created_at }));
+        }
         if (/^(accept_consent|withdraw_consent|request_data_deletion)$/.test(fn)) {
           const me = T('clients').find(c => c.user_id === 'demo-client'); if (!me) throw new Error('Tu cuenta no está vinculada a un cliente');
           const ts = now();
