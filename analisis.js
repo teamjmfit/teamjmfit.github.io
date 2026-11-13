@@ -92,6 +92,13 @@
   // ---- Pantalla. asCoach: todas las cifras; cliente: lenguaje sencillo
   function render(a, asCoach) {
     const { esc } = window.JMUI, f = n => String(n).replace('.', ',');
+    if (!asCoach) {   // el cliente solo ve sus mejoras de la semana
+      const ups = a.perf.filter(p => p.status === 'mejora');
+      return `<div class="an an-mine">${ups.length ? `<p class="an-good">💪 Esta semana has superado tus marcas en <b>${ups.length}</b> ejercicio${ups.length > 1 ? 's' : ''}:</p>
+        <ul class="list">${ups.map(p => `<li><span class="grow">${esc(p.ex)}<small>1RM estimado ${f(p.now)} kg</small></span><span class="an-st up">▲ +${f(p.delta)} %</span></li>`).join('')}</ul>`
+        : '<p class="an-good">Esta semana no has superado ninguna marca. ¡Constancia: la mejora llega! 💪</p>'}
+        <p class="muted small">Comparado con tu mejor marca de las 4 semanas anteriores.</p></div>`;
+    }
     const LT = { green: ['🟢', 'Semana sólida'], amber: ['🟡', 'Semana con algo que vigilar'], red: ['🔴', 'Semana para frenar y recuperar'] }[a.light];
     const ST = { mejora: ['up', '▲ Mejora'], baja: ['down', '▼ Baja'], igual: ['eq', '= Igual'], estancado: ['stall', '⏸ Estancado'], nuevo: ['eq', 'Nuevo'] };
     const good = a.perf.filter(p => p.status === 'mejora'), watch = a.perf.filter(p => p.status === 'baja' || p.status === 'estancado');
