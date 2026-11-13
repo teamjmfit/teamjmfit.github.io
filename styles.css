@@ -1034,3 +1034,45 @@ body[data-role=client] .empty { padding: 6px 0; font-size: 13.5px; }
 .gl-now b { color: var(--text); font: 700 18px var(--head); } .gl-now span { color: var(--accent); margin: 0 2px; }
 body[data-role=client] .gl-badges { gap: 4px; } body[data-role=client] .gl-badge { font-size: 11.5px; padding: 3px 8px; }
 body[data-role=client] .gl-reward { font-size: 12.5px; }
+
+/* Avisos al cliente (check-in del viernes y renovación del plan) */
+.notice { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border-radius: 18px; background: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); background: linear-gradient(160deg, var(--accent-soft), var(--card) 75%); }
+.notice b { display: block; font-size: 14px; } .notice small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 1px; }
+.notice .n-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.notice.n-pay { box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 40%, transparent); background: linear-gradient(160deg, color-mix(in srgb, var(--green) 12%, transparent), var(--card) 75%); }
+.notice.n-pay .n-ic { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+.notice-list .notice { margin-bottom: 8px; }
+/* Semana del cliente: cada día se puede tocar */
+.wk-card .weekstrip button { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; padding: 6px 0 5px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 1px; -webkit-tap-highlight-color: transparent; }
+.wk-card .weekstrip button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wk-card .weekstrip button small { font-size: 11px; color: var(--muted); font-weight: 700; } .wk-card .weekstrip button b { font: 700 17px var(--head); }
+.wk-card .weekstrip button i { width: 6px; height: 6px; border-radius: 50%; margin-top: 2px; background: transparent; }
+.wk-card .weekstrip button.has i { background: var(--line); } .wk-card .weekstrip button.did i { background: var(--green); }
+.wk-card .weekstrip button.today small, .wk-card .weekstrip button.today b { color: var(--accent); }
+.wk-card .weekstrip button.sel { background: var(--accent); } .wk-card .weekstrip button.sel small, .wk-card .weekstrip button.sel b { color: var(--accent-ink); }
+.wk-card .weekstrip button.sel.has i { background: color-mix(in srgb, var(--accent-ink) 60%, transparent); } .wk-card .weekstrip button.sel.did i { background: var(--accent-ink); }
+.wk-card .weekstrip button.today:not(.sel) { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
+.hero-ink.other h2 { font-size: 26px; }
+/* Registro del día */
+.dm-card h3 .pill { margin-left: 6px; }
+.dm-form { display: grid; grid-template-columns: 1.2fr 1.1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 8px; }
+.dm-form label { font-size: 12px; color: var(--muted); font-weight: 600; display: grid; gap: 4px; }
+.dm-form input { width: 100%; min-width: 0; }
+.u-in { position: relative; display: block; } .u-in input { padding-right: 26px; } .u-in i { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 12px; color: var(--muted); pointer-events: none; }
+@media (max-width: 420px) { .dm-form { grid-template-columns: 1fr 1fr 1fr; } .dm-form .btn { grid-column: 1 / -1; } }
+/* Avisos en la ficha del cliente */
+.rem-set { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; display: grid; gap: 6px; }
+.rem-set legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+/* Mesociclo: músculos prioritarios */
+.prio-set { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin: 12px 0; display: grid; gap: 10px; }
+.prio-set legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.prio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-ck { position: relative; cursor: pointer; } .chip-ck input { position: absolute; opacity: 0; pointer-events: none; }
+.chip-ck span { display: inline-block; padding: 5px 11px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--card2); color: var(--muted); box-shadow: 0 0 0 1px var(--line); }
+.chip-ck input:checked + span { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.chip-ck input:checked + span::before { content: '★ '; }
+.chip-ck input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.meso-table tr.prio td:first-child { color: var(--accent); font-weight: 600; }
+.btn.danger { color: var(--red); }
+.wk-card .weekstrip button.today:not(.sel) { background: transparent; }

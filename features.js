@@ -28,7 +28,7 @@
       '<div class="kpi"><small>Pasos/día</small><b>' + (s.steps == null ? '–' : Math.round(s.steps).toLocaleString('es-ES')) + '</b><span>media 7 días</span></div>' +
       '<div class="kpi"><small>Sueño</small><b>' + f1(s.sleep) + ' h</b><span>media 7 días</span></div></div>';
   }
-  // Cliente: tarjeta "Registro de hoy" en Entreno
+  // Cliente: tarjeta "Registro de hoy" en Entreno (ya no se usa: el registro del día está en el inicio del cliente, app.js)
   async function clientCard() {
     var strip = document.querySelector('.weekstrip'); if (!strip || document.querySelector('[data-dm]') || busy.c) return;
     busy.c = true;
@@ -99,7 +99,7 @@
     } finally { busy.k = false; }
   }
   var timer;
-  function run() { clearTimeout(timer); timer = setTimeout(function () { clientCard(); progressCard(); compliance(); }, 150); }
+  function run() { clearTimeout(timer); timer = setTimeout(function () { progressCard(); compliance(); }, 150); }
   new MutationObserver(run).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
   sb.auth.onAuthStateChange(function (ev) { if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT' || ev === 'USER_UPDATED') me = null; });
   window.addEventListener('hashchange', run);

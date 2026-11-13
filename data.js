@@ -132,8 +132,8 @@
       const ex = window.JMFIT_EXERCISES.map(([name, muscle, equipment]) => ({ id: uuid(), name, muscle, equipment, media_url: '', notes: '' }));
       store.tables.exercises = ex;
       const find = n => ex.find(e => e.name === n);
-      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, created_at: now() };
-      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, created_at: now() };
+      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, created_at: now() };
+      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, created_at: now() };
       store.tables.clients = [c1, c2];
       const mkRoutine = (client, name, day, items) => {
         const r = { id: uuid(), client_id: client.id, name, day, position: day || 0, notes: '', created_at: now() };
@@ -229,7 +229,8 @@
       },
       async upsert(t, row, key) {
         key = key || keyOf(t);
-        const ex = T(t).find(r => r[key] === row[key]);
+        const ks = String(key).split(',').map(x => x.trim());
+        const ex = T(t).find(r => ks.every(k => r[k] === row[k]));
         if (ex) Object.assign(ex, row); else T(t).push(Object.assign({}, row));
         save(); return [clone(ex || row)];
       },
@@ -286,6 +287,19 @@
           T('programs').push(prog); T('program_weeks').push(w1);
           copyWeek(T('routines').filter(r => r.client_id === a.p_client && !r.program_week_id).sort((x, y) => x.position - y.position), w1.id);
           save(); return prog.id;
+        }
+        if (fn === 'delete_mesocycle') {
+          const prog = T('programs').find(p => p.id === a.p_program); if (!prog) throw new Error('Mesociclo no encontrado');
+          const d0 = new Date(); d0.setDate(d0.getDate() - ((d0.getDay() + 6) % 7)); const mon = d0.toISOString().slice(0, 10);
+          const trained = new Set(T('sessions').map(x => x.routine_id));
+          const drop = new Set(T('program_weeks').filter(w => w.program_id === prog.id && (a.p_scope === 'all' || w.start_date >= mon) && !T('routines').some(r => r.program_week_id === w.id && trained.has(r.id))).map(w => w.id));
+          const dropR = new Set(T('routines').filter(r => drop.has(r.program_week_id)).map(r => r.id));
+          store.tables.routine_items = T('routine_items').filter(i => !dropR.has(i.routine_id));
+          store.tables.routines = T('routines').filter(r => !dropR.has(r.id));
+          store.tables.program_weeks = T('program_weeks').filter(w => !drop.has(w.id));
+          if (!T('program_weeks').some(w => w.program_id === prog.id)) store.tables.programs = T('programs').filter(p => p.id !== prog.id);
+          else Object.assign(prog, { status: 'archived', auto_repeat: false });
+          save(); return drop.size;
         }
         if (fn === 'create_mesocycle') {
           const n = +a.p_weeks; if (![4, 6].includes(n)) throw new Error('El mesociclo es de 4 o 6 semanas');
