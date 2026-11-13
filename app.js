@@ -444,6 +444,34 @@
     stack.prepend(sec);
   }
 
+  // Vencimientos (025): quién está en los 3 días de margen, quién tiene la app pausada y los «Ya he pagado» por revisar
+  async function payAlerts(stack) {
+    const cl = (S.clients || []).filter(c => !c.is_template && c.active !== false && 'grace_days' in c && c.pay_due && !c.billing_off && c.remind_payment !== false);
+    const claims = await DB.list('payment_claims', { eq: { status: 'pendiente' }, order: ['created_at', 'desc'], limit: 50 }).catch(() => []);
+    const rows = cl.map(c => { const over = dayDiff(today(), c.pay_due), g = 3 + (c.grace_days || 0), man = c.access_until && c.access_until >= today();
+      return { c, over, g, man, k: claims.find(k => k.client_id === c.id) }; }).filter(r => r.over >= 0 || r.k);
+    claims.filter(k => !rows.some(r => r.c.id === k.client_id)).forEach(k => { const c = (S.clients || []).find(x => x.id === k.client_id); if (c) rows.push({ c, over: c.pay_due ? dayDiff(today(), c.pay_due) : 0, g: 3, man: false, k }); });
+    const old = stack.querySelector('[data-payalert]'); if (old) old.remove();
+    if (!rows.length) return;
+    rows.sort((a, b) => (b.k ? 1 : 0) - (a.k ? 1 : 0) || b.over - a.over);
+    const st = r => (r.k ? ['amber', 'por confirmar'] : r.man ? ['green', `desbloqueado hasta ${fmtDate(r.c.access_until, { day: 'numeric', month: 'short' })}`] : r.over > r.g ? ['red', 'app pausada'] : r.over === 0 ? ['amber', 'vence hoy'] : ['amber', `margen: ${r.g - r.over} d`]);
+    const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-payalert', '');
+    sec.innerHTML = `<h3>💶 Vencimientos</h3><ul class="list">${rows.map(r => { const [cl2, t] = st(r);
+      return `<li><span class="pill ${cl2}">${t}</span><span class="grow"><a href="#/cliente/${r.c.id}/ficha">${esc(r.c.name)}</a><small>${r.over > 0 ? `Venció hace ${r.over} d` : r.over === 0 ? 'Vence hoy' : ''}${r.k ? ` · <b>Dice que ya ha pagado</b>${r.k.note ? ': «' + esc(r.k.note) + '»' : ''} (${ago(r.k.created_at)})` : ''}</small></span>
+        ${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Confirmado: 7 días de acceso hasta que actualices la hoja">✓</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕</button>` : ''}
+        ${r.c.phone ? `<a class="icon-btn sm" target="_blank" rel="noopener" href="https://wa.me/${esc(String(r.c.phone).replace(/\D/g, ''))}" title="WhatsApp">${ic('wa')}</a>` : ''}</li>`; }).join('')}</ul>
+      <p class="muted small">Al registrar el pago en tu hoja de cobros, la nueva fecha desbloquea su app sola. ✓ = le das 7 días mientras tanto.</p>`;
+    stack.prepend(sec);
+    const resolve = async (id, ok) => {
+      if (DB.mode !== 'demo') return DB.rpc('resolve_payment_claim', { p_claim: id, p_ok: ok, p_days: ok ? 7 : 0 });
+      const [k] = await DB.update('payment_claims', id, { status: ok ? 'confirmado' : 'rechazado', resolved_at: new Date().toISOString() });
+      if (ok && k) await DB.update('clients', k.client_id, { access_until: addDays(today(), 7) });
+    };
+    const act = async (id, ok) => { await safe(() => resolve(id, ok), ok ? 'Pago confirmado: 7 días de acceso' : 'Aviso rechazado'); S.clients = null; await loadClients(); payAlerts(stack); };
+    sec.querySelectorAll('[data-pok]').forEach(b => b.onclick = () => act(b.dataset.pok, true));
+    sec.querySelectorAll('[data-pno]').forEach(b => b.onclick = () => act(b.dataset.pno, false));
+  }
+
   async function storageCard(stack) {
     if (S.storageInfo === undefined) {
       S.storageInfo = null;
@@ -582,7 +610,7 @@
     drawActivity($app.querySelector('[data-act]'), feed);
     {
       const stack = $app.querySelector('.content .stack');
-      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); trainAlerts(stack).catch(e => console.warn(e)); };
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); payAlerts(stack).catch(e => console.warn(e)); trainAlerts(stack).catch(e => console.warn(e)); };
       if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
     }
     // cobros (no bloquea)
@@ -798,12 +826,18 @@
           <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Recordarle el check-in el viernes si aún no lo ha hecho</label>
           <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
           <small class="muted">La fecha de renovación sale de tu hoja de cobros.</small></fieldset>` : ''}
+        ${!isNew && 'grace_days' in c ? `<fieldset class="full rem-set"><legend>Vencimiento del plan</legend>
+          <p class="small muted">${c.pay_due ? `Vence el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))}.` : 'Sin fecha de vencimiento en la hoja de cobros.'} Del día del vencimiento al +3 ve un aviso diario; desde el 4.º sin pago, su app se pausa.</p>
+          <label>Días extra de margen<input name="grace_days" type="number" min="0" max="60" value="${c.grace_days || 0}"></label>
+          <label>Desbloqueado hasta<input name="access_until" type="date" value="${esc(c.access_until || '')}"></label>
+          <label class="check"><input type="checkbox" name="billing_off" ${c.billing_off ? 'checked' : ''}> Sin avisos ni bloqueo por pago (familia, colaboradores…)</label></fieldset>` : ''}
       </div>`, {
       submitLabel: isNew ? 'Crear cliente' : 'Guardar',
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se borrarán ${c.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)) { await safe(() => DB.remove('clients', c.id), 'Cliente eliminado'); go('#/clientes'); } } },
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
+        if (!isNew && 'grace_days' in c) { d.grace_days = Math.max(0, Math.min(60, parseInt(d.grace_days, 10) || 0)); d.access_until = d.access_until || null; d.billing_off = !!fd.get('billing_off'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
         if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
         await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
@@ -2998,12 +3032,71 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     }
     // RGPD: antes de usar la app, el cliente acepta el uso de sus datos (y de los de salud, de forma explícita)
     if ('consent_version' in S.client && S.client.consent_version !== CONSENT_V) return consentScreen();
+    // Vencimientos (025): días 0…+3 aviso diario; desde el 4.º sin pago, solo la pantalla de pago (y privacidad)
+    const bill = await billingState();
+    if (bill && bill.blocked) return paywall(bill);
+    if (bill && bill.days_over >= 0) billingPopup(bill);
     const [r0, r1] = S.route;
     if (r0 === 'entreno') return workout(r1);
     if (!r0) return clientToday();
     if (r0 === 'nutricion') return clientNutrition();
     if (r0 === 'progreso') { shell(CLIENT_NAV, 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
     go('#/');
+  }
+
+  // ---------- Vencimientos y cobros (migración 025)
+  const dayDiff = (a, b) => Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 864e5);
+  function billingLocal(c, claims) {
+    if (!c || !c.pay_due || c.billing_off || c.remind_payment === false) return null;
+    const over = dayDiff(today(), c.pay_due), g = 3 + (c.grace_days || 0);
+    const pend = (claims || []).some(k => k.status === 'pendiente' && Date.now() - new Date(k.created_at) < 48 * 36e5);
+    const manual = c.access_until && c.access_until >= today();
+    return { days_over: over, grace_left: Math.max(0, g - over), blocked: over > g && !manual && !pend, claim_pending: pend };
+  }
+  async function billingState(force) {
+    const c = S.client; if (!c) return null;
+    if (!force && S.billing && S.billing.cid === c.id && Date.now() - S.billing.at < 10 * 6e4) return S.billing.v;
+    let v = null;
+    if (DB.mode === 'demo') v = billingLocal(c, await DB.list('payment_claims', { eq: { client_id: c.id } }).catch(() => []));
+    else {
+      try { const r = await DB.rpc('client_billing', { p_client: c.id }); v = Array.isArray(r) ? r[0] || null : r; if (v && (c.billing_off || !c.pay_due)) v = null; }
+      catch (e) { v = null; }   // sin la migración 025: sin avisos ni bloqueo
+    }
+    S.billing = { cid: c.id, at: Date.now(), v }; return v;
+  }
+  async function claimPaid(note) {
+    await safe(() => DB.insert('payment_claims', { client_id: S.client.id, status: 'pendiente', note: String(note || '').trim().slice(0, 300) || null }), 'Aviso enviado a tu entrenador ✓');
+    await billingState(true);
+  }
+  function billingPopup(b) {
+    const c = S.client, key = 'jmfit-venc-' + today();
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { /* se mostrará otra vez */ }
+    if (document.querySelector('.modal-back') || b.claim_pending) return;
+    const when = cap1(fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' }));
+    const t = b.days_over === 0 ? 'Hoy vence tu plan' : `Tu plan venció el ${when.toLowerCase()}`;
+    const left = b.grace_left;
+    setTimeout(() => modal(t, `<div class="pay-warn"><span class="pw-ic">${ic('euro')}</span>
+      <p>${b.days_over === 0 ? 'Para seguir con tus entrenos, tu nutrición y tus revisiones, renueva tu plan.' : `Para seguir usando la app necesito que renueves tu plan.`}</p>
+      <p class="pw-left"><b>${left === 0 ? 'Hoy es el último día' : `Te queda${left === 1 ? '' : 'n'} ${left} día${left === 1 ? '' : 's'}`}</b> antes de que la app se pause hasta el pago.</p>
+      <small class="muted">${c.pay_plan ? esc(c.pay_plan) + ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) : ''}</small>
+      <label>¿Ya lo has pagado? Cuéntame cómo (opcional)<input name="note" maxlength="300" placeholder="Bizum el día 14, transferencia…"></label></div>`, {
+      submitLabel: 'Ya he pagado',
+      onSubmit: async (f, fd) => { await claimPaid(fd.get('note')); }
+    }), 400);
+  }
+  function paywall(b) {
+    const c = S.client;
+    shell(CLIENT_NAV, '', `<section class="paywall card">
+      <div class="pw-lock">🔒</div>
+      <h2>Tu plan está pausado</h2>
+      <p>Tu plan venció el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))} y han pasado los 3 días de margen. Para seguir con tus entrenos, tu nutrición y tus revisiones necesito que lo renueves.</p>
+      ${c.pay_plan || c.pay_amount ? `<p class="muted">${c.pay_plan ? esc(c.pay_plan) : ''}${c.pay_plan && c.pay_amount ? ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) : ''}</p>` : ''}
+      <form class="stack" data-paid><label>Si ya has pagado, cuéntame cómo (opcional)<input name="note" maxlength="300" placeholder="Bizum el día 14, transferencia…"></label>
+        <button class="btn primary block">Ya he pagado</button></form>
+      <p class="muted small">Al pulsarlo se reactiva tu app durante 48 h mientras lo reviso. Tus datos siguen guardados y puedes descargarlos o pedir su borrado desde ${ic('shield')} Privacidad.</p>
+    </section>`, { title: 'Renovación del plan' });
+    $app.querySelector('[data-paid]').onsubmit = async e => { e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
+      try { await claimPaid(e.target.note.value); render(); } catch (er) { btn.disabled = false; } };
   }
 
   async function clientToday() {
@@ -3133,7 +3226,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       out.push({ k: 'ck', ic: 'inbox', t: d === 5 ? 'Hoy toca tu check-in semanal' : 'Tienes el check-in semanal pendiente', s: 'Cuéntale a tu entrenador cómo ha ido la semana: peso, sensaciones y fotos.', btn: 'Hacer check-in' });
     if (c.remind_payment !== false && c.pay_due) {
       const dd = Math.round((new Date(c.pay_due + 'T12:00:00') - new Date(t0 + 'T12:00:00')) / 864e5);
-      if (dd >= 0 && dd <= 2) out.push({ k: 'pay', ic: 'euro', t: dd === 0 ? 'Hoy toca renovar tu plan' : dd === 1 ? 'Mañana toca renovar tu plan' : 'Tu plan se renueva en 2 días',
+      if (dd >= (S.billing && S.billing.v ? 1 : 0) && dd <= 2) out.push({ k: 'pay', ic: 'euro', t: dd === 0 ? 'Hoy toca renovar tu plan' : dd === 1 ? 'Mañana toca renovar tu plan' : 'Tu plan se renueva en 2 días',
         s: `${c.pay_plan ? c.pay_plan + ' · ' : ''}${c.pay_amount ? eur(c.pay_amount) + ' · ' : ''}${cap1(fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' }))}. Si ya lo has pagado, ignora este aviso.` });
     }
     return out;

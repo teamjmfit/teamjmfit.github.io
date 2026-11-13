@@ -1268,3 +1268,11 @@ details.r-fold > summary { color: var(--text); }
 .ph-drive { display: grid; place-items: center; background: var(--card2); border: 1px dashed var(--line); border-radius: 10px; aspect-ratio: 3 / 4; font-size: 26px; }
 .ph-drive a, .ph-drive span { display: grid; place-items: center; gap: 4px; color: var(--text); text-decoration: none; }
 .ph-drive small { font-size: 12px; color: var(--muted); }
+
+/* Vencimientos */
+.pay-warn { display: grid; gap: 10px; text-align: center; }
+.pay-warn .pw-ic { justify-self: center; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.pay-warn p { margin: 0; } .pay-warn label { text-align: left; }
+.pw-left b { color: #b45309; }
+.paywall { max-width: 520px; margin: 24px auto; text-align: center; display: grid; gap: 12px; padding: 28px 22px; }
+.paywall .pw-lock { font-size: 46px; } .paywall h2 { margin: 0; } .paywall p { margin: 0; } .paywall form { text-align: left; }
