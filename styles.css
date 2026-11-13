@@ -1168,3 +1168,21 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .gl-req p { margin: 0 0 6px; } .gl-req .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
 .gl-reqf { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; } .gl-reqf label { flex: 1 1 220px; }
 .talerts li { display: flex; align-items: center; gap: 10px; } .talerts li a { color: inherit; text-decoration: none; min-width: 0; } .talerts li small { display: block; color: var(--muted); }
+
+/* Clientes: pestañas Activos / Semáforo / Inactivos */
+.cli-tabs .cnt { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 99px; font-size: 12px; line-height: 20px; background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--text); }
+.cli-tabs .cnt.red { background: var(--red, #c0392b); color: #fff; }
+.cli-sub { margin: -4px 0 10px; }
+.tri-chart h4 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.tri-bar { display: flex; height: 30px; border-radius: 10px; overflow: hidden; gap: 2px; margin: 10px 0 12px; background: var(--bg2); }
+.tri-bar i { display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 800; font-size: 13px; color: #fff; min-width: 28px; }
+.tri-bar .tri-red { background: var(--red, #c0392b); } .tri-bar .tri-amber { background: var(--amber, #d68910); } .tri-bar .tri-green { background: var(--green, #27ae60); }
+.tri-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tri-k { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; cursor: pointer; text-align: left; border-top: 4px solid; }
+.tri-k b { font: 800 26px var(--head, inherit); line-height: 1; } .tri-k span { font-weight: 600; font-size: 13px; } .tri-k small { color: var(--muted); font-size: 12px; }
+.tri-k.tri-red { border-top-color: var(--red, #c0392b); } .tri-k.tri-amber { border-top-color: var(--amber, #d68910); } .tri-k.tri-green { border-top-color: var(--green, #27ae60); }
+.tri-cats { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.tri-cats li { display: grid; grid-template-columns: minmax(120px, 40%) 1fr 28px; align-items: center; gap: 8px; font-size: 13.5px; }
+.tri-cats i { height: 10px; border-radius: 99px; background: var(--bg2); overflow: hidden; } .tri-cats em { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.tri-cats b { text-align: right; }
+.tri-h { scroll-margin-top: 80px; }
