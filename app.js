@@ -157,6 +157,8 @@
     play: '<path d="M7 4l13 8-13 8z"/>',
     check: '<path d="M5 12l5 5 9-10"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     up: '<path d="M6 15l6-6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>',
     copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
@@ -287,6 +289,7 @@
             ${mode === 'in' ? '<button type="button" class="link" data-mode="reset">¿Olvidaste la contraseña?</button>' : ''}
             ${mode === 'reset' ? '<button type="button" class="link" data-mode="in">Volver</button>' : ''}
           </form>`}
+        <p class="legal-links"><a href="privacidad.html" target="_blank" rel="noopener">Privacidad y datos</a></p>
       </div></main>`;
     $app.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => DB.signIn(b.dataset.demo));
     const r = $app.querySelector('[data-reset]'); if (r) r.onclick = () => { DB.resetDemo(); toast('Datos de ejemplo reiniciados', 'ok'); };
@@ -386,11 +389,13 @@
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
           <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
+          ${S.profile.role === 'client' && S.client ? `<button class="icon-btn" data-priv aria-label="Privacidad y mis datos" title="Privacidad y mis datos">${ic('shield')}</button>` : ''}
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
         <div class="content">${content}</div>
       </div>
       <nav class="tabbar">${nav}</nav>`;
     $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; render(); } });
+    $app.querySelectorAll('[data-priv]').forEach(b => b.onclick = () => privacyModal());
   }
   const loading = () => '<div class="loading"><span></span><span></span><span></span></div>';
 
@@ -417,6 +422,22 @@
 
   // Aviso de almacenamiento (migración 018): fotos y base de datos frente al límite del plan de Supabase.
   // Límites del plan gratuito: 1 GB de archivos y 500 MB de base de datos (se pueden cambiar en ajustes: storage_limit_mb, db_limit_mb).
+  // Privacidad: estado del consentimiento y solicitudes de los clientes (migración 019)
+  function privPill(c) {
+    if (!('consent_version' in c) || !c.user_id) return '';
+    if (c.data_request === 'delete') return '<span class="pill red">pide borrar datos</span>';
+    if (c.data_request === 'withdraw') return '<span class="pill red">retiró el permiso</span>';
+    return c.consent_version ? '' : '<span class="pill amber">sin aceptar privacidad</span>';
+  }
+  function privacyAlerts(stack) {
+    const list = (S.clients || []).filter(c => c.data_request);
+    if (!list.length || stack.querySelector('[data-privalert]')) return;
+    const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-privalert', '');
+    sec.innerHTML = `<h3>🔒 Solicitudes de datos</h3><ul class="list">${list.map(c => `<li><a href="#/cliente/${c.id}/ficha"><span class="grow">${esc(c.name)}<small>${c.data_request === 'delete' ? 'Pide que se borren sus datos' : 'Ha retirado el consentimiento'} · ${ago(c.data_request_at)}</small></span><small>Ver ficha ›</small></a></li>`).join('')}</ul>
+      <p class="muted small">La ley da un mes para atender una petición de borrado. Para borrar: Clientes → el cliente → Editar → Eliminar.</p>`;
+    stack.prepend(sec);
+  }
+
   async function storageCard(stack) {
     if (S.storageInfo === undefined) {
       S.storageInfo = null;
@@ -496,7 +517,7 @@
     $app.querySelector('.content').innerHTML = html;
     {
       const stack = $app.querySelector('.content .stack');
-      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); };
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); };
       if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
     }
     // cobros (no bloquea)
@@ -574,7 +595,7 @@
     const last = {}; sessions.forEach(s => { if (s.finished_at && !last[s.client_id]) last[s.client_id] = s.finished_at; });
     const row = c => `<li><a href="#/cliente/${c.id}"><span class="av">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small></span>
-        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos'}</small>${c.user_id ? '<span class="pill green">con acceso</span>' : '<span class="pill amber">invitación pendiente</span>'}</span></a></li>`;
+        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos'}</small>${c.user_id ? '<span class="pill green">con acceso</span>' : '<span class="pill amber">invitación pendiente</span>'}${privPill(c)}</span></a></li>`;
     const act = clients.filter(c => c.active), off = clients.filter(c => !c.active);
     $app.querySelector('.content').innerHTML = clients.length ? `
       <input class="search" placeholder="Buscar cliente…" data-q>
@@ -1934,9 +1955,10 @@
   }
 
   async function tabFicha(c, box) {
-    const [checkins, daily] = await Promise.all([
+    const [checkins, daily, cons] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
-      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => [])
+      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
+      'consent_version' in c ? DB.list('consents', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 10 }).catch(() => []) : Promise.resolve(null)
     ]);
     const wrows = weeklyRows(checkins, daily).filter(r => r.avg != null);
     const cur = wrows[wrows.length - 1], ini = wrows[0];
@@ -1968,7 +1990,17 @@
         </div>
         <p class="muted small">El peso objetivo y el ritmo semanal se usan en Progreso para ver si va bien cada semana (el cliente también lo ve).</p>
         <div class="row gap"><span class="grow"></span><button class="btn primary">Guardar ficha</button></div>
-      </form>`;
+      </form>
+      ${cons ? (() => { const acc = cons.find(k => k.action === 'accept'), g = cons.find(k => k.guardian_name);
+        return `<section class="card priv-card"><h3>${ic('shield')} Privacidad ${privPill(c) || (c.consent_version ? '<span class="pill green">aceptada</span>' : '')}</h3>
+        <ul class="list">
+          <li><span class="grow">Consentimiento de datos y salud<small>${c.consent_version ? `Aceptado el ${fmtDate(String(c.consent_at).slice(0, 10), { day: 'numeric', month: 'short', year: 'numeric' })} · texto ${esc(c.consent_version)}` : c.user_id ? 'Aún no lo ha aceptado: se le pedirá al entrar' : 'Se le pedirá cuando entre por primera vez'}</small></span></li>
+          <li><span class="grow">Fotos de progreso<small>${c.consent_photos === false ? 'No permite fotos' : 'Permitidas'}</small></span></li>
+          ${g ? `<li><span class="grow">Autoriza (menor)<small>${esc(g.guardian_name)} · ${esc(g.guardian_relation || '')}</small></span></li>` : ''}
+          ${c.data_request ? `<li><span class="grow">${c.data_request === 'delete' ? 'Ha pedido que se borren sus datos' : 'Ha retirado el consentimiento'}<small>${ago(c.data_request_at)}${c.data_request === 'delete' ? ' · para borrarlo: Editar → Eliminar' : ''}</small></span><button type="button" class="btn small" data-privok>Marcar como atendida</button></li>` : ''}
+        </ul>${acc ? `<p class="muted small">Historial: ${cons.length} registro${cons.length === 1 ? '' : 's'}; el último el ${fmtDate(cons[0].created_at.slice(0, 10), { day: 'numeric', month: 'short' })}.</p>` : ''}</section>`; })() : ''}`;
+    const pok = box.querySelector('[data-privok]');
+    if (pok) pok.onclick = async () => { await safe(() => DB.rpc('clear_data_request', { p_client: c.id }), 'Solicitud marcada como atendida'); c.data_request = null; tabFicha(c, box); };
     if (window.JMForms) window.JMForms.clientBlock(c, box);
     const f = box.querySelector('[data-ficha]');
     f.onsubmit = async e => {
@@ -2334,6 +2366,109 @@
     { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' }
   ];
 
+  // ---------- Privacidad (migración 019): consentimiento, mis datos, borrado
+  const CONSENT_V = '2026-11-v1';   // cambiar si cambia el texto: se vuelve a pedir la aceptación
+  async function refreshClient() { try { const c = await DB.myClient(); if (c) { S.client = c; localStorage.setItem(BOOT_KEY, JSON.stringify({ profile: S.profile, client: c })); } } catch (e) { /* se queda lo que había */ } }
+  function consentScreen() {
+    const c = S.client, age = ageOf(c.birth_date), minor = age != null && age < 18, under14 = age != null && age < 14;
+    $app.innerHTML = `<main class="login consent"><div class="login-card wide">
+      <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"></div>
+      <h2>Antes de empezar, ${esc(c.name.split(' ')[0])}</h2>
+      <p class="muted">Para preparar tus entrenos y tu nutrición necesito guardar algunos datos tuyos. Esto es lo que hay que saber:</p>
+      <ul class="cs-list">
+        <li>${ic('dumbbell')}<span><b>Qué guardo</b>Tus entrenos, tu peso y medidas, cómo te encuentras (sueño, energía, estrés), molestias o lesiones, tu alimentación y, si quieres, fotos de progreso.</span></li>
+        <li>${ic('shield')}<span><b>Para qué</b>Solo para planificar y ajustar tu entrenamiento y tu nutrición. No se vende ni se usa para publicidad.</span></li>
+        <li>${ic('users')}<span><b>Quién lo ve</b>Solo tú y tu entrenador de TEAM JMFIT. Se guarda en servidores protegidos.</span></li>
+        <li>${ic('download')}<span><b>Tus derechos</b>Puedes descargar tus datos, pedir que se borren o retirar este permiso cuando quieras, desde el escudo de arriba.</span></li>
+      </ul>
+      <form id="cs" class="stack">
+        <label class="check"><input type="checkbox" name="policy" required><span>He leído la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y acepto el tratamiento de mis datos para el servicio.</span></label>
+        <label class="check"><input type="checkbox" name="health" required><span>Doy mi <b>consentimiento explícito</b> para el tratamiento de mis datos de salud (peso, medidas, lesiones, sueño, alimentación y sensaciones) con esta finalidad.</span></label>
+        <label class="check"><input type="checkbox" name="photos" checked><span>Acepto subir fotos de progreso en los check-ins <small class="muted">(opcional)</small></span></label>
+        ${minor ? `<fieldset class="cs-tutor"><legend>${under14 ? 'Autorización del padre, madre o tutor (obligatoria)' : 'Datos del padre, madre o tutor (recomendado)'}</legend>
+          <p class="muted small">${under14 ? 'Como tienes menos de 14 años, tu padre, madre o tutor legal tiene que dar el permiso.' : 'Como eres menor de edad, es recomendable que tu padre, madre o tutor conozca y acepte el servicio.'}</p>
+          <div class="form-grid"><label>Nombre y apellidos<input name="g_name" ${under14 ? 'required' : ''} maxlength="120" autocomplete="off"></label>
+          <label>Relación<select name="g_rel"><option>Madre</option><option>Padre</option><option>Tutor/a legal</option></select></label></div>
+          <label class="check"><input type="checkbox" name="g_ok" ${under14 ? 'required' : ''}><span>Soy su padre, madre o tutor legal y autorizo el tratamiento de sus datos.</span></label></fieldset>` : ''}
+        <button class="btn primary block big" type="submit">Aceptar y continuar</button>
+        <button class="btn ghost block small" type="button" data-out>Ahora no (salir)</button>
+      </form></div></main>`;
+    $app.querySelector('[data-out]').onclick = async () => { await DB.signOut(); S.profile = null; location.hash = ''; render(); };
+    const f = $app.querySelector('#cs');
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(f), gn = String(fd.get('g_name') || '').trim();
+      if (minor && gn && !fd.get('g_ok')) { toast('Falta la casilla del padre, madre o tutor', 'err'); return; }
+      const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+      try {
+        await safe(() => DB.rpc('accept_consent', { p_version: CONSENT_V, p_photos: !!fd.get('photos'), p_guardian_name: gn || null, p_guardian_relation: gn ? fd.get('g_rel') : null }), '¡Gracias! Ya puedes empezar 💪');
+      } catch (er) { btn.disabled = false; return; }
+      await refreshClient(); if (S.client.consent_version !== CONSENT_V) S.client.consent_version = CONSENT_V;
+      window.scrollTo(0, 0); go('#/');
+    };
+  }
+  async function privacyModal() {
+    const c = S.client; if (!c) return;
+    const req = c.data_request === 'delete';
+    modal('Privacidad y mis datos', `
+      <p>${c.consent_at ? `Aceptaste el uso de tus datos el <b>${fmtDate(c.consent_at.slice(0, 10), { day: 'numeric', month: 'long', year: 'numeric' })}</b>.` : 'Uso de datos aceptado.'} <a href="privacidad.html" target="_blank" rel="noopener">Ver la política de privacidad</a></p>
+      <label class="check"><input type="checkbox" name="photos" ${c.consent_photos !== false ? 'checked' : ''}> Permitir fotos de progreso en los check-ins</label>
+      <div class="priv-acts">
+        <button type="button" class="btn block" data-exp>${ic('download')} Descargar mis datos</button>
+        <button type="button" class="btn block ${req ? '' : 'ghost'}" data-del ${req ? 'disabled' : ''}>${ic('trash')} ${req ? 'Borrado solicitado' : 'Pedir que se borren mis datos'}</button>
+        <button type="button" class="btn ghost block danger" data-wd>Retirar mi consentimiento</button>
+      </div>
+      <p class="muted small">Si retiras el consentimiento, no podrás usar la app hasta volver a aceptarlo. Para cualquier duda sobre tus datos, habla con tu entrenador.</p>`, {
+      submitLabel: 'Guardar',
+      onSubmit: async (f, fd) => {
+        const ph = !!fd.get('photos'); if (ph === (c.consent_photos !== false)) return;
+        await safe(() => DB.rpc('accept_consent', { p_version: CONSENT_V, p_photos: ph, p_guardian_name: null, p_guardian_relation: null }), 'Guardado');
+        await refreshClient();
+      }
+    });
+    const m = document.querySelector('.modal');
+    m.querySelector('[data-exp]').onclick = async e => { e.target.disabled = true; try { await exportMyData(c); } finally { e.target.disabled = false; } };
+    m.querySelector('[data-del]').onclick = async () => {
+      if (!await confirmBox('Tu entrenador recibirá la petición y borrará tus datos y tu cuenta. ¿Quieres pedirlo?', 'Pedir borrado')) return;
+      await safe(() => DB.rpc('request_data_deletion', {}), 'Petición enviada a tu entrenador'); await refreshClient(); closeModal();
+    };
+    m.querySelector('[data-wd]').onclick = async () => {
+      if (!await confirmBox('Dejarás de poder usar la app hasta que vuelvas a aceptar. Tu entrenador lo verá. ¿Retirar el consentimiento?', 'Retirar')) return;
+      await safe(() => DB.rpc('withdraw_consent', {}), 'Consentimiento retirado'); await refreshClient(); closeModal(); render();
+    };
+  }
+  // Derecho de acceso y portabilidad: todos sus datos en un archivo JSON
+  async function exportMyData(c) {
+    const tabs = ['checkins', 'daily_metrics', 'sessions', 'set_logs', 'goals', 'programs', 'program_weeks', 'routines', 'routine_items', 'nutrition_plans', 'calendar_events', 'consents'];
+    const out = { app: 'TEAM JMFIT', generado: new Date().toISOString(), cliente: Object.assign({}, c) };
+    for (const t of tabs) out[t] = await DB.list(t, { eq: { client_id: c.id } }).catch(() => []);
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `mis-datos-teamjmfit-${today()}.json`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    toast('Descargando tus datos', 'ok');
+  }
+
+  // ---------- Instalar la app en el móvil (PWA): aviso en el inicio del cliente hasta que la instale o lo oculte
+  let deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  function installCardHtml() {
+    let off = false; try { off = localStorage.getItem('jmfit-install-off') === '1'; } catch (e) { /* sin almacenamiento */ }
+    if (isStandalone() || off || !(window.matchMedia && matchMedia('(pointer: coarse)').matches)) return '';
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const steps = ios ? 'En Safari, toca <b>Compartir</b> (el cuadrado con la flecha) y después <b>«Añadir a pantalla de inicio»</b>.'
+      : deferredInstall ? 'Tenla como una app más, con su icono y a pantalla completa.' : 'En Chrome, abre el menú <b>⋮</b> y toca <b>«Instalar aplicación»</b> o «Añadir a pantalla de inicio».';
+    return `<section class="notice n-inst" data-inst><span class="n-ic">${ic('download')}</span><span class="grow"><b>Instala la app en tu móvil</b><small>${steps}</small></span>
+      ${!ios && deferredInstall ? '<button type="button" class="btn small primary" data-inst-go>Instalar</button>' : ''}<button type="button" class="icon-btn" data-inst-off aria-label="Ocultar este aviso">✕</button></section>`;
+  }
+  function wireInstall(root) {
+    const card = root.querySelector('[data-inst]'); if (!card) return;
+    const off = () => { try { localStorage.setItem('jmfit-install-off', '1'); } catch (e) { /* solo esta vez */ } card.remove(); };
+    card.querySelector('[data-inst-off]').onclick = off;
+    const go1 = card.querySelector('[data-inst-go]');
+    if (go1) go1.onclick = async () => { const ev = deferredInstall; deferredInstall = null; if (!ev) return; ev.prompt(); try { const r = await ev.userChoice; if (r && r.outcome === 'accepted') off(); } catch (e) { /* nada */ } };
+  }
+
   async function renderClient() {
     document.body.dataset.role = 'client';
     if (!S.client) {
@@ -2344,6 +2479,8 @@
       $app.querySelector('[data-out]').onclick = () => DB.signOut();
       return;
     }
+    // RGPD: antes de usar la app, el cliente acepta el uso de sus datos (y de los de salud, de forma explícita)
+    if ('consent_version' in S.client && S.client.consent_version !== CONSENT_V) return consentScreen();
     const [r0, r1] = S.route;
     if (r0 === 'entreno') return workout(r1);
     if (!r0) return clientToday();
@@ -2409,6 +2546,7 @@
       return `<button type="button" data-dsel="${n}" aria-pressed="${n === sel}" aria-label="${esc(DIAS[n])} ${+ds.slice(8)}" class="${n === d ? 'today' : ''} ${n === sel ? 'sel' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${+ds.slice(8)}</b><i></i></button>`; }).join('');
     $app.querySelector('.content').innerHTML = `<div class="c-home">
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
+      ${installCardHtml()}
       ${notices.map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
       <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
@@ -2465,6 +2603,7 @@
       box.querySelector('[data-strip]').innerHTML = stripHtml(); drawDay();
     });
     wire(box.querySelector('.c-home'));
+    wireInstall(box);
     drawDay();
     noticePopup(c, notices.filter(nt => nt.k !== 'ck' || d === 5), t0);
   }
@@ -2551,10 +2690,10 @@
       <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
         ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
         <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>
-      <fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
+      ${c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (escudo de arriba → Privacidad).</p>' : `<fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
         ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
         <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
-      </fieldset>`, {
+      </fieldset>`}`, {
       submitLabel: 'Enviar check-in',
       onSubmit: async (form, fd) => {
         const d = { client_id: c.id, date: fd.get('date') || today() };
@@ -2563,8 +2702,8 @@
         if (d.steps != null) d.steps = Math.round(d.steps);
         Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v) d[k] = v; });
         if (!d.weight) { toast('Pon tu peso en ayunas', 'err'); return false; }
-        const files = CK_POSES.map(([p]) => [p, form['ph_' + p].files[0]]).filter(x => x[1]);
-        [...form.ph_extra.files].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
+        const files = CK_POSES.map(([p]) => [p, form['ph_' + p] && form['ph_' + p].files[0]]).filter(x => x[1]);
+        [...(form.ph_extra ? form.ph_extra.files : [])].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
         try { await safe(async () => {
           const [k] = await DB.insert('checkins', d);
           const rows = [];
