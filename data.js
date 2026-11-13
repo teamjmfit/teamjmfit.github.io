@@ -398,6 +398,28 @@
           });
         };
         const prevOf = w => (T('program_weeks').filter(x => x.program_id === w.program_id && x.week_no < w.week_no).sort((x, y) => y.week_no - x.week_no)[0] || {}).id || null;
+        if (fn === 'delay_mesocycle') {
+          const prog = T('programs').find(p => p.id === a.p_program); if (!prog) throw new Error('Mesociclo no encontrado');
+          const ws = T('program_weeks').filter(w => w.program_id === prog.id).sort((x, y) => x.week_no - y.week_no), w1 = ws[0];
+          if (!w1) throw new Error('El mesociclo no tiene semanas');
+          if (w1.start_date < monday(new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10))) throw new Error('El mesociclo ya ha empezado: solo se puede retrasar si empieza esta semana o más adelante');
+          const wid = new Set(ws.map(w => w.id)), rids = new Set(T('routines').filter(r => wid.has(r.program_week_id)).map(r => r.id));
+          if (T('sessions').some(s => rids.has(s.routine_id))) throw new Error('Ya hay entrenos registrados en este mesociclo');
+          if (T('program_weeks').some(w => w.client_id === prog.client_id && w.program_id !== prog.id && w.start_date >= w1.start_date)) throw new Error('Hay otra planificación después de este mesociclo');
+          const old = w1.start_date, dl = a.p_deload !== false;
+          ws.forEach(w => { w.start_date = plus(w.start_date, 7); if (dl) w.week_no += 1; });
+          prog.start_date = plus(prog.start_date, 7);
+          if (!dl) { save(); return null; }
+          let src = null;
+          if ((a.p_source || 'prev') === 'prev') src = T('program_weeks').filter(w => w.client_id === prog.client_id && w.program_id !== prog.id && w.start_date < old && T('routines').some(r => r.program_week_id === w.id)).sort((x, y) => y.start_date.localeCompare(x.start_date) || y.week_no - x.week_no)[0];
+          src = src || ws.find(w => w.kind !== 'deload') || w1;
+          const nw = { id: uuid(), program_id: prog.id, client_id: prog.client_id, week_no: 1, start_date: old, kind: 'deload', source_week_id: src.id, published: w1.published, notes: 'Descarga antes del mesociclo', kind_set_at: now(), created_at: now() };
+          T('program_weeks').push(nw);
+          const srcR = T('routines').filter(r => r.program_week_id === src.id).sort((x, y) => x.position - y.position || (x.day || 0) - (y.day || 0));
+          copyWeek(srcR, nw.id);
+          T('routines').filter(r => r.program_week_id === nw.id).forEach(r => applyKind(r.id, 'deload', null));
+          save(); return nw.id;
+        }
         if (fn === 'set_event_done') {
           const e = T('calendar_events').find(x => x.id === a.p_id); if (!e) throw new Error('Evento no encontrado');
           e.done_at = a.p_done ? (e.done_at || now()) : null; save(); return null;

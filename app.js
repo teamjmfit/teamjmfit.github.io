@@ -731,11 +731,12 @@
           <button class="btn small primary" data-meso ${fixed.length ? '' : 'disabled title="Crea antes alguna rutina"'}>${ic('plus')} Crear mesociclo</button>
           <button class="btn small ghost" data-newprog ${fixed.length ? '' : 'disabled'}>Programa abierto</button></div></section>`
       : `<section class="card prog-card">
-          <div class="row gap wrap"><span class="grow"><b>${esc(prog.name)}</b>${prog.meso_weeks ? ` <span class="pill">Mesociclo · ${prog.meso_weeks} semanas</span>` : ''}<small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) + (prog.meso_weeks ? ` (${live.week_no}/${prog.meso_weeks})` : '') : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span>
+          <div class="row gap wrap"><span class="grow"><b>${esc(prog.name)}</b>${prog.meso_weeks ? ` <span class="pill">Mesociclo · ${Math.max(prog.meso_weeks, pweeks.length)} semanas</span>` : ''}<small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) + (prog.meso_weeks ? ` (${live.week_no}/${Math.max(prog.meso_weeks, pweeks.length)})` : '') : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span>
             <button class="btn small ${mesoEnd ? 'primary' : 'ghost'}" data-meso>${ic('plus')} ${prog.meso_weeks ? 'Siguiente mesociclo' : 'Nuevo mesociclo'}</button>
+            ${prog.meso_weeks && pweeks[0] && pweeks[0].start_date >= mondayOf(today()) ? `<button class="btn small ghost" data-delaymeso title="Empezar el mesociclo una semana más tarde">${ic('clock')} Retrasar 1 semana</button>` : ''}
             ${prog.meso_weeks ? `<button class="btn small ghost danger" data-delmeso title="Quitar este mesociclo">${ic('trash')} Quitar</button>` : ''}</div>
           ${mesoEnd ? `<p class="note small">${live && live.kind === 'deload' ? 'Está en la semana de descarga: ' : 'El bloque ha terminado: '}prepara el siguiente mesociclo para que no se quede sin plan.</p>` : ''}
-          ${prog.meso_weeks ? `<div class="meso-line">${pweeks.map(w => `<span class="${w.kind === 'deload' ? 'dl' : ''} ${live && live.id === w.id ? 'now' : ''} ${live && w.week_no < live.week_no ? 'past' : ''}" title="${esc(weekLabel(w))}">${w.kind === 'deload' ? 'Descarga' : 'Carga ' + w.week_no}</span>`).join('')}</div>`
+          ${prog.meso_weeks ? `<div class="meso-line">${pweeks.map(w => `<span class="${w.kind === 'deload' ? 'dl' : ''} ${live && live.id === w.id ? 'now' : ''} ${live && w.week_no < live.week_no ? 'past' : ''}" title="${esc(weekLabel(w))}">${w.kind === 'deload' ? 'Descarga' : 'Carga ' + pweeks.filter(x => x.week_no <= w.week_no && x.kind !== 'deload').length}</span>`).join('')}</div>`
             : `<label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>`}
           <div class="wkchips">${pweeks.map(w => `<button type="button" class="wkchip ${view && view.id === w.id ? 'on' : ''} ${w.published ? 'pub' : ''} k-${w.kind || 'normal'} ${w.kind === 'deload' ? 'deload' : ''}" data-wk="${w.id}" title="${w.published ? 'Publicada' : 'Borrador'} · ${(KINDS[w.kind] || KINDS.normal)[0]}">S${w.week_no}${KINDS[w.kind] && KINDS[w.kind][1] ? ' ' + KINDS[w.kind][1] : ''}<i></i></button>`).join('')}<button type="button" class="wkchip fixedchip ${view ? '' : 'on'}" data-wk="fixed">Fijas</button></div>
           ${view ? `<div class="row gap wrap wkbar"><span class="grow"><b>${esc(weekLabel(view))}</b> <small class="muted">${fmtDate(view.start_date)} – ${fmtDate(addDays(view.start_date, 6))}</small> <span class="pill ${view.published ? 'green' : 'amber'}">${view.published ? 'Publicada' : 'Borrador'}</span></span>
@@ -770,6 +771,7 @@
     const st = box.querySelector('[data-savetpl]'); if (st) st.onclick = () => saveAsTemplate(c, routines, items);
     const np = box.querySelector('[data-newprog]'); if (np) np.onclick = () => newProgram(c, fixed.length);
     const ms = box.querySelector('[data-meso]'); if (ms) ms.onclick = () => mesoForm(c, { after: () => tabRoutines(c, box) });
+    const dly = box.querySelector('[data-delaymeso]'); if (dly) dly.onclick = () => delayMeso(c, prog, pweeks, weeks, () => { S.weekSel[c.id] = null; tabRoutines(c, box); });
     const dms = box.querySelector('[data-delmeso]'); if (dms) dms.onclick = () => deleteMeso(c, prog, pweeks, allRoutines, () => { S.weekSel[c.id] = null; tabRoutines(c, box); });
     box.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { S.weekSel[c.id] = b.dataset.wk; tabRoutines(c, box); });
     const au = box.querySelector('[data-auto]');
@@ -842,7 +844,10 @@
           <label data-ex>Ejercicio<input name="exercise_name" list="gl-exs" maxlength="120" value="${esc(g0.exercise_name || '')}" placeholder="Ej: Peso muerto"><datalist id="gl-exs">${exs.map(e => `<option value="${esc(e)}">`).join('')}</datalist></label>
           <label>Valor actual <small class="muted" data-unit></small><input name="start_value" type="number" step="0.1" min="0" inputmode="decimal" required value="${startV != null ? Math.round(startV * 10) / 10 : ''}"></label>
           <label>Objetivo <small class="muted" data-unit></small><input name="target_value" type="number" step="0.1" min="0" inputmode="decimal" required value="${g0.target_value != null ? g0.target_value : ''}"></label>
-        </div><p class="muted small" data-src></p></fieldset>
+        </div><p class="muted small" data-src></p>
+        <div data-rates hidden><small class="muted">Ritmo (calcula el objetivo con su peso y la fecha límite)</small>
+          <div class="rate-chips">${G.RATES.filter(r => r.s).map(r => `<button type="button" class="chip" data-rate="${r.k}" title="${esc(r.txt)}">${esc(r.l)}<small>${esc(r.txt.replace(' del peso/sem', ''))}</small></button>`).join('')}</div>
+          <label class="check"><input type="checkbox" name="to_ficha" checked> Poner este ritmo en su ficha («Ritmo buscado»)</label></div></fieldset>
       <fieldset class="smart"><legend><b>T</b> ¿Para cuándo?</legend><div class="form-grid">
         <label>Empieza<input name="start_date" type="date" required value="${esc(g0.start_date)}"></label>
         <label>Fecha límite<input name="deadline" type="date" required value="${esc(g0.deadline || addDays(g0.start_date, (g0.block_weeks || 4) * 7 * 3))}"></label>
@@ -864,6 +869,10 @@
         if (bad.length && !fd.get('force')) { toast('El objetivo no parece realista: ajústalo o marca que lo habéis hablado', 'err'); return false; }
         const row = Object.assign(g, { client_id: c.id, title: G.title(g) });
         if (row.metric !== 'e1rm') row.exercise_name = null;
+        if (row.metric === 'weight' && fd.get('to_ficha')) {
+          const wk = Math.max(1, (new Date(row.deadline + 'T12:00:00') - new Date(row.start_date + 'T12:00:00')) / (7 * 864e5)), kgw = Math.round((row.target_value - row.start_value) / wk * 100) / 100;
+          if (Math.abs(kgw) <= 2) await DB.update('clients', c.id, { weekly_target: kgw }).then(() => { c.weekly_target = kgw; }).catch(e => console.warn(e));
+        }
         await safe(async () => {
           if (row.is_primary) for (const x of goals.filter(x => x.is_primary && x.status === 'active' && (!goal || x.id !== goal.id))) await DB.update('goals', x.id, { is_primary: false });
           if (goal) await DB.update('goals', goal.id, row); else await DB.insert('goals', Object.assign({ status: 'active' }, row));
@@ -898,6 +907,19 @@
       f.querySelector('[data-prev]').innerHTML = ok ? `<p><b>🎯 ${esc(G.title(g))}</b></p><p class="small muted">Enfoque «${esc(fo.l)}»: ${esc(fo.train)}</p>
         <ol class="gl-blocks">${G.blocks(g).map(b => `<li><span>Bloque ${b.i} · hasta el ${G.fd(b.to)}</span><b>${G.nf(b.target)} ${m.u}</b></li>`).join('')}</ol>` : '';
     };
+    f.querySelectorAll('[data-rate]').forEach(b => b.onclick = () => {
+      const g = read(new FormData(f)); if (!(g.start_value > 0)) { toast('Pon antes el peso actual', 'err'); return; }
+      const wk = Math.max(1, (new Date(g.deadline + 'T12:00:00') - new Date(g.start_date + 'T12:00:00')) / (7 * 864e5));
+      f.querySelector('[name=target_value]').value = Math.round((g.start_value + G.rateKg(b.dataset.rate, g.start_value) * wk) * 10) / 10;
+      f.querySelectorAll('[data-rate]').forEach(x => x.classList.toggle('on', x === b)); draw();
+    });
+    const drawRates = () => {
+      const g = read(new FormData(f)), box = f.querySelector('[data-rates]'); box.hidden = g.metric !== 'weight';
+      if (g.metric !== 'weight' || !(g.start_value > 0) || !(g.target_value > 0) || !(g.deadline > g.start_date)) return;
+      const wk = (new Date(g.deadline + 'T12:00:00') - new Date(g.start_date + 'T12:00:00')) / (7 * 864e5), b = G.rateBand((g.target_value - g.start_value) / wk, g.start_value);
+      f.querySelectorAll('[data-rate]').forEach(x => x.classList.toggle('on', !!b && x.dataset.rate === b.k));
+    };
+    f.addEventListener('input', drawRates); f.addEventListener('change', drawRates); drawRates();
     f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
   }
   // Tarjeta de un objetivo con anillo, estado, medallas y micro-objetivos
@@ -956,6 +978,29 @@
       onSubmit: async (f, fd) => {
         const n = await safe(() => DB.rpc('delete_mesocycle', { p_program: prog.id, p_scope: fd.get('scope') || 'future' }));
         toast(`Mesociclo quitado (${n || 0} semana${n === 1 ? '' : 's'})`, 'ok'); after && after();
+      }
+    });
+  }
+
+  // ----- Retrasar un mesociclo una semana y, si se quiere, meter antes una descarga (migración 020)
+  async function delayMeso(c, prog, pweeks, allWeeks, after) {
+    const w1 = pweeks[0]; if (!w1) return;
+    const prev = (allWeeks || []).filter(w => w.program_id !== prog.id && w.start_date < w1.start_date).sort((a, b) => b.start_date.localeCompare(a.start_date) || b.week_no - a.week_no)[0];
+    const end = addDays(pweeks[pweeks.length - 1].start_date, 7 + 6);
+    modal('Retrasar mesociclo', `<p>«<b>${esc(prog.name)}</b>» empezará el <b>${fmtDate(addDays(w1.start_date, 7))}</b> en vez del ${fmtDate(w1.start_date)} (y terminará el ${fmtDate(end)}). Las cargas y la progresión no cambian.</p>
+      <h4>Semana del ${fmtDate(w1.start_date)}</h4>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="mode" value="prev" ${prev ? 'checked' : 'disabled'}><span><b>Descarga del bloque actual</b><small>${prev ? 'Sus rutinas de la última semana con 60 % de las series, mismas cargas y RIR 2.' : 'No hay un bloque anterior con rutinas.'}</small></span></label>
+        <label class="choice"><input type="radio" name="mode" value="meso" ${prev ? '' : 'checked'}><span><b>Descarga con las rutinas del nuevo mesociclo</b><small>Las de su semana 1 en versión descarga: sirve para aprender los ejercicios nuevos.</small></span></label>
+        <label class="choice"><input type="radio" name="mode" value="none"><span><b>Sin descarga</b><small>Solo lo mueve una semana (vacaciones, viaje…). Esa semana verá lo que tenía antes.</small></span></label>
+      </div>
+      <p class="muted small">Con descarga, el mesociclo pasa a tener ${pweeks.length + 1} semanas (la descarga queda como semana 1).</p>`, {
+      submitLabel: 'Retrasar',
+      onSubmit: async (f, fd) => {
+        const m = fd.get('mode') || 'prev';
+        await safe(() => DB.rpc('delay_mesocycle', { p_program: prog.id, p_deload: m !== 'none', p_source: m === 'none' ? 'prev' : m }),
+          m === 'none' ? 'Mesociclo retrasado una semana' : 'Mesociclo retrasado: descarga la semana del ' + fmtDate(w1.start_date));
+        after && after();
       }
     });
   }
@@ -1270,7 +1315,7 @@
       let bar, bcls = 'pb-none';
       if (w && p0.kind !== 'auto') {
         const dl = w.kind === 'deload';
-        bar = `${esc(prog.name)} · ${prog.meso_weeks ? `S${w.week_no}/${prog.meso_weeks} · ${dl ? 'Descarga' : 'Carga'}` : esc(weekLabel(w))}${w.published ? '' : ' · borrador'}`;
+        bar = `${esc(prog.name)} · ${prog.meso_weeks ? `S${w.week_no}/${Math.max(prog.meso_weeks, w.week_no)} · ${dl ? 'Descarga' : 'Carga'}` : esc(weekLabel(w))}${w.published ? '' : ' · borrador'}`;
         bcls = dl ? 'pb-dl' : w.published ? 'pb-pub' : 'pb-draft';
       } else if (p0.kind === 'auto') { bar = `${esc(prog.name)} · se repetirá sola`; bcls = 'pb-auto'; }
       else if (p0.kind === 'fixed') { bar = fixed.length ? 'Rutinas fijas' : 'Sin plan'; bcls = fixed.length ? 'pb-fixed' : 'pb-none'; }
@@ -1532,17 +1577,25 @@
   const ACT = [['Poco activo', 1.2, 0.35, 'Todo el día sentado y no entrena.'], ['Algo activo', 1.375, 0.45, 'Gran parte del día sentado, pero entrena en el gimnasio.'],
     ['Activo', 1.55, 0.5, 'Se mueve bastante durante el día y además entrena.'], ['Muy activo', 1.725, 0.55, 'Mucho movimiento a diario y entrenos intensos frecuentes.'],
     ['Extremadamente activo', 1.9, 0.6, 'Trabajo físico muy exigente o entrenos dobles / alto rendimiento.']];
-  const GOALS = ['Mantenimiento', 'Pérdida de grasa', 'Ganancia muscular'];
+  // Objetivos de la calculadora = ritmos de objetivos.js (déficit/volumen en % del peso por semana)
+  const GOALS = ['Mantenimiento', 'Déficit moderado', 'Déficit agresivo', 'Volumen moderado', 'Volumen agresivo'];
+  const GOAL_OLD = { 'Pérdida de grasa': 'Déficit moderado', 'Ganancia muscular': 'Volumen moderado' };
+  const rateKeyOf = g => (window.JMGoals ? (JMGoals.RATES.find(r => r.l === g) || JMGoals.RATES[2]).k : 'mant');
   const MEALS5 = ['Comida 1 · Desayuno', 'Comida 2 · Media mañana', 'Comida 3 · Almuerzo', 'Comida 4 · Pre-entreno', 'Comida 5 · Post-entreno'];
   function nutriCalc(i) {
-    const a = ACT.find(x => x[0] === i.act) || ACT[2], gain = i.goal === 'Ganancia muscular', loss = i.goal === 'Pérdida de grasa', fem = i.sex === 'Femenino';
+    const goal = GOAL_OLD[i.goal] || i.goal;
+    const a = ACT.find(x => x[0] === i.act) || ACT[2], gain = /^Volumen/.test(goal), loss = /^Déficit/.test(goal), fem = i.sex === 'Femenino';
     const tmb = 10 * i.kg + 6.25 * i.cm - 5 * i.age + (fem ? -161 : 5);
     const get = tmb * a[1];
-    const kcal = gain ? get * 1.12 : loss ? get * 0.82 : get;
+    // ritmo en % del peso por semana → kg/semana → kcal/día (≈ 7.700 kcal por kg)
+    const R8 = window.JMGoals ? JMGoals.rateOf(rateKeyOf(goal)) : { s: 0, mid: 0, lo: 0, hi: 0, l: goal, txt: '' };
+    const ratePct = R8.s ? (i.rP > 0 ? i.rP : R8.mid) : 0, kgw = R8.s * ratePct / 100 * i.kg;
+    const kcal = get + kgw * 7700 / 7;
     const pR = i.pR > 0 ? i.pR : (gain ? 1.6 : loss ? 2 : 1.8), fR = i.fR > 0 ? i.fR : (fem ? 1.1 : 0.8);   // g/kg elegidos a mano o los de por defecto
     const p = i.kg * pR, f = i.kg * fR, c = (kcal - p * 4 - f * 9) / 4;
     const r2 = x => Math.round(x * 100) / 100;
-    const rate = gain ? `+${r2(i.kg * 0.0025)} a +${r2(i.kg * 0.005)} kg/sem` : loss ? `-${r2(i.kg * 0.005)} a -${r2(i.kg * 0.01)} kg/sem` : '0 kg/sem (mantenimiento)';
+    const fk = x => String(r2(x)).replace('.', ',');
+    const rate = R8.s ? `${kgw > 0 ? '+' : '−'}${fk(Math.abs(kgw))} kg/sem (${fk(ratePct)} %)` : '0 kg/sem (mantenimiento)';
     const x = a[2];
     const dist = [
       [0.2, (1 - x) * 0.3, 0.75 * (loss ? 0.4 : gain ? 0.3 : 0.35)],
@@ -1551,7 +1604,7 @@
       [0.05, x * 0.45, 0.05],
       [gain ? 0.35 : 0.3, x * 0.55, 0.2]
     ];
-    return { tmb, get, practical: (gain ? 37.4 : loss ? 28.6 : 33) * i.kg, kcal, adj: (kcal - get) / get, rate, water: i.kg * 0.04, p, f, c, pR, fR, fiber: Math.round(kcal / 1000 * 12), dist };
+    return { tmb, get, practical: (gain ? 37.4 : loss ? 28.6 : 33) * i.kg, kcal, adj: (kcal - get) / get, rate, kgw: r2(kgw), ratePct, band: R8, water: i.kg * 0.04, p, f, c, pR, fR, fiber: Math.round(kcal / 1000 * 12), dist };
   }
   async function calcCard(c, form, hasPlan) {
     const key = 'jmfit-calc-' + c.id;
@@ -1562,6 +1615,10 @@
     const bm = String(c.notes || '').match(/Nacimiento:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     const age = bm ? Math.floor((Date.now() - new Date(+bm[3], +bm[2] - 1, +bm[1])) / 31557600000) : '';
     const inp = Object.assign({ sex: 'Masculino', age, cm: '', kg: lastW || '', goal: 'Mantenimiento', act: 'Activo' }, saved);
+    inp.goal = GOAL_OLD[inp.goal] || inp.goal;
+    if (!saved.goal && c.weekly_target != null && c.weekly_target !== '' && lastW && window.JMGoals) {   // sin cálculo guardado: parte del ritmo de la ficha
+      const b = JMGoals.rateBand(Number(c.weekly_target), Number(lastW)); if (b) { inp.goal = b.l; if (b.s) inp.rP = Math.abs(b.pct); }
+    }
     const box = document.createElement('details'); box.className = 'card calc'; if (!hasPlan) box.open = true;
     const o = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
     box.innerHTML = `<summary><b>${ic('chart')} Calculadora de necesidades y macros</b><small class="muted">Mifflin-St Jeor · actividad · objetivo</small></summary>
@@ -1571,6 +1628,7 @@
         <label>Altura (cm)<input name="cm" type="number" min="120" max="230" value="${esc(inp.cm)}"></label>
         <label>Peso (kg)${lastW ? ` <small class="muted">· último check-in ${fmtKg(lastW)}</small>` : ''}<input name="kg" type="number" step="0.1" min="30" max="250" value="${esc(inp.kg)}"></label>
         <label>Objetivo<select name="goal">${o(GOALS, inp.goal)}</select></label>
+        <label data-rp>Ritmo (% del peso por semana)<input name="rP" type="number" step="0.05" min="0" max="2" inputmode="decimal" value="${esc(inp.rP || '')}"></label>
         <label>Nivel de actividad<select name="act">${o(ACT.map(a => a[0]), inp.act)}</select></label>
         <label>Proteína (g por kg)<input name="pR" type="number" step="0.1" min="0.8" max="3.5" inputmode="decimal" value="${esc(inp.pR || '')}"></label>
         <label>Grasas (g por kg)<input name="fR" type="number" step="0.1" min="0.3" max="2" inputmode="decimal" value="${esc(inp.fR || '')}"></label>
@@ -1579,7 +1637,7 @@
       <p class="muted small" data-actd></p>
       <div data-out></div>`;
     form.parentNode.insertBefore(box, form);
-    const get = () => { const v = n => box.querySelector(`[name=${n}]`).value, dec = n => Number(String(v(n)).replace(',', '.')) || 0; return { sex: v('sex'), age: Number(v('age')), cm: Number(v('cm')), kg: Number(v('kg')), goal: v('goal'), act: v('act'), pR: dec('pR'), fR: dec('fR') }; };
+    const get = () => { const v = n => box.querySelector(`[name=${n}]`).value, dec = n => Number(String(v(n)).replace(',', '.')) || 0; return { sex: v('sex'), age: Number(v('age')), cm: Number(v('cm')), kg: Number(v('kg')), goal: v('goal'), act: v('act'), pR: dec('pR'), fR: dec('fR'), rP: dec('rP') }; };
     let pct = null;   // reparto por comidas editado a mano (como en el Excel); null = automático
     const R = x => Math.round(x), pc = x => Math.round(x * 100);
     let sig = '';
@@ -1592,11 +1650,14 @@
       const r = nutriCalc(i); const d = pct || r.dist;
       const def = nutriCalc(Object.assign({}, i, { pR: 0, fR: 0 }));
       box.querySelector('[name=pR]').placeholder = fmtKg(def.pR) + ' (por defecto)'; box.querySelector('[name=fR]').placeholder = fmtKg(def.fR) + ' (por defecto)';
+      const rpI = box.querySelector('[name=rP]'), rpL = box.querySelector('[data-rp]'); rpL.hidden = !r.band.s;
+      rpI.placeholder = r.band.s ? fmtKg(r.band.mid) + ' (' + r.band.txt.replace(' del peso/sem', '') + ')' : '';
+      const outBand = r.band.s && r.ratePct && (r.ratePct < r.band.lo - 1e-9 || (r.band.k !== 'def_agr' && r.band.k !== 'vol_agr' && r.ratePct > r.band.hi + 1e-9));
       const sums = [0, 1, 2].map(j => d.reduce((s, row) => s + row[j], 0));
       out.innerHTML = `<div class="kpis small calc-k">
           <div class="kpi"><small>TMB</small><b>${R(r.tmb)}</b><span>kcal en reposo</span></div>
           <div class="kpi"><small>Mantenimiento</small><b>${R(r.get)}</b><span>práctico: ${R(r.practical)} kcal</span></div>
-          <div class="kpi"><small>Objetivo</small><b>${R(r.kcal)}</b><span>${r.adj ? (r.adj > 0 ? '+' : '') + pc(r.adj) + ' % · ' : ''}${esc(r.rate)}</span></div>
+          <div class="kpi"><small>${esc(r.band.l || 'Objetivo')}</small><b>${R(r.kcal)}</b><span>${r.adj ? (r.adj > 0 ? '+' : '') + R(r.kcal - r.get) + ' kcal · ' : ''}${esc(r.rate)}</span></div>
           <div class="kpi"><small>Agua mínima</small><b>${fmtKg(Math.round(r.water * 10) / 10)} L</b><span>fibra ${r.fiber} g</span></div>
         </div>
         <table class="calc-t"><thead><tr><th></th><th>g/kg</th><th>g</th><th>kcal</th><th>%</th></tr></thead><tbody>
@@ -1605,13 +1666,15 @@
           <tr><td>Carbohidratos</td><td>${fmtKg(Math.round(r.c / i.kg * 100) / 100)}</td><td><b>${R(r.c)}</b></td><td>${R(r.c * 4)}</td><td>${pc(r.c * 4 / r.kcal)}</td></tr>
         </tbody></table>
         ${r.c < 0 ? '<p class="pill red">Con estos datos no quedan calorías para carbohidratos: revisa peso u objetivo.</p>' : ''}
+        ${outBand ? `<p class="note small">${fmtKg(r.ratePct)} % por semana no es un «${esc(r.band.l.toLowerCase())}» (${esc(r.band.txt)}).</p>` : ''}
+        ${r.kcal < r.tmb ? '<p class="note small">Las calorías quedan por debajo de su TMB: úsalo solo en plazos cortos.</p>' : ''}
         <h4>Reparto en 5 comidas</h4><p class="muted small">% de cada macro por comida (cada columna suma 100) y gramos resultantes.</p>
         <div class="tscroll"><table class="calc-t calc-d"><thead><tr><th>Comida</th><th>% P</th><th>% C</th><th>% G</th><th>P g</th><th>C g</th><th>G g</th></tr></thead><tbody>
           ${MEALS5.map((m, k) => `<tr><td><span class="lg">${m.split(' · ')[0]} · </span>${m.split(' · ')[1]}</td>${[0, 1, 2].map(j => `<td><input type="number" step="0.5" data-pct="${k},${j}" value="${Math.round(d[k][j] * 1000) / 10}"></td>`).join('')}<td><b>${R(d[k][0] * r.p)}</b></td><td><b>${R(d[k][1] * r.c)}</b></td><td><b>${R(d[k][2] * r.f)}</b></td></tr>`).join('')}
           <tr class="tot"><td>Total</td>${sums.map(x => `<td class="${Math.abs(x - 1) > 0.005 ? 'bad' : ''}">${Math.round(x * 1000) / 10}</td>`).join('')}<td>${R(d.reduce((s, row) => s + R(row[0] * r.p), 0))}</td><td>${R(d.reduce((s, row) => s + R(row[1] * r.c), 0))}</td><td>${R(d.reduce((s, row) => s + R(row[2] * r.f), 0))}</td></tr>
         </tbody></table></div>
         <div class="row gap wrap calc-actions">
-          <button type="button" class="btn primary small" data-apply>Usar en el plan (kcal, macros y agua)</button>
+          <button type="button" class="btn primary small" data-apply>Usar en el plan (kcal, macros, agua y ritmo en la ficha)</button>
           <button type="button" class="btn small" data-meals>Añadir reparto al menú</button>
           ${pct ? '<button type="button" class="btn ghost small" data-reset>Restablecer reparto</button>' : ''}
         </div>`;
@@ -1620,7 +1683,9 @@
       out.querySelector('[data-apply]').onclick = () => {
         const set = (n, v) => { form[n].value = v; };
         set('kcal', R(r.kcal)); set('protein', R(r.p)); set('carbs', Math.max(0, R(r.c))); set('fat', R(r.f)); set('water', fmtKg(Math.round(r.water * 10) / 10) + ' L');
-        form.dispatchEvent(new Event('input')); toast('Valores puestos en el plan. Revisa y pulsa Guardar plan', 'ok');
+        form.dispatchEvent(new Event('input'));
+        DB.update('clients', c.id, { weekly_target: r.kgw }).then(() => { c.weekly_target = r.kgw; }).catch(e => console.warn(e));
+        toast(`Valores puestos en el plan y ritmo en la ficha (${sgn(r.kgw)} kg/sem). Revisa y pulsa Guardar plan`, 'ok');
       };
       out.querySelector('[data-meals]').onclick = () => {
         const txt = `REPARTO POR COMIDAS (${R(r.kcal)} kcal)\n` + MEALS5.map((m, k) => `${m}: P ${R(d[k][0] * r.p)} g · C ${R(d[k][1] * r.c)} g · G ${R(d[k][2] * r.f)} g`).join('\n');
@@ -1784,7 +1849,9 @@
       ${!asCoach ? ckCta(checkins[0]) : ''}
       <div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
-        <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null ? `objetivo ${sgn(target)} kg/sem` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
+        ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
+          return `<div class="kpi exp"><small>Cambio esperado</small><b>${sgn(target)} kg</b><span>por semana${bd ? ' (' + esc(bd.l.toLowerCase()) + ')' : ''}${exp != null ? ` · ≈ ${fmtKg(exp)} kg esta semana` : ''}</span></div>`; })() : ''}
+        <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null && last && last.delta != null ? `${sgn(Math.round((last.delta - target) * 100) / 100)} kg vs lo esperado` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div>
@@ -1967,12 +2034,14 @@
     const since = c.start_date || (ini && ini.wk) || (c.created_at && c.created_at.slice(0, 10));
     const weeks = since ? Math.max(0, Math.round((Date.now() - new Date(since + 'T12:00:00')) / (7 * 864e5))) : null;
     const lastCk = checkins[0];
+    const refW = cur ? cur.avg : (checkins.find(k => k.weight) || {}).weight;
+    const bandF = window.JMGoals && refW && c.weekly_target != null && c.weekly_target !== '' ? JMGoals.rateBand(Number(c.weekly_target), Number(refW)) : null;
     const item = (l, v) => `<div><small>${l}</small><b>${v}</b></div>`;
     box.innerHTML = `
       <section class="card"><h3>Resumen</h3><div class="ficha-sum">
         ${item('Edad', age != null ? age + ' años' : '–')}${item('Sexo', { male: 'Hombre', female: 'Mujer', other: 'Otro' }[c.sex] || '–')}${item('Altura', h ? fmtKg(h) + ' cm' : '–')}
         ${item('Peso inicial', ini ? fmtKg(ini.avg) + ' kg' : '–')}${item('Peso actual (media)', cur ? fmtKg(cur.avg) + ' kg' : '–')}${item('Cambio total', ini && cur && ini !== cur ? sgn(cur.avg - ini.avg) + ' kg' : '–')}
-        ${item('Peso objetivo', c.goal_weight ? fmtKg(c.goal_weight) + ' kg' : '–')}${item('Ritmo buscado', c.weekly_target != null && c.weekly_target !== '' ? sgn(Number(c.weekly_target)) + ' kg/sem' : '–')}${item('IMC', bmi ? fmtKg(bmi) : '–')}
+        ${item('Peso objetivo', c.goal_weight ? fmtKg(c.goal_weight) + ' kg' : '–')}${item('Ritmo buscado', c.weekly_target != null && c.weekly_target !== '' ? sgn(Number(c.weekly_target)) + ' kg/sem' + (bandF ? `<small class="muted"> · ${esc(bandF.l)}${bandF.s ? ' (' + fmtKg(Math.abs(bandF.pct)) + ' %)' : ''}</small>` : '') : '–')}${item('IMC', bmi ? fmtKg(bmi) : '–')}
         ${item('En el equipo', weeks != null ? weeks + ' semanas' : '–')}${item('Último check-in', lastCk ? fmtDate(lastCk.date) : '–')}${item('Fatiga (último)', lastCk && lastCk.fatigue ? lastCk.fatigue + '/10' : '–')}
       </div>${lastCk && (lastCk.pains || lastCk.fatigue_muscles) ? `<p class="small note">⚠️ ${esc([lastCk.pains, lastCk.fatigue_muscles].filter(Boolean).join(' · '))}</p>` : ''}</section>
       <form class="card" data-ficha><h3>Datos de la ficha</h3>
@@ -1982,6 +2051,7 @@
           <label>Altura (cm)<input type="number" step="0.5" inputmode="decimal" name="height_cm" value="${esc(c.height_cm ?? '')}"></label>
           <label>Empezó el<input type="date" name="start_date" value="${esc(c.start_date || '')}"></label>
           <label>Peso objetivo (kg)<input type="number" step="0.1" inputmode="decimal" name="goal_weight" value="${esc(c.goal_weight ?? '')}"></label>
+          ${window.JMGoals ? `<label>Ritmo buscado${refW ? ` <small class="muted">con ${fmtKg(Math.round(refW * 10) / 10)} kg</small>` : ''}<select data-band ${refW ? '' : 'disabled title="Hace falta un peso registrado"'}><option value="">— elegir —</option>${JMGoals.RATES.map(r => `<option value="${r.k}" ${bandF && bandF.k === r.k ? 'selected' : ''}>${esc(r.l)} · ${esc(r.txt)}</option>`).join('')}</select></label>` : ''}
           <label>Cambio por semana buscado (kg)<input type="number" step="0.05" inputmode="decimal" name="weekly_target" value="${esc(c.weekly_target ?? '')}" placeholder="-0,5 para bajar · 0,25 para subir"></label>
           <label class="full">Objetivo<input name="goal" value="${esc(c.goal || '')}" placeholder="Ej: perder grasa manteniendo fuerza"></label>
           <label class="full">Actividad diaria y trabajo<textarea name="activity" rows="2" placeholder="Trabajo de oficina, 8.000 pasos, turnos…">${esc(c.activity || '')}</textarea></label>
@@ -2003,6 +2073,11 @@
     if (pok) pok.onclick = async () => { await safe(() => DB.rpc('clear_data_request', { p_client: c.id }), 'Solicitud marcada como atendida'); c.data_request = null; tabFicha(c, box); };
     if (window.JMForms) window.JMForms.clientBlock(c, box);
     const f = box.querySelector('[data-ficha]');
+    const bsel = f.querySelector('[data-band]');
+    if (bsel) {
+      bsel.onchange = () => { if (bsel.value && refW) f.weekly_target.value = String(JMGoals.rateKg(bsel.value, Number(refW))); };
+      f.weekly_target.addEventListener('input', () => { const b = JMGoals.rateBand(num(String(f.weekly_target.value).replace(',', '.')), Number(refW)); bsel.value = b ? b.k : ''; });
+    }
     f.onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(f), d = {};

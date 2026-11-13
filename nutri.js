@@ -155,6 +155,7 @@
           <input class="np-bname" value="${esc(b.name)}" list="np-meals" data-bname aria-label="Nombre de la comida">
           <input class="np-time" value="${esc(b.time_hint || '')}" placeholder="Hora (opcional)" data-btime aria-label="Hora">
           <span class="grow"></span>
+          ${os.length ? `<button type="button" class="chip dashed np-adjbtn" data-adj title="Sumar o quitar carbohidratos, proteína o grasas en todas las opciones de esta comida">± Macros</button>` : ''}
           ${idx > 0 ? `<button type="button" class="icon-btn sm" data-up aria-label="Subir">${ic('up')}</button>` : ''}
           <button type="button" class="icon-btn sm" data-delblock aria-label="Borrar comida">${ic('trash')}</button>
         </div>
@@ -332,6 +333,7 @@
           if (!(await confirmBox(`¿Quitar la opción ${k} de «${b.name}»?`, 'Quitar'))) return;
           run(async () => { await DB().remove('meal_options', o.id); st.options = st.options.filter(x => x.id !== o.id); st.items = st.items.filter(i => i.option_id !== o.id); delete N.sel[bid]; draw(); });
         };
+        const adj = el.querySelector('[data-adj]'); if (adj) adj.onclick = () => adjustModal(c, b, optsOf(b.id), itemsOf, st, () => draw());
         el.querySelector('[data-addfood]').onclick = () => { const o = selOf(bid); if (o) foodPicker(c, o, st, () => draw()); };
         el.querySelectorAll('[data-i]').forEach(tr => {
           const it = st.items.find(i => i.id === tr.dataset.i), f = foodMap().get(it.food_id);
@@ -353,6 +355,75 @@
     }
     if (form) form.addEventListener('input', () => { const s = host.querySelector('[data-sum]'); if (s) s.innerHTML = summary(); });
     draw();
+  }
+
+  // Ajuste rápido de una comida: +/− X g de un macro (o X kcal de ese macro) en TODAS sus opciones.
+  // En cada opción se cambia el alimento que más aporta de ese macro (o el que elijas; si no está, se añade).
+  const MAC = { carbs: ['Hidratos', 4, 'c'], protein: ['Proteína', 4, 'p'], fat: ['Grasas', 9, 'f'] };
+  function planAdjust(options, itemsOf, F, { macro, grams, foodId }) {
+    const kpg = MAC[macro][1];
+    return options.map((o, k) => {
+      const its = itemsOf(o.id);
+      let it = null, f = null, bp = -1;
+      if (foodId) { f = F.get(foodId); it = its.find(i => i.food_id === foodId) || null; }
+      else {
+        // la fuente más «pura» del macro (más % de sus kcal), con al menos 5 g por 100 g
+        its.forEach(i => { const ff = F.get(i.food_id); if (!ff || !(Number(ff[macro]) >= 5)) return;
+          const pur = Number(ff[macro]) * kpg / Math.max(1, Number(ff.kcal) || Number(ff[macro]) * kpg);
+          if (!it || pur > bp + 1e-9 || (Math.abs(pur - bp) < 1e-9 && Number(ff[macro]) > Number(f[macro]))) { it = i; f = ff; bp = pur; } });
+      }
+      const row = { o, k, it, f };
+      if (!f || !(Number(f[macro]) > 0)) return Object.assign(row, { skip: foodId ? 'ese alimento no tiene ' + MAC[macro][0].toLowerCase() : 'ningún alimento aporta ' + MAC[macro][0].toLowerCase() });
+      const per = Number(f[macro]) / 100, g0 = it ? gramsOf(it, f) : 0;
+      let g1 = g0 + grams / per;
+      if (!it && grams < 0) return Object.assign(row, { skip: 'no está en esta opción' });
+      if (g1 < 0.5) g1 = 0;
+      const unit = it && it.units != null && Number(f.unit_g) > 0;
+      const units = unit ? Math.round(g1 / Number(f.unit_g) * 2) / 2 : null;
+      const g = unit ? units * Number(f.unit_g) : Math.round(g1);
+      return Object.assign(row, { g0, g, units, unit, real: (g - g0) * per });
+    });
+  }
+  function adjustModal(c, block, options, itemsOf, st, after) {
+    const { esc, toast, modal } = U();
+    const foods = (N.foods || []).filter(f => f.active !== false);
+    const m = modal(`Ajustar «${block.name}»`, `
+      <p class="muted small">Cambia la misma cantidad en las ${options.length} opción${options.length === 1 ? '' : 'es'} de esta comida. Ideal para subir o bajar hidratos en el pre entreno, un refeed, etc.</p>
+      <div class="form-grid np-adj">
+        <label>Qué<select name="dir"><option value="1">Añadir</option><option value="-1">Quitar</option></select></label>
+        <label>Cantidad<input name="amt" type="number" inputmode="decimal" min="0" step="5" value="200" required></label>
+        <label>En<select name="unit"><option value="kcal">kcal</option><option value="g">gramos del macro</option></select></label>
+        <label>De<select name="macro"><option value="carbs">Hidratos</option><option value="protein">Proteína</option><option value="fat">Grasas</option></select></label>
+        <label class="full">Alimento<select name="food"><option value="">Automático: el que más aporta en cada opción</option>${foods.map(f => `<option value="${f.id}">${esc(f.name)} · P ${f1(f.protein)} C ${f1(f.carbs)} G ${f1(f.fat)}</option>`).join('')}</select></label>
+      </div>
+      <div data-prev class="np-adjprev"></div>`, { submitLabel: 'Aplicar a todas', onSubmit: async (form, fd) => {
+        const rows = plan(fd).filter(r => !r.skip && r.g !== r.g0);
+        if (!rows.length) { toast('No hay nada que cambiar con estos datos', 'err'); return false; }
+        try {
+          for (const r of rows) {
+            if (r.it && r.g <= 0) { await DB().remove('option_items', r.it.id); st.items = st.items.filter(i => i.id !== r.it.id); }
+            else if (r.it) { r.it.grams = r.g; r.it.units = r.unit ? r.units : null; await DB().update('option_items', r.it.id, { grams: r.it.grams, units: r.it.units }); }
+            else {
+              const posn = itemsOf(r.o.id).reduce((mx, i) => Math.max(mx, i.position), -1) + 1;
+              const [it] = await DB().insert('option_items', { option_id: r.o.id, client_id: c.id, food_id: r.f.id, food_name: r.f.name, grams: r.g, units: null, position: posn });
+              st.items.push(it);
+            }
+          }
+          toast(`«${block.name}» ajustada en ${rows.length} opción${rows.length === 1 ? '' : 'es'}`, 'ok'); after();
+        } catch (e) { console.error(e); toast('Error: ' + e.message, 'err'); after(); return false; }
+      } });
+    const plan = fd => {
+      const macro = fd.get('macro'), amt = Math.abs(pos(fd.get('amt'))) || 0, sign = Number(fd.get('dir')) || 1;
+      const grams = sign * (fd.get('unit') === 'kcal' ? amt / MAC[macro][1] : amt);
+      return planAdjust(options, itemsOf, foodMap(), { macro, grams, foodId: fd.get('food') || null });
+    };
+    const draw = () => {
+      const fd = new FormData(m), macro = fd.get('macro'), rows = plan(fd);
+      m.querySelector('[data-prev]').innerHTML = `<ul class="list">${rows.map(r => `<li><span class="grow">Opción ${r.k + 1}<small>${r.skip ? `<span class="bad">No se cambia: ${esc(r.skip)}</span>`
+        : `${esc(r.f.name)}: ${r.it ? (r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`) : `se añaden ${r0(r.g)} g`}${r.it && r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${MAC[macro][2].toUpperCase()} · ${r.real >= 0 ? '+' : ''}${r0(r.real * MAC[macro][1])} kcal</b>`}</li>`).join('')}</ul>
+        <p class="muted small">Las kcal son las del macro; el alimento también aporta algo de los otros. Redondeado a 1 g (o a media unidad).</p>`;
+    };
+    m.addEventListener('input', draw); m.addEventListener('change', draw); draw();
   }
 
   // Buscador de alimentos (se queda abierto para añadir varios seguidos)
@@ -538,5 +609,5 @@
     }));
   }
 
-  window.JMNutri = { coachEditor, clientView, wireClient, syncFoods, loadFoods, fetchSheet, sheetIdOf };
+  window.JMNutri = { planAdjust, coachEditor, clientView, wireClient, syncFoods, loadFoods, fetchSheet, sheetIdOf };
 })();

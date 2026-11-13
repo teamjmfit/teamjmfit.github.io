@@ -12,6 +12,24 @@
   const keyOf = n => String(n || '').trim().toLowerCase();
 
   // Métricas de entrada: de dónde sale el dato y su unidad
+  // Ritmos de cambio de peso (% del peso corporal por semana). «mid» es el que se usa por defecto para calcular los kg.
+  const RATES = [
+    { k: 'def_agr', l: 'Déficit agresivo', s: -1, lo: 1, hi: 1.5, mid: 1.1, txt: 'más de 1 % del peso/sem' },
+    { k: 'def_mod', l: 'Déficit moderado', s: -1, lo: 0.25, hi: 1, mid: 0.6, txt: '0,25–1 % del peso/sem' },
+    { k: 'mant', l: 'Mantenimiento', s: 0, lo: 0, hi: 0, mid: 0, txt: 'mantener el peso' },
+    { k: 'vol_mod', l: 'Volumen moderado', s: 1, lo: 0.1, hi: 0.25, mid: 0.2, txt: '+0,1–0,25 % del peso/sem' },
+    { k: 'vol_agr', l: 'Volumen agresivo', s: 1, lo: 0.25, hi: 0.5, mid: 0.35, txt: 'más de 0,25 % del peso/sem' }
+  ];
+  const rateOf = k => RATES.find(r => r.k === k) || RATES[2];
+  // kg por semana con signo para un ritmo y un peso (pct opcional: % elegido a mano)
+  const rateKg = (k, kg, pct) => { const r = rateOf(k), p = pct > 0 ? pct : r.mid; return r.s ? Math.round(r.s * p / 100 * kg * 100) / 100 : 0; };
+  // a qué ritmo corresponde un cambio semanal en kg
+  function rateBand(kgw, kg) {
+    if (kgw == null || !(kg > 0)) return null;
+    const p = kgw / kg * 100;
+    const r = Math.abs(p) < 0.05 ? RATES[2] : p < 0 ? (p < -1 ? RATES[0] : RATES[1]) : (p > 0.25 ? RATES[4] : RATES[3]);
+    return Object.assign({ pct: Math.round(p * 100) / 100 }, r);
+  }
   const METRICS = {
     weight: { l: 'Peso corporal', u: 'kg', src: 'báscula (check-in y pesajes)', d: 1 },
     body_fat: { l: '% de grasa', u: '%', src: 'check-in (medidas)', d: 1 },
@@ -108,14 +126,17 @@
     else if (wk > 52) out.push({ lv: 'warn', t: 'Más de un año: mejor una meta intermedia y luego otra.' });
     const kgw = d / wk, pw = kgw / s * 100;
     if (m === 'weight') {
+      const b = rateBand(kgw, s), pa = nf(Math.abs(pw), 2);
       if (d < 0) {
-        if (pw < -1) out.push({ lv: 'bad', t: `Perder ${nf(-kgw, 2)} kg/semana (${nf(-pw)} % del peso) es extremo: riesgo de perder músculo, rendimiento y adherencia. Lo razonable es 0,5–1 %.` });
-        else if (pw < -0.7) out.push({ lv: 'warn', t: `${nf(-kgw, 2)} kg/semana (${nf(-pw)} %): exigente. Solo en plazos cortos y con proteína alta.` });
-        else out.push({ lv: 'ok', t: `${nf(-kgw, 2)} kg/semana (${nf(-pw)} % del peso): ritmo sostenible.` });
+        if (pw < -1.5) out.push({ lv: 'bad', t: `Perder ${nf(-kgw, 2)} kg/semana (${pa} % del peso) es extremo: riesgo de perder músculo, rendimiento y adherencia. Déficit agresivo: 1–1,5 %; moderado: 0,25–1 %.` });
+        else if (pw < -1) out.push({ lv: 'warn', t: `${b.l}: ${nf(-kgw, 2)} kg/semana (${pa} % del peso). Solo en plazos cortos y con proteína alta.` });
+        else if (pw > -0.25) out.push({ lv: 'info', t: `${nf(-kgw, 2)} kg/semana (${pa} %): más lento que un déficit moderado (0,25–1 %). Difícil de distinguir del ruido semanal.` });
+        else out.push({ lv: 'ok', t: `${b.l}: ${nf(-kgw, 2)} kg/semana (${pa} % del peso), ritmo sostenible.` });
       } else {
-        if (pw > 1) out.push({ lv: 'bad', t: `Ganar ${nf(kgw, 2)} kg/semana (${nf(pw)} %) es demasiado: la mayor parte sería grasa. Lo habitual es 0,25–0,5 %.` });
-        else if (pw > 0.5) out.push({ lv: 'warn', t: `${nf(kgw, 2)} kg/semana (${nf(pw)} %): rápido; parte será grasa. Válido en principiantes o tras una dieta.` });
-        else out.push({ lv: 'ok', t: `${nf(kgw, 2)} kg/semana (${nf(pw)} % del peso): ganancia magra realista.` });
+        if (pw > 1) out.push({ lv: 'bad', t: `Ganar ${nf(kgw, 2)} kg/semana (${pa} %) es demasiado: la mayor parte sería grasa. Volumen moderado: 0,1–0,25 %; agresivo: más de 0,25 %.` });
+        else if (pw > 0.25) out.push({ lv: 'warn', t: `${b.l}: ${nf(kgw, 2)} kg/semana (${pa} %). Parte será grasa; válido en principiantes o tras una dieta.` });
+        else if (pw < 0.1) out.push({ lv: 'info', t: `${nf(kgw, 2)} kg/semana (${pa} %): por debajo de un volumen moderado (0,1–0,25 %), casi mantenimiento.` });
+        else out.push({ lv: 'ok', t: `${b.l}: ${nf(kgw, 2)} kg/semana (${pa} % del peso), ganancia magra realista.` });
       }
     } else if (m === 'body_fat') {
       const pm = d / mo;
@@ -176,12 +197,12 @@
     if (!has('weight') && ws.length >= 2) {
       const cur = valueAt('weight', ws, t), gw = +c.goal_weight;
       if (cur && gw && Math.abs(gw - cur) >= 1) {
-        const rate = Math.min(Math.abs(+c.weekly_target) || cur * 0.005, cur * (gw < cur ? 0.0075 : 0.004));
+        const rate = Math.min(Math.abs(+c.weekly_target) || cur * (gw < cur ? 0.006 : 0.002), cur * (gw < cur ? 0.01 : 0.0025));
         out.push(mk({ metric: 'weight', start_value: Math.round(cur * 10) / 10, target_value: r05(gw), deadline: until(Math.abs(gw - cur) / rate) }, `Peso objetivo de su ficha (${nf(gw)} kg) a un ritmo de ${nf(rate, 2)} kg/semana`));
       } else if (cur) {
         const sl = slopeW(ws.filter(x => x.date >= addD(t, -42)));
         if (sl != null && Math.abs(sl) >= 0.1) {
-          const rate = Math.sign(sl) * Math.min(Math.abs(sl), cur * (sl < 0 ? 0.0075 : 0.004)), wk = Math.max(blockW, 8), tg = r05(cur + rate * wk);
+          const rate = Math.sign(sl) * Math.min(Math.abs(sl), cur * (sl < 0 ? 0.01 : 0.0025)), wk = Math.max(blockW, 8), tg = r05(cur + rate * wk);
           if (Math.abs(tg - cur) >= 0.5) out.push(mk({ metric: 'weight', start_value: Math.round(cur * 10) / 10, target_value: tg, deadline: until(wk) }, `Viene ${sl < 0 ? 'bajando' : 'subiendo'} ${nf(Math.abs(sl), 2)} kg/semana: consolidarlo`));
         }
       }
@@ -205,5 +226,5 @@
     return out.filter(Boolean).slice(0, 4);
   }
 
-  window.JMGoals = { METRICS, FOCUS, autoFocus, title, series, valueAt, blocks, progress, validate, ring, badges, suggest, nf, fd, addD, days };
+  window.JMGoals = { RATES, rateOf, rateKg, rateBand, METRICS, FOCUS, autoFocus, title, series, valueAt, blocks, progress, validate, ring, badges, suggest, nf, fd, addD, days };
 })();
