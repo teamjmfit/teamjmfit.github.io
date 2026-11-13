@@ -3638,7 +3638,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           if (fb.length) await DB.insert('workout_feedback', fb).catch(er => console.warn('workout_feedback', er));
         }, 'Entreno guardado 💪');
         clearWorkout(); stopRest(); openMedia.clear(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-        location.hash = '#/progreso';
+        // Pantalla de felicitación (resumen + foto opcional para redes); al cerrarla, a Progreso
+        if (window.JMPost) setTimeout(() => JMPost.show(w, { onClose: () => { location.hash = '#/progreso'; } }), 0);
+        else location.hash = '#/progreso';
       }
     });
   }
