@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://ctbliwwthavmamcoekmr.supabase.co; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="robots" content="noindex">
+  <title>Únete a TEAM JMFIT</title>
+  <link rel="icon" href="icon-192.png">
+  <style>
+    :root { --bg: #0b0b0c; --card: #151517; --line: #2a2a2e; --text: #f4f1ea; --muted: #a9a49a; --gold: #d4af37; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 600px at 50% -10%, #2a2410 0%, var(--bg) 55%); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 24px 16px; }
+    main { width: min(460px, 100%); display: grid; gap: 18px; }
+    .logo { width: 220px; justify-self: center; }
+    h1 { font-size: 26px; line-height: 1.2; margin: 0; text-align: center; }
+    .lead { color: var(--muted); text-align: center; margin: 0; }
+    .from { text-align: center; background: color-mix(in srgb, var(--gold) 14%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent); color: var(--text); padding: 10px 14px; border-radius: 12px; }
+    .from b { color: var(--gold); }
+    ul.why { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+    ul.why li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+    form { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 12px; }
+    label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+    input, select { font: inherit; color: var(--text); background: #0f0f11; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+    .chk { display: flex; gap: 10px; align-items: flex-start; color: var(--text); font-size: 14px; }
+    .chk input { width: 20px; height: 20px; margin-top: 2px; }
+    .chk a { color: var(--gold); }
+    button { font: 700 16px/1 system-ui, sans-serif; background: var(--gold); color: #111; border: 0; border-radius: 12px; padding: 15px; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .hp { position: absolute; left: -5000px; width: 1px; height: 1px; overflow: hidden; }
+    .err { color: #ff8a80; font-size: 14px; margin: 0; min-height: 1em; }
+    .ok { text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px 18px; }
+    .ok .big { font-size: 46px; }
+    small.legal { color: var(--muted); text-align: center; display: block; }
+  </style>
+</head>
+<body>
+<main>
+  <img class="logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
+  <h1>Entrena con un plan hecho para ti</h1>
+  <p class="lead">Entrenamiento y nutrición individualizados, con seguimiento semanal y todo en una app.</p>
+  <p class="from" id="from" hidden></p>
+  <ul class="why">
+    <li>🏋️ Rutinas adaptadas a tu nivel, tu horario y tus lesiones</li>
+    <li>🍽️ Plan de nutrición por comidas, con opciones</li>
+    <li>📊 Revisión semanal: ajusto tu plan según tus datos</li>
+  </ul>
+  <form id="f" novalidate>
+    <label>Tu nombre<input name="name" autocomplete="name" required maxlength="80"></label>
+    <label>WhatsApp o correo<input name="contact" autocomplete="tel" required maxlength="120" placeholder="600 000 000 o tu@correo.com"></label>
+    <label>¿Qué te gustaría conseguir?<select name="goal">
+      <option value="">Elige una opción</option><option>Perder grasa</option><option>Ganar músculo</option><option>Ganar fuerza</option>
+      <option>Rendimiento deportivo</option><option>Salud y hábitos</option><option>Otro</option></select></label>
+    <div class="hp" aria-hidden="true"><label>No rellenar<input name="web" tabindex="-1" autocomplete="off"></label></div>
+    <label class="chk"><input type="checkbox" name="consent" required><span>Acepto que TEAM JMFIT use estos datos solo para contactarme sobre el servicio. <a href="privacidad.html" target="_blank" rel="noopener">Privacidad</a></span></label>
+    <p class="err" id="err" role="alert"></p>
+    <button type="submit">Quiero que Jorge me contacte</button>
+  </form>
+  <div class="ok" id="ok" hidden><div class="big">💪</div><h2>¡Recibido!</h2><p>Jorge te escribirá muy pronto para conocerte y ver cómo empezar.</p></div>
+  <small class="legal">Si no te conviertes en cliente, tus datos se borran a los 6 meses.</small>
+</main>
+<script src="config.js"></script>
+<script src="unete.js"></script>
+</body>
+</html>
