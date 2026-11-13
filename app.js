@@ -598,7 +598,7 @@
     shell(COACH_NAV, 'clientes', loading(), { title: 'Clientes', actions: `<button class="btn ghost" data-backup title="Descargar un Excel con todos los datos">${ic('copy')}<span>Copia de seguridad</span></button><button class="btn primary" data-new>${ic('plus')}<span>Nuevo cliente</span></button>` });
     $app.querySelector('[data-new]').onclick = () => clientForm();
     $app.querySelector('[data-backup]').onclick = e => window.JMBackup && window.JMBackup.run(e.currentTarget);
-    const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { order: ['started_at', 'desc'], limit: 300 })]);
+    const [clients, sessions] = await Promise.all([loadClients(), DB.list('sessions', { gte: { started_at: new Date(Date.now() - 35 * 864e5).toISOString() }, order: ['started_at', 'desc'], limit: 1500 })]);
     const last = {}; sessions.forEach(s => { if (s.finished_at && !last[s.client_id]) last[s.client_id] = s.finished_at; });
     const act = clients.filter(c => c.active), off = clients.filter(c => !c.active);
     if (!clients.length) {
@@ -609,7 +609,7 @@
     const tv = c => (tri && tri[c.id]) || null;
     const row = (c, why) => { const t = tv(c); return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
-        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${privPill(c)}</span></a></li>`; };
+        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${privPill(c)}</span></a></li>`; };
     const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
     const inApp = act.filter(c => c.user_id), pend = act.filter(c => !c.user_id);
     const LV = [['red', '🔴 Atender ya', 'Más de 3 días sin datos, molestias o caída de rendimiento'], ['amber', '🟡 Vigilar', 'Entreno fallado, peso raro o estancado'], ['green', '🟢 Bien', 'Cumpliendo y progresando']];
@@ -650,10 +650,14 @@
   async function triage(cs, sessions) {
     const d14 = new Date(Date.now() - 14 * 864e5).toISOString(), day = s => String(s || '').slice(0, 10), td = today();
     const opt = p => p.catch(() => []);
+    // Solo la ventana que mira el semáforo (14 días de métricas, 3 semanas de check-ins, 6 de semanas de plan):
+    // con 20 clientes son unos cientos de filas en vez de todo el histórico. Se reutiliza 60 s al volver a la lista.
+    if (S.triCache && Date.now() - S.triCache.t < 60e3 && S.triCache.n === cs.length + ':' + sessions.length) return S.triCache.v;
+    const ago = n => new Date(Date.now() - n * 864e5).toISOString();
     const [daily, cks, fb, pws, progs, routines, stag] = await Promise.all([
-      opt(DB.list('daily_metrics', { order: ['date', 'desc'], limit: 2000 })), opt(DB.list('checkins', { order: ['created_at', 'desc'], limit: 300 })),
-      opt(DB.list('workout_feedback', { order: ['created_at', 'desc'], limit: 300 })), opt(DB.list('program_weeks', { order: ['start_date', 'desc'] })),
-      opt(DB.list('programs')), opt(DB.list('routines')), opt(DB.rpc('stagnation_alerts'))
+      opt(DB.list('daily_metrics', { gte: { date: day(d14) }, order: ['date', 'desc'], limit: 3000 })), opt(DB.list('checkins', { gte: { created_at: ago(21) }, order: ['created_at', 'desc'], limit: 500 })),
+      opt(DB.list('workout_feedback', { gte: { created_at: ago(8) }, order: ['created_at', 'desc'], limit: 500 })), opt(DB.list('program_weeks', { gte: { start_date: day(ago(56)) }, order: ['start_date', 'desc'], limit: 1000 })),
+      opt(DB.list('programs')), opt(DB.list('routines', { notNull: ['day'], limit: 3000 })), opt(DB.rpc('stagnation_alerts'))
     ]);
     const mon = mondayOf(td), dow = (new Date(td + 'T12:00:00').getDay() + 6) % 7 + 1;   // 1 lunes … 7 domingo
     const actP = new Set(progs.filter(p => p.status !== 'archived').map(p => p.id));
@@ -695,6 +699,7 @@
       if (lv === 'green' && ss.length) why.push(['green', doneW ? `${doneW} entreno${doneW > 1 ? 's' : ''} esta semana` : 'al día']);
       out[c.id] = { lv, why, score: why.filter(w => w[0] === 'red').length * 10 + why.filter(w => w[0] === 'amber').length };
     });
+    S.triCache = { t: Date.now(), n: cs.length + ':' + sessions.length, v: out };
     return out;
   }
 
@@ -1011,12 +1016,17 @@
   const mesoOf = (progs, weeks) => { const p = (progs || []).filter(x => x.status !== 'archived' && x.meso_weeks).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]; return p ? { start: p.start_date, weeks: p.meso_weeks } : null; };
   const loadGoals = cid => DB.list('goals', { eq: { client_id: cid }, order: ['created_at', 'desc'] }).catch(() => null);
   const primaryGoal = gs => (gs || []).filter(g => g.status === 'active').sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || String(b.created_at).localeCompare(String(a.created_at)))[0] || null;
+  // Historial de un cliente (último año). Las mismas opciones en todas partes: así la caché de lecturas se comparte
+  // entre Progreso, Rutinas y Objetivos. Con 4-5 entrenos/semana son ~5.000 series al año: se traen por páginas.
+  const yearAgo = () => new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  const clientLogs = cid => DB.list('set_logs', { eq: { client_id: cid }, gte: { created_at: yearAgo() }, order: ['created_at', 'desc'], limit: 6000 });
+  const clientSessions = cid => DB.list('sessions', { eq: { client_id: cid }, gte: { started_at: yearAgo() }, order: ['started_at', 'desc'], limit: 400 });
   async function goalData(c, need) {
     const [checkins, daily, logs, sessions] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 120 }).catch(() => []),
       DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
-      need === 'e1rm' || need === 'all' ? DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }).catch(() => []) : [],
-      need === 'e1rm' || need === 'all' ? DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 }).catch(() => []) : []]);
+      need === 'e1rm' || need === 'all' ? clientLogs(c.id).catch(() => []) : [],
+      need === 'e1rm' || need === 'all' ? clientSessions(c.id).catch(() => []) : []]);
     return { checkins, daily, logs, sessions };
   }
   function goalForm(c, { goal = null, preset = null, data, goals = [], after, meso = null }) {
@@ -1166,7 +1176,7 @@
 
   // ----- Quitar un mesociclo publicado (migración 017): las semanas con entrenos se conservan como historial
   async function deleteMeso(c, prog, pweeks, routines, after) {
-    const ses = await DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 400 }).catch(() => []);
+    const ses = await clientSessions(c.id).catch(() => []);
     const trainedR = new Set(ses.map(x => x.routine_id)), trained = new Set(routines.filter(r => trainedR.has(r.id)).map(r => r.program_week_id));
     const x = new Date(today() + 'T12:00:00'); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); const mon = ymd(x);
     const fut = pweeks.filter(w => w.start_date >= mon && !trained.has(w.id)).length, all = pweeks.filter(w => !trained.has(w.id)).length;
@@ -1465,7 +1475,7 @@
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
       DB.list('programs', { eq: { client_id: c.id } }),
       DB.list('program_weeks', { eq: { client_id: c.id } }),
-      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 400 })
+      clientSessions(c.id)
     ]);
     // ejercicios solo de las semanas que caen en el mes que se ve (y de las rutinas fijas)
     const mFrom = addDays(`${y}-${String(m).padStart(2, '0')}-01`, -13), mTo = addDays(`${y}-${String(m).padStart(2, '0')}-01`, 44);
@@ -1814,7 +1824,7 @@
         el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
       });
     }
-    Promise.all([DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }), DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 200 })])
+    Promise.all([clientLogs(c.id), clientSessions(c.id)])
       .then(([lg, ss]) => { H = exHistory(lg, ss); if (document.body.contains(box)) { sync(); draw(); } }).catch(() => {});
     form.querySelector('[data-addex]').onclick = () => { sync(); const prev = rows[rows.length - 1]; rows.push({ sets: prev ? prev.sets : 3, reps: prev ? prev.reps : '10', rest_sec: prev ? prev.rest_sec : 90, intens: prev ? prev.intens : '', prog: prev ? prev.prog : 'none', scheme: 'straight' }); draw(); const ins = box.querySelectorAll('[name=ex]'); ins[ins.length - 1].focus(); };
     draw();
@@ -2050,8 +2060,8 @@
   async function tabProgress(c, box, asCoach) {
     const [checkins, sessions, logs, daily, photos, progs, pweeks] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
-      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 120 }),
-      DB.list('set_logs', { eq: { client_id: c.id }, order: ['created_at', 'desc'], limit: 2000 }),
+      clientSessions(c.id),
+      clientLogs(c.id),
       DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
       DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => []),
       DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
@@ -2401,22 +2411,6 @@
     };
   }
 
-  function lineChart(pts) {
-    const W = 600, H = 200, P = 46;
-    const ys = pts.map(p => p.y); let min = Math.min(...ys), max = Math.max(...ys);
-    if (max - min < 1) { min -= 0.5; max += 0.5; }
-    const x = i => P + (i * (W - P * 2)) / Math.max(1, pts.length - 1);
-    const y = v => H - P - ((v - min) * (H - P * 2)) / (max - min);
-    const path = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.y).toFixed(1)}`).join(' ');
-    const area = `${path} L${x(pts.length - 1)},${H - P} L${x(0)},${H - P} Z`;
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del peso">
-      <line x1="${P}" x2="${W - P}" y1="${y(max)}" y2="${y(max)}" class="grid"/><line x1="${P}" x2="${W - P}" y1="${y(min)}" y2="${y(min)}" class="grid"/>
-      <text x="${W - P + 4}" y="${y(max) + 4}" class="lbl">${fmtKg(max)}</text><text x="${W - P + 4}" y="${y(min) + 4}" class="lbl">${fmtKg(min)}</text>
-      <path d="${area}" class="area"/><path d="${path}" class="line"/>
-      ${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.y)}" r="3.5" class="pt"><title>${fmtDate(p.x)}: ${fmtKg(p.y)} kg</title></circle>`).join('')}
-      <text x="${P}" y="${H - 6}" class="lbl">${fmtDate(pts[0].x)}</text><text x="${W - P}" y="${H - 6}" class="lbl" text-anchor="end">${fmtDate(pts[pts.length - 1].x)}</text>
-    </svg>`;
-  }
 
   // ----- Cobros del cliente
   async function tabClientPayments(c, box) {
