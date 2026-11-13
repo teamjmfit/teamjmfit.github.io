@@ -132,8 +132,8 @@
       const ex = window.JMFIT_EXERCISES.map(([name, muscle, equipment]) => ({ id: uuid(), name, muscle, equipment, media_url: '', notes: '' }));
       store.tables.exercises = ex;
       const find = n => ex.find(e => e.name === n);
-      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, created_at: now() };
-      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, created_at: now() };
+      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, created_at: now() };
+      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, created_at: now() };
       store.tables.clients = [c1, c2];
       const mkRoutine = (client, name, day, items) => {
         const r = { id: uuid(), client_id: client.id, name, day, position: day || 0, notes: '', created_at: now() };
@@ -289,6 +289,19 @@
           save(); return prog.id;
         }
         if (fn === 'storage_usage') return { photo_bytes: 0, photos: 0, db_bytes: 0 };
+        if (/^(accept_consent|withdraw_consent|request_data_deletion)$/.test(fn)) {
+          const me = T('clients').find(c => c.user_id === 'demo-client'); if (!me) throw new Error('Tu cuenta no está vinculada a un cliente');
+          const ts = now();
+          if (fn === 'accept_consent') {
+            T('consents').push({ id: uuid(), client_id: me.id, version: a.p_version, action: 'accept', health: true, photos: !!a.p_photos, guardian_name: a.p_guardian_name || null, guardian_relation: a.p_guardian_relation || null, created_at: ts });
+            Object.assign(me, { consent_version: a.p_version, consent_at: ts, consent_photos: !!a.p_photos }, me.data_request === 'withdraw' ? { data_request: null, data_request_at: null } : {});
+          } else if (fn === 'withdraw_consent') {
+            T('consents').push({ id: uuid(), client_id: me.id, version: me.consent_version || '-', action: 'withdraw', health: false, photos: false, created_at: ts });
+            Object.assign(me, { consent_version: null, consent_at: null, data_request: 'withdraw', data_request_at: ts });
+          } else Object.assign(me, { data_request: 'delete', data_request_at: ts });
+          save(); return fn === 'accept_consent' ? ts : null;
+        }
+        if (fn === 'clear_data_request') { const c = T('clients').find(x => x.id === a.p_client); if (c) Object.assign(c, { data_request: null, data_request_at: null }); save(); return null; }
         if (fn === 'delete_mesocycle') {
           const prog = T('programs').find(p => p.id === a.p_program); if (!prog) throw new Error('Mesociclo no encontrado');
           const d0 = new Date(); d0.setDate(d0.getDate() - ((d0.getDay() + 6) % 7)); const mon = d0.toISOString().slice(0, 10);
