@@ -948,7 +948,7 @@
       <div class="routines">${routines.map(r => {
         const its = items.filter(i => i.routine_id === r.id), names = its.map(i => i.exercise_name);
         return `<details class="card routine r-fold" data-rk="${esc(r.name)}" ${S.rOpen && S.rOpen.has(c.id + '|' + r.name) ? 'open' : ''}>
-          <summary><span class="r-chev">${ic('back')}</span><div class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios</small><small class="r-names">${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` y ${names.length - 3} más` : ''}</small></div>
+          <summary><span class="r-chev">${ic('back')}</span><div class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios${r.prio_muscles && r.prio_muscles.length ? ` · prioridad: ${esc(r.prio_muscles.join(', '))}` : ''}</small><small class="r-names">${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` y ${names.length - 3} más` : ''}</small></div>
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
             <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></summary>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
@@ -1721,6 +1721,24 @@
     const INTENS = [['', '—'], ['rir:F', 'Al fallo'], ...[0, 1, 2, 3, 4, 5].map(v => ['rir:' + v, 'RIR ' + v]), ...[6, 7, 7.5, 8, 8.5, 9, 9.5, 10].map(v => ['rpe:' + v, 'RPE ' + fmtKg(v)])];
     const exOpts = S.exercises.map(e => `<option value="${esc(e.name)}">${esc(e.muscle || '')}</option>`).join('');
     let H = null;   // marcas anteriores del cliente (se cargan al abrir)
+    // Músculos prioritarios: sus ejercicios van al principio (detrás del calentamiento / movilidad), en el orden en que se marcan
+    let prio = Array.isArray(r.prio_muscles) ? r.prio_muscles.slice() : [];
+    const PRE = /^(movilidad|calentamiento|cardio|estiramiento)$/i;
+    const musOf = x => { const n = String(x.exercise_name || '').trim(); return n && window.JMLoad && JMLoad.muscleOf ? JMLoad.muscleOf(n, S.exercises)[0] : null; };
+    const prioOrder = () => {
+      if (!prio.length) return;
+      const rk = x => { const m = musOf(x); const k = prio.findIndex(p => p.toLowerCase() === String(m || '').toLowerCase()); return k; };
+      let lead = 0; while (lead < rows.length && PRE.test(musOf(rows[lead]) || '')) lead++;   // el calentamiento del principio se queda arriba
+      const head = rows.slice(0, lead), rest = rows.slice(lead);
+      const pr = rest.map((x, i) => ({ x, i, k: rk(x) })), top = pr.filter(o => o.k >= 0).sort((a, b) => a.k - b.k || a.i - b.i).map(o => o.x), oth = pr.filter(o => o.k < 0).map(o => o.x);
+      rows.splice(0, rows.length, ...head, ...top, ...oth);
+    };
+    const prioBox = () => {
+      const ms = [...new Set(rows.map(musOf).filter(m => m && m !== 'Sin grupo' && !PRE.test(m)))];
+      prio.filter(p => !ms.includes(p)).forEach(p => ms.push(p));
+      return ms.length ? `<span class="muted small">Priorizar:</span> ${ms.map(m => { const k = prio.indexOf(m); return `<button type="button" class="chip ${k >= 0 ? 'on' : ''}" data-pm="${esc(m)}">${k >= 0 ? `<b>${k + 1}</b> ` : ''}${esc(m)}</button>`; }).join('')}`
+        : '<small class="muted">Añade ejercicios del catálogo para poder priorizar músculos.</small>';
+    };
     const histHtml = name => {
       if (!H || !name) return '';
       const h = H[String(name).trim().toLowerCase()]; if (!h || !h.length) return '<p class="ex-hist muted">Sin marcas todavía en este ejercicio.</p>';
@@ -1765,6 +1783,7 @@
         <label class="full">Notas de la sesión<textarea name="rnotes" rows="2" placeholder="Calentamiento, objetivo del día…">${esc(r.notes)}</textarea></label>
       </div>
       <h4>Ejercicios${week ? ` <small class="muted">· ${esc(weekLabel(week))}</small>` : ''}</h4>
+      <div class="prio-ms" data-prioms></div>
       <div data-rows></div>
       <button type="button" class="btn block ghost dashed" data-addex>${ic('plus')} Añadir ejercicio</button>
       ${adj ? `<p class="note small">Esta es una semana de <b>${week.kind === 'deload' ? 'descarga' : 'intensidad'}</b>: aquí ves y cambias los valores <b>fijos</b> (series, RIR y carga). Al guardar se vuelve a aplicar ${week.kind === 'deload' ? 'el 60 % de las series y RIR 2' : 'RIR −1 y la subida de carga'}.</p>` : ''}
@@ -1772,13 +1791,16 @@
       wide: true, submitLabel: 'Guardar rutina',
       danger: isNew ? null : { label: 'Eliminar rutina', run: async () => { if (await confirmBox('Se eliminará la rutina "' + r.name + '".')) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); render(); } } },
       onSubmit: async (f, fd) => {
-        sync();
+        sync(); prioOrder();
         const valid = rows.filter(x => (x.exercise_name || '').trim());
-        const head = { name: fd.get('name').trim() || 'Rutina', day: fd.get('day') ? Number(fd.get('day')) : null, notes: fd.get('rnotes') };
+        const head = { name: fd.get('name').trim() || 'Rutina', day: fd.get('day') ? Number(fd.get('day')) : null, notes: fd.get('rnotes'), prio_muscles: prio };
         await safe(async () => {
           let rid = r.id;
-          if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, week ? { program_week_id: week.id } : {}, head)); rid = nr.id; }
-          else await DB.update('routines', rid, head);
+          // sin la actualización 022 la columna no existe: se guarda igual, solo sin recordar los músculos marcados
+          const noPrio = e => /prio_muscles/.test(e && e.message || '');
+          if (isNew) { const ins = h => DB.insert('routines', Object.assign({ client_id: c.id, position: Date.now() % 100000 }, week ? { program_week_id: week.id } : {}, h));
+            const [nr] = await ins(head).catch(e => { if (!noPrio(e)) throw e; const h = Object.assign({}, head); delete h.prio_muscles; return ins(h); }); rid = nr.id; }
+          else await DB.update('routines', rid, head).catch(e => { if (!noPrio(e)) throw e; const h = Object.assign({}, head); delete h.prio_muscles; return DB.update('routines', rid, h); });
           // Actualiza en su sitio los ejercicios que ya existían (así conservan su linaje y su historial de cargas),
           // crea los nuevos y borra solo los que se han quitado
           const old = isNew ? [] : await DB.list('routine_items', { eq: { routine_id: rid } });
@@ -1818,14 +1840,20 @@
         Object.assign(i, { exercise_name: v('ex'), sets: v('sets'), reps: v('reps'), load_kg: v('kg'), intens: v('int'), tempo: v('tempo'), rest_sec: v('rest'), notes: v('notes'), media_url: v('media'), prog: v('prog'), scheme: v('scheme') });
       });
     }
+    const pbox = form.querySelector('[data-prioms]');
+    function drawPrio() {
+      pbox.innerHTML = prioBox();
+      pbox.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { sync(); const m = b.dataset.pm, k = prio.indexOf(m); if (k >= 0) prio.splice(k, 1); else prio.push(m); prioOrder(); draw(); });
+    }
     function draw() {
+      drawPrio();
       box.innerHTML = rows.map(rowHtml).join('') || '<p class="empty">Añade el primer ejercicio. Escribe para buscar en tu catálogo (o escribe uno nuevo).</p>';
       box.querySelectorAll('.ex-row').forEach(el => {
         const idx = +el.dataset.idx;
         el.querySelector('[data-del]').onclick = () => { sync(); rows.splice(idx, 1); draw(); };
         el.querySelector('[data-up]').onclick = () => { sync(); if (idx > 0) { [rows[idx - 1], rows[idx]] = [rows[idx], rows[idx - 1]]; draw(); } };
         el.querySelector('[data-down]').onclick = () => { sync(); if (idx < rows.length - 1) { [rows[idx + 1], rows[idx]] = [rows[idx], rows[idx + 1]]; draw(); } };
-        el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; };
+        el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; sync(); drawPrio(); };
       });
     }
     Promise.all([clientLogs(c.id), clientSessions(c.id)])

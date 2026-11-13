@@ -1220,3 +1220,6 @@ details.r-fold[open] > summary { margin-bottom: 10px; }
 .link-b:hover b { text-decoration: underline; }
 .pill-btn { border: 0; cursor: pointer; font: inherit; }
 details.r-fold > summary { color: var(--text); }
+
+.prio-ms { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.prio-ms .chip b { font-weight: 800; }
