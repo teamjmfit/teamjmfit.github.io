@@ -58,7 +58,7 @@
     if (k.fatigue != null && k.fatigue >= 7) { score += 10; sig.push(`fatiga ${k.fatigue}/10`); }
     if (k.sleep_h != null && k.sleep_h < 6) { score += 10; sig.push(`duerme ${String(k.sleep_h).replace('.', ',')} h`); }
     if (k.stress != null && k.stress >= 8) { score += 6; sig.push(`estrés ${k.stress}/10`); }
-    if (k.fatigue_muscles) sig.push('agujetas/carga: ' + String(k.fatigue_muscles).slice(0, 60));
+    if (k.fatigue_muscles && (!window.JMRealTxt || window.JMRealTxt(k.fatigue_muscles))) sig.push('agujetas/carga: ' + String(k.fatigue_muscles).slice(0, 60));
     if (z != null && z <= -1) sig.push(`bienestar por debajo de lo normal (z ${String(z).replace('.', ',')})`);
     score = Math.max(0, Math.min(100, Math.round(score)));
     const fatigue = { score, zone: score >= 65 ? 'red' : score >= 45 ? 'amber' : 'green', z, acwr, signals: sig };
