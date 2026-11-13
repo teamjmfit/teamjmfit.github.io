@@ -2130,9 +2130,74 @@
           <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
           ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
-      modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}`, { wide: true });
+      const m0 = modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
+        ${asCoach ? `<div class="row gap wrap sx-acts"><button type="button" class="btn small" data-sedit>${ic('edit')} Editar entreno</button><button type="button" class="btn small ghost danger" data-sdel>${ic('trash')} Borrar entreno</button></div>` : ''}`, { wide: true });
+      if (asCoach) {
+        m0.querySelector('[data-sedit]').onclick = () => editSession(s, sets);
+        m0.querySelector('[data-sdel]').onclick = async () => {
+          if (!(await confirmBox(`Se borrará «${s.routine_name || 'Entreno'}» del ${fmtDate(s.started_at, { day: 'numeric', month: 'long' })} con sus ${sets.length} series. No se puede deshacer.`, 'Borrar'))) return;
+          await safe(() => DB.remove('sessions', s.id), 'Entreno borrado');
+          tabProgress(c, box, asCoach);
+        };
+      }
       if (asCoach && !s.coach_seen) { s.coach_seen = true; li && li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
+    }
+    // Entrenador: corregir un entreno mal registrado (fecha, duración, RPE, nota y cada serie) o añadir/quitar series
+    function editSession(s, sets0) {
+      const rows = sets0.map(l => ({ id: l.id, ex: l.exercise_name, w: l.weight ?? '', r: l.reps ?? '', x: l.failure ? 'F' : l.rir != null ? String(Number(l.rir)) : '', rpe: l.rpe, rid: l.routine_item_id, lin: l.lineage_id }));
+      const dur0 = Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4));
+      const loc = d => { const x = new Date(d); return new Date(x.getTime() - x.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
+      const exs = () => [...new Set(rows.map(r => r.ex))];
+      const rowHtml = (r, k) => `<div class="se-row" data-k="${k}"><input inputmode="decimal" data-f="w" value="${esc(r.w)}" placeholder="kg" aria-label="kg"><span>×</span><input inputmode="numeric" data-f="r" value="${esc(r.r)}" placeholder="reps" aria-label="reps">
+        <select data-f="x" aria-label="RIR"><option value="">RIR –</option>${['F', '0', '1', '2', '3', '4', '5', '6'].map(v => `<option value="${v}" ${r.x === v ? 'selected' : ''}>${v === 'F' ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select>
+        <button type="button" class="icon-btn sm" data-rm aria-label="Quitar serie">${ic('trash')}</button></div>`;
+      const m = modal('Editar entreno', `
+        <div class="form-grid">
+          <label>Rutina<input name="rn" value="${esc(s.routine_name || '')}" maxlength="120"></label>
+          <label>Fecha y hora<input type="datetime-local" name="at" value="${loc(s.started_at)}" required></label>
+          <label>Duración (min)<input type="number" name="dur" min="5" max="300" value="${dur0}"></label>
+          <label>RPE de la sesión<input type="number" name="rpe" min="1" max="10" value="${esc(s.rpe ?? '')}"></label>
+        </div>
+        <label>Comentario<textarea name="notes" rows="2">${esc(s.notes || '')}</textarea></label>
+        <div data-sets></div>
+        <div class="row gap wrap"><input class="grow" list="se-ex" data-newex placeholder="Añadir otro ejercicio…"><datalist id="se-ex">${(S.exercises || []).map(e => `<option value="${esc(e.name)}">`).join('')}</datalist><button type="button" class="btn small" data-addex>${ic('plus')} Añadir</button></div>`, {
+        submitLabel: 'Guardar cambios', wide: true,
+        onSubmit: async (f, fd) => {
+          const at = new Date(fd.get('at')), dur = Math.max(5, Math.min(300, parseInt(fd.get('dur'), 10) || dur0));
+          if (isNaN(at)) { toast('Pon una fecha válida', 'err'); return false; }
+          const ok = rows.filter(r => r.ex && (num(r.w) != null || parseInt(r.r, 10) > 0));
+          let vol = 0; const n = {};
+          await safe(async () => {
+            const keep = new Set(ok.filter(r => r.id).map(r => r.id));
+            for (const l of sets0) if (!keep.has(l.id)) await DB.remove('set_logs', l.id);
+            for (const r of ok) {
+              n[r.ex] = (n[r.ex] || 0) + 1;
+              const kg = num(r.w), reps = parseInt(r.r, 10);
+              const d = { exercise_name: r.ex, set_no: n[r.ex], weight: kg, reps: isNaN(reps) ? null : reps, rir: r.x === 'F' ? 0 : r.x === '' ? null : Number(r.x) };
+              if (r.x === 'F') d.failure = true; else if (sets0.some(l => l.failure)) d.failure = false;
+              if (kg && !isNaN(reps)) vol += kg * reps;
+              if (r.id) await DB.update('set_logs', r.id, d);
+              else await DB.insert('set_logs', [Object.assign({ session_id: s.id, client_id: c.id, created_at: at.toISOString() }, r.rid ? { routine_item_id: r.rid } : {}, r.lin ? { lineage_id: r.lin } : {}, d)]);
+            }
+            await DB.update('sessions', s.id, { routine_name: String(fd.get('rn') || '').trim() || s.routine_name, started_at: at.toISOString(), finished_at: new Date(at.getTime() + dur * 6e4).toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes') || null, volume: Math.round(vol) });
+          }, 'Entreno corregido');
+          tabProgress(c, box, asCoach);
+        }
+      });
+      const host = m.querySelector('[data-sets]');
+      const draw = () => {
+        host.innerHTML = exs().map(ex => `<div class="se-ex"><b>${esc(ex)}</b>${rows.map((r, k) => [r, k]).filter(([r]) => r.ex === ex).map(([r, k]) => rowHtml(r, k)).join('')}
+          <button type="button" class="btn small ghost" data-adds="${esc(ex)}">${ic('plus')} Serie</button></div>`).join('') || '<p class="empty small">Sin series.</p>';
+        host.querySelectorAll('.se-row').forEach(el => {
+          const r = rows[+el.dataset.k];
+          el.querySelectorAll('[data-f]').forEach(i => { i.oninput = i.onchange = () => { r[i.dataset.f] = String(i.value).replace(',', '.'); }; });
+          el.querySelector('[data-rm]').onclick = () => { rows.splice(+el.dataset.k, 1); draw(); };
+        });
+        host.querySelectorAll('[data-adds]').forEach(b => b.onclick = () => { const ex = b.dataset.adds, last = [...rows].reverse().find(r => r.ex === ex) || {}; rows.splice(rows.lastIndexOf(last) + 1 || rows.length, 0, { ex, w: last.w ?? '', r: '', x: '', rid: last.rid, lin: last.lin }); draw(); });
+      };
+      m.querySelector('[data-addex]').onclick = () => { const i = m.querySelector('[data-newex]'), ex = i.value.trim(); if (!ex) return; rows.push({ ex, w: '', r: '', x: '' }); i.value = ''; draw(); };
+      draw();
     }
     function perfHtml() {
       if (!perf.length) return '';

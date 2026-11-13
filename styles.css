@@ -1187,3 +1187,10 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 .tri-cats b { text-align: right; }
 .tri-h { scroll-margin-top: 80px; }
 .set .rir-sel.fail { font-size: 12.5px; letter-spacing: -.01em; }
+
+/* Editar entreno (entrenador) */
+.sx-acts { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.se-ex { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.se-ex > b { display: block; margin-bottom: 6px; }
+.se-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.se-row input, .se-row select { min-width: 0; width: 100%; }
