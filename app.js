@@ -757,19 +757,22 @@
   function invite(c) {
     const msg = `¡Hola, ${c.name.trim().split(/\s+/)[0]}! 💪 Desde ahora tus entrenos, tu nutrición y tus revisiones van en la app de TEAM JMFIT.
 
-1️⃣ Abre el enlace de invitación que te llega por correo (mira también en spam) o entra en https://teamjmfit.github.io con tu correo de siempre.
+1️⃣ Entra en https://teamjmfit.github.io, pulsa «Soy atleta nuevo» y crea tu cuenta con este correo: ${c.email}
 2️⃣ Instálala en el móvil:
    • iPhone: ábrela en Safari → botón Compartir → «Añadir a pantalla de inicio».
    • Android: ábrela en Chrome → menú ⋮ → «Instalar aplicación».
 3️⃣ En «Entreno» tienes lo de cada día: apunta tus series, kilos y RIR. Los viernes te pedirá el check-in.
 
 Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
+    // WhatsApp (sobre todo en ordenador) estropea los emojis que llegan por el enlace: ahí va la versión sin emojis.
+    // «Copiar» mantiene los emojis (al pegar sí se ven).
+    const waMsg = msg.replace(/([1-9])\uFE0F?\u20E3\s*/g, '$1. ').replace(/\s*\p{Extended_Pictographic}\uFE0F?/gu, '');
     modal('Invita a ' + c.name, `
       <p>Envíale este mensaje para que cree su cuenta con <b>${esc(c.email)}</b>. En cuanto se registre, verá su plan.</p>
       <textarea class="mono" rows="13" readonly>${esc(msg)}</textarea>
       <div class="row gap">
         <button type="button" class="btn" data-copy>${ic('copy')} Copiar</button>
-        ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}?text=${encodeURIComponent(msg)}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
+        ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}?text=${encodeURIComponent(waMsg)}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
         <a class="btn ghost" href="#/cliente/${c.id}" data-close>Ir a su ficha</a>
       </div>`);
     document.querySelector('[data-copy]').onclick = () => navigator.clipboard.writeText(msg).then(() => toast('Copiado', 'ok'));
