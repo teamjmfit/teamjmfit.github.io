@@ -1135,7 +1135,7 @@ body[data-role=client] .gl-reward { font-size: 12.5px; }
 
 /* Barra superior nítida (cliente y entrenador): fondo sólido, sin desenfoque ni halo en el logo */
 .top, .wk-top { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 rgba(0, 0, 0, .04); }
-.top .brand-logo.sm { filter: none; image-rendering: -webkit-optimize-contrast; }
+.top .brand-logo.sm { filter: none; }
 .top h1, .wk-top b { text-shadow: none; }
 
 /* Entreno en vivo: RIR con F, avisos por serie, comentario, cambio de ejercicio y globo al acabar el descanso */
@@ -1463,3 +1463,10 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 }
 .wc-rng { margin: -2px 0 6px; }
 .wc-rng .chip { min-height: 32px; padding: 5px 11px; font-size: 13px; }
+
+/* Cabecera nítida en el iPhone: Safari desenfocaba el título y el logo cuando el desenfoque del fondo
+   (backdrop-filter) estaba en la propia cabecera. Ahora el fondo translúcido va en una capa aparte, detrás. */
+.top, .wk-top, .tabbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: transparent; isolation: isolate; }
+.top::before, .wk-top::before, .tabbar::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 86%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.tabbar::before { background: color-mix(in srgb, var(--bg) 90%, transparent); }
