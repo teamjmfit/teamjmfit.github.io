@@ -1480,3 +1480,10 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .va-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .va-acts .btn .ic { width: 16px; height: 16px; }
 @media (min-width: 900px) { .va-info { font-size: 12.5px; } .venc-card .list li.va-row { padding: 8px 0; } }
+
+/* Plan de comidas: subir y bajar alimentos */
+.np-act { white-space: nowrap; }
+.np-mv { display: inline-flex; gap: 0; margin-right: 2px; }
+.np-mv .icon-btn.sm { width: 30px; height: 30px; }
+.np-mv .np-dn .ic { transform: rotate(180deg); }
+.np-t tbody tr:first-child [data-mv="-1"], .np-t tbody tr:last-child [data-mv="1"] { visibility: hidden; }
