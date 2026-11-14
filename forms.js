@@ -11,6 +11,21 @@
       .map(([q, a]) => `<dt>${esc(q)}</dt><dd>${nl2br(String(a))}</dd>`).join('')}</dl>`;
   };
 
+  // Datos de un posible cliente nuevo sacados de sus respuestas (todas las suyas: Plan 1:1 y Salud)
+  function prefill(r, rows) {
+    const mine = rows.filter(x => !x.client_id && ((r.email && x.email && x.email.toLowerCase() === r.email.toLowerCase()) || (r.name && x.name && x.name.trim().toLowerCase() === r.name.trim().toLowerCase())));
+    const ans = mine.concat(mine.includes(r) ? [] : [r]).flatMap(x => x.answers || []);
+    const find = re => { const a = ans.find(([q, v]) => re.test(String(q)) && String(v ?? '').trim()); return a ? String(a[1]).trim() : ''; };
+    let phone = find(/tel[eé]fono|whats ?app|m[oó]vil|celular/i).replace(/\D/g, '');
+    if (phone.length === 9) phone = '34' + phone;
+    const sv = (find(/servicio|modalidad|qu[eé] (te )?interesa|tipo de (plan|asesor)/i) || '').toLowerCase();
+    const service = /mixt|ambos|completo|entren\w* y nutri|nutri\w* y entren/.test(sv) ? 'Mixto' : /nutri|dieta|alimenta/.test(sv) ? 'Nutrición' : /entren|rutina/.test(sv) ? 'Entreno' : '';
+    const health = ans.filter(([q, v]) => /lesi|patolog|enfermedad|medicaci|alerg|intoler|operaci|cirug|dolor|limitaci/i.test(String(q)) && String(v ?? '').trim() && !/^(no|ninguna?o?|nada|-)\.?$/i.test(String(v).trim()))
+      .map(([q, v]) => `${String(q).trim().replace(/[:¿?]+/g, '')}: ${String(v).trim()}`);
+    return { name: (r.name || find(/^nombre|nombre (y|completo)/i) || '').trim(), email: (r.email || find(/correo|e-?mail/i) || '').trim().toLowerCase(), phone, service,
+      goal: find(/objetivo|meta|qu[eé] (quieres|buscas) conseguir/i).slice(0, 200), notes: health.join('\n').slice(0, 1500), ids: mine.map(x => x.id).concat(mine.includes(r) ? [] : [r.id]) };
+  }
+
   async function homeCard(host) {
     if (!host) return;
     try {
@@ -39,12 +54,22 @@
           <summary><span class="grow"><b>${esc(r.name || 'Sin nombre')}</b><small class="muted"> · ${FORMS[r.form] || r.form} · ${ago(r.submitted_at)}</small></span>
             ${r.client_id ? `<span class="pill green">${esc(name(r.client_id) || 'Cliente')}</span>` : '<span class="pill amber">Sin cliente</span>'}${r.seen ? '' : '<i class="dot"></i>'}</summary>
           ${answersHtml(r)}
+          ${r.client_id ? '' : '<div class="row gap wrap fr-accept"><button type="button" class="btn small primary" data-accept>✓ Aceptar como cliente nuevo</button><small class="muted">Se abre la ficha de alta con sus datos (nombre, correo, teléfono, objetivo y salud en notas privadas). Revísalos y guarda.</small></div>'}
           <div class="row gap wrap"><label class="grow">Cliente<select data-cl><option value="">— Sin asignar (posible cliente nuevo) —</option>${clients.map(c => `<option value="${c.id}" ${c.id === r.client_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></div>
         </details>`).join('') : '<p class="empty">Todavía no ha llegado ninguna respuesta.</p>'}`;
       box.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
       box.querySelectorAll('.fr-item').forEach(d => {
         const r = rows.find(x => x.id === d.dataset.id);
         d.addEventListener('toggle', () => { if (d.open && !r.seen) { r.seen = true; d.classList.remove('unseen'); const dot = d.querySelector('.dot'); if (dot) dot.remove(); DB.update('form_responses', r.id, { seen: true }).catch(() => {}); } });
+        const acc = d.querySelector('[data-accept]');
+        if (acc) acc.onclick = () => {
+          if (!window.JMClientForm) return;
+          const pf = prefill(r, rows), ids = pf.ids; delete pf.ids;
+          window.JMClientForm(null, { data: pf, onCreated: async c => {
+            for (const id of ids) await DB.update('form_responses', id, { client_id: c.id, seen: true }).catch(() => {});
+            rows.forEach(x => { if (ids.includes(x.id)) { x.client_id = c.id; x.seen = true; } }); clients.push(c); draw();
+          } });
+        };
         d.querySelector('[data-cl]').onchange = async e => {
           const v = e.target.value || null;
           try { await safe(() => DB.update('form_responses', r.id, { client_id: v }), v ? 'Asignado a ' + name(v) : 'Sin asignar'); r.client_id = v; draw(); } catch (err) { /* avisado */ }

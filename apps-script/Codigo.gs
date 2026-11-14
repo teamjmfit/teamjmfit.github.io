@@ -30,6 +30,7 @@ function doPost(e) {
     const accion = body.action;
     if (accion === 'resumen') return responder_({ ok: true, data: resumen_() });
     if (accion === 'registrarPago') return responder_({ ok: true, data: registrarPago_(body.pago || {}) });
+    if (accion === 'altaCliente') return responder_({ ok: true, data: altaCliente_(body.cliente || {}) });
     return responder_({ ok: false, error: 'Acción desconocida: ' + accion });
   } catch (err) {
     return responder_({ ok: false, error: String(err && err.message || err) });
@@ -113,6 +114,45 @@ function registrarPago_(p) {
     });
     SpreadsheetApp.flush();
     return { fila: fila, id: hp.getRange(fila, 1).getDisplayValue() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Alta de un cliente nuevo desde la app: una fila en «Base de Clientes» con nombre, plan, precio pactado,
+// método y fecha de alta. Las columnas con fórmula (ID, servicio, precios, vencimiento, estado…) se copian de la fila anterior.
+function altaCliente_(c) {
+  const nombre = String(c.nombre || '').trim();
+  if (!nombre || !c.plan) throw new Error('Faltan datos: nombre y plan son obligatorios');
+  const hc = SpreadsheetApp.getActive().getSheetByName(HOJA_CLIENTES);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const ultima = Math.max(hc.getLastRow(), FILA_INICIO_CLIENTES);
+    const nombres = hc.getRange(FILA_INICIO_CLIENTES, 2, ultima - FILA_INICIO_CLIENTES + 1, 1).getValues();
+    if (nombres.some(function (r) { return String(r[0]).trim().toLowerCase() === nombre.toLowerCase(); })) throw new Error('Ya hay un cliente con ese nombre en la hoja');
+    let fila = -1;
+    for (let i = 0; i < nombres.length; i++) { if (nombres[i][0] === '') { fila = FILA_INICIO_CLIENTES + i; break; } }
+    if (fila === -1) fila = ultima + 1;
+    if (fila > FILA_INICIO_CLIENTES) {
+      // mismo formato y desplegables que la fila de arriba, y sus fórmulas donde falten
+      const arriba = hc.getRange(fila - 1, 1, 1, 17), aqui = hc.getRange(fila, 1, 1, 17);
+      arriba.copyTo(aqui, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      arriba.copyTo(aqui, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+      ['A', 'C', 'E', 'G', 'H', 'K', 'L', 'M', 'N', 'O'].forEach(function (col) {
+        const celda = hc.getRange(col + fila);
+        if (celda.getFormula() === '') hc.getRange(col + (fila - 1)).copyTo(celda, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+      });
+    }
+    hc.getRange(fila, 2).setValue(nombre);                                                      // B Nombre
+    hc.getRange(fila, 4).setValue(c.plan);                                                      // D Plan
+    if (c.precio !== '' && c.precio != null) hc.getRange(fila, 6).setValue(Number(c.precio));  // F Precio pactado
+    if (c.metodo) hc.getRange(fila, 9).setValue(c.metodo);                                      // I Método
+    const p = String(c.alta || '').split('-');
+    if (p.length === 3) hc.getRange(fila, 10).setValue(new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])));  // J Alta
+    if (c.notas) hc.getRange(fila, 17).setValue(c.notas);                                       // Q Notas
+    SpreadsheetApp.flush();
+    return { fila: fila, id: hc.getRange(fila, 1).getDisplayValue() };
   } finally {
     lock.releaseLock();
   }

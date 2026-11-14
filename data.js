@@ -580,7 +580,7 @@
   }
 
   // Datos de ejemplo de cobros para el modo demo (inventados)
-  let demoPagos = null;
+  let demoPagos = null, demoAltas = null;
   function demoSheets(action, payload) {
     const iso = d => d.toISOString().slice(0, 10);
     const tarifas = [
@@ -599,7 +599,12 @@
       demoPagos.unshift({ id: 'PAG-' + String(demoPagos.length + 1).padStart(4, '0'), fecha: p.fecha, cliente: p.cliente, servicio: t.servicio, plan: p.plan, importe: Number(p.importe), metodo: p.metodo, vence: iso(v), notas: p.notas || '' });
       return Promise.resolve({ fila: 0, id: demoPagos[0].id });
     }
-    const clientes = ['Laura Martín', 'Carlos Ruiz'].map((n, i) => {
+    if (action === 'altaCliente') {
+      const c = payload.cliente || {}; if (!c.nombre || !c.plan) return Promise.reject(new Error('Faltan datos: nombre y plan'));
+      demoAltas = demoAltas || []; if (['Laura Martín', 'Carlos Ruiz'].concat(demoAltas.map(x => x.nombre)).some(n => n.toLowerCase() === c.nombre.toLowerCase())) return Promise.reject(new Error('Ya hay un cliente con ese nombre en la hoja'));
+      demoAltas.push(c); return Promise.resolve({ fila: 0, id: 'CLI-0' + (10 + demoAltas.length) });
+    }
+    const clientes = ['Laura Martín', 'Carlos Ruiz'].concat((demoAltas || []).map(x => x.nombre)).map((n, i) => {
       const last = demoPagos.find(p => p.cliente === n);
       const dias = last ? Math.round((new Date(last.vence) - Date.now()) / 864e5) : -1;
       return { id: 'CLI-00' + (i + 1), nombre: n, servicio: last ? last.servicio : '', plan: last ? last.plan : '', cuota: last ? last.importe : 0, vence: last ? last.vence : '', dias, estado: dias < 0 ? 'VENCIDO' : 'AL DÍA', pagadoMes: dias < 0 ? '✘ No' : '✔ Sí', pendiente: '', notas: '' };

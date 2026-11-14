@@ -896,15 +896,31 @@
     }
   }
 
-  function clientForm(c) {
-    const isNew = !c; c = c || { active: true };
-    modal(isNew ? 'Nuevo cliente' : 'Editar cliente', `
+  // pre = { data: {name, email…}, onCreated(cliente) } para dar de alta desde un formulario
+  async function clientForm(c, pre = null) {
+    const isNew = !c; c = c || Object.assign({ active: true }, pre && pre.data);
+    // Hoja de cobros: si está conectada, el cliente nuevo se puede dar de alta en ella desde aquí
+    const sh = await getSheet().catch(() => null), shC = (sh && sh.clientes) || [], shT = ((sh && sh.tarifas) || []).filter(t => t.plan && !/inactivo/i.test(t.plan));
+    const inSheet = n => shC.some(x => String(x.nombre).trim().toLowerCase() === String(n || '').trim().toLowerCase());
+    const canAdd = !!(sh && shT.length), showAdd = canAdd && (isNew || !inSheet(c.sheet_name || c.name));
+    const metodos = [...new Set(['Bizum', 'Transferencia', 'Efectivo', 'Tarjeta'].concat(shC.map(x => x.metodo).filter(Boolean)))];
+    const shSet = showAdd ? `<fieldset class="full rem-set sh-set"><legend>Hoja de cobros</legend>
+        <label class="check"><input type="checkbox" name="sh_add" ${isNew ? 'checked' : ''}> ${isNew ? 'Darle de alta en la hoja de cobros' : 'No está en la hoja: darle de alta ahora'}</label>
+        <div class="form-grid" data-shf ${isNew ? '' : 'hidden'}>
+          <label>Plan<select name="sh_plan">${shT.map(t => `<option value="${esc(t.plan)}">${esc(t.plan)}${t.precio ? ' · ' + esc(eur(t.precio)) : ''}</option>`).join('')}</select></label>
+          <label>Precio pactado <small class="muted">(opcional)</small><input name="sh_precio" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Si no, el de la tarifa"></label>
+          <label>Método de pago<select name="sh_metodo">${metodos.map(m => `<option>${esc(m)}</option>`).join('')}</select></label>
+          <label>Fecha de alta<input name="sh_alta" type="date" value="${today()}"></label>
+        </div><small class="muted">Se añade una fila en «Base de Clientes» con su nombre y estas opciones; las fórmulas se copian solas. Los pagos se registran en Cobros.</small></fieldset>` : '';
+    const dl = shC.length ? `<datalist id="sheet-names">${shC.map(x => `<option value="${esc(x.nombre)}">`).join('')}</datalist>` : '';
+    const mf = modal(isNew ? 'Nuevo cliente' : 'Editar cliente', `
       <div class="form-grid">
         <label class="full">Nombre y apellidos<input name="name" required value="${esc(c.name)}"></label>
         <label>Correo (con el que entrará)<input name="email" type="email" required value="${esc(c.email)}"></label>
         <label>Teléfono (con 34)<input name="phone" inputmode="tel" value="${esc(c.phone)}" placeholder="346…"></label>
         <label>Servicio<select name="service">${['', 'Entreno', 'Nutrición', 'Mixto'].map(s => `<option ${c.service === s ? 'selected' : ''} value="${s}">${s || '—'}</option>`).join('')}</select></label>
-        <label>Nombre en la hoja de cobros<input name="sheet_name" value="${esc(c.sheet_name || c.name || '')}" placeholder="Igual que en tu Excel"></label>
+        <label>Nombre en la hoja de cobros<input name="sheet_name" list="sheet-names" value="${esc(c.sheet_name || c.name || '')}" placeholder="Igual que en tu hoja"><small class="muted" data-shhint></small></label>${dl}
+        ${shSet}
         <label class="full">Objetivo<input name="goal" value="${esc(c.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
         <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
         <label class="check full"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Cliente activo</label>
@@ -928,6 +944,11 @@
       danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se borrarán ${c.name} y todos sus datos (rutinas, entrenos, check-ins). No se puede deshacer.`)) { await safe(() => DB.remove('clients', c.id), 'Cliente eliminado'); go('#/clientes'); } } },
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
+        const shAdd = !!fd.get('sh_add') && canAdd, shRow = shAdd ? { nombre: String(d.sheet_name || d.name).trim(), plan: d.sh_plan, precio: d.sh_precio, metodo: d.sh_metodo, alta: d.sh_alta } : null;
+        Object.keys(d).filter(k => k.startsWith('sh_')).forEach(k => delete d[k]);
+        if (shAdd && inSheet(shRow.nombre)) { toast('Ya hay un cliente con ese nombre en la hoja: elígelo en «Nombre en la hoja» y desmarca el alta', 'err'); return false; }
+        const toSheet = async () => { if (!shRow) return; try { await DB.sheets('altaCliente', { cliente: shRow }); S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) { /* nada */ } toast(`${shRow.nombre} añadido a la hoja de cobros`, 'ok'); }
+          catch (e) { toast('No se pudo añadir a la hoja de cobros: ' + e.message + '. Añádelo a mano o actualiza el script de la hoja.', 'err'); } };
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
         Object.keys(d).filter(k => k.startsWith('ui_') && k !== 'ui_prefs').forEach(k => delete d[k]);
         if (!isNew && 'ui_prefs' in c) { const up = {}; UI_MODS.forEach(([k, , def]) => { const on = !!fd.get('ui_' + k); if (on !== def) up[k] = on; }); d.ui_prefs = up; }
@@ -939,15 +960,22 @@
         } else { delete d.ck_freq; delete d.ck_anchor; }
         if (!isNew && 'grace_days' in c) { d.billing_off = !!fd.get('billing_off'); if ('access_blocked' in c) d.access_blocked = !!fd.get('access_blocked'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
-        if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
-        await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
+        if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); await toSheet(); if (pre && pre.onCreated) await pre.onCreated(r[0]); invite(r[0]); return false; }
+        await safe(() => DB.update('clients', c.id, d), 'Guardado'); await toSheet(); render();
       }
     });
+    const sha = mf && mf.querySelector('[name=sh_add]'), shn = mf && mf.querySelector('[name=sheet_name]'), nm = mf && mf.querySelector('[name=name]');
+    if (sha) sha.onchange = () => { mf.querySelector('[data-shf]').hidden = !sha.checked; };
+    if (shn && sh) { const hint = () => { mf.querySelector('[data-shhint]').textContent = shn.value.trim() ? (inSheet(shn.value) ? '✓ Está en la hoja' : (sha && sha.checked ? 'Se creará en la hoja con este nombre' : 'No está en la hoja')) : ''; };
+      shn.oninput = hint; if (sha) sha.addEventListener('change', hint); hint();
+      // nuevo: el nombre de la hoja sigue al nombre mientras no lo toques
+      if (isNew && nm) { let touched = false; shn.addEventListener('input', () => { touched = true; }); nm.addEventListener('input', () => { if (!touched) { shn.value = nm.value; hint(); } }); } }
     const fsel = document.querySelector('.modal [name=ck_freq]');
     if (fsel) fsel.onchange = () => { fsel.closest('fieldset').querySelector('[data-ckanchor]').hidden = fsel.value !== 'quincenal'; };
   }
 
   function appUrl() { return location.origin + location.pathname; }
+  window.JMClientForm = (c, pre) => clientForm(c, pre);
   function invite(c) {
     const msg = `¡Hola, ${c.name.trim().split(/\s+/)[0]}! 💪 Desde ahora tus entrenos, tu nutrición y tus revisiones van en la app de TEAM JMFIT.
 
