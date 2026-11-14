@@ -779,7 +779,7 @@
       const fbc = fb.filter(x => x.client_id === c.id && x.kind === 'comment' && x.created_at >= new Date(Date.now() - 7 * 864e5).toISOString());
       if (fbc.some(x => pain.test(x.body || ''))) add('red', 'molestias en un ejercicio');
       const ck7 = ck.find(k => k.created_at >= new Date(Date.now() - 8 * 864e5).toISOString());
-      if (ck7 && ck7.pains && !/^\s*(no|nada|ninguna?|-|ok|bien)\.?\s*$/i.test(ck7.pains)) add('red', 'molestias en el check-in');
+      if (ck7 && realTxt(ck7.pains)) add('red', 'molestias en el check-in');
       // 3) caída de rendimiento: el último entreno de una rutina con ≥ 20 % menos volumen que la media de los 3 anteriores
       const lastS = ss[0];
       if (lastS && lastS.volume > 0) { const prevS = ss.slice(1).filter(s => s.routine_name === lastS.routine_name && s.volume > 0).slice(0, 3);
@@ -2307,7 +2307,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short' })}</span>
             <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
             <span class="ck-m">${k.fatigue != null ? `Fat ${k.fatigue}` : ''}${k.energy10 != null ? ` · En ${k.energy10}` : ''}${k.diet_adh != null ? ` · Nut ${k.diet_adh}` : ''}</span>
-            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${k.pains ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${realTxt(k.pains) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
       }).join('') + (checkins.length > ckShown ? `<button type="button" class="btn small ghost block" data-ckmore>Ver más (${checkins.length - ckShown})</button>` : '');
       ckBox.querySelectorAll('.ck-item').forEach(el => {
         el.querySelector('.ck-row').onclick = () => {
@@ -2463,7 +2463,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (!checkins.length) { box.innerHTML = '<p class="empty">Este cliente todavía no ha enviado ninguna revisión.</p>'; return; }
     const nPh = k => photos.filter(p => p.checkin_id === k.id).length || (k.photo_path ? 1 : 0);
     const FIL = [['all', 'Todas'], ['pend', 'Sin revisar'], ['fotos', 'Con fotos'], ['dolor', 'Con molestias']];
-    const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!k.pains };
+    const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!realTxt(k.pains) };
     let fil = 'all';
     const first = checkins[checkins.length - 1], lastW = checkins.find(k => k.weight), firstW = checkins.slice().reverse().find(k => k.weight);
     const draw = () => {
@@ -2480,7 +2480,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
             <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
             <span class="ck-m">${[k.train_adh != null ? `Ent ${k.train_adh}` : '', k.diet_adh != null ? `Nut ${k.diet_adh}` : '', k.fatigue != null ? `Fat ${k.fatigue}` : '', k.energy10 != null ? `En ${k.energy10}` : ''].filter(Boolean).join(' · ')}</span>
-            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${k.pains ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${realTxt(k.pains) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
         }).join('') : '<p class="empty">Ninguna revisión con este filtro.</p>'}</section>
         <p class="muted small">Toca una revisión para verla entera (medidas, respuestas, fotos) y responderla.</p>`;
       box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { fil = b.dataset.f; draw(); });
@@ -2519,7 +2519,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         ${item('Peso inicial', ini ? fmtKg(ini.avg) + ' kg' : '–')}${item('Peso actual (media)', cur ? fmtKg(cur.avg) + ' kg' : '–')}${item('Cambio total', ini && cur && ini !== cur ? sgn(cur.avg - ini.avg) + ' kg' : '–')}
         ${item('Peso objetivo', c.goal_weight ? fmtKg(c.goal_weight) + ' kg' : '–')}${item('Ritmo buscado', c.weekly_target != null && c.weekly_target !== '' ? sgn(Number(c.weekly_target)) + ' kg/sem' + (bandF ? `<small class="muted"> · ${esc(bandF.l)}${bandF.s ? ' (' + fmtKg(Math.abs(bandF.pct)) + ' %)' : ''}</small>` : '') : '–')}${item('IMC', bmi ? fmtKg(bmi) : '–')}
         ${item('En el equipo', weeks != null ? weeks + ' semanas' : '–')}${item('Último check-in', lastCk ? fmtDate(lastCk.date) : '–')}${item('Fatiga (último)', lastCk && lastCk.fatigue ? lastCk.fatigue + '/10' : '–')}
-      </div>${lastCk && (lastCk.pains || lastCk.fatigue_muscles) ? `<p class="small note">⚠️ ${esc([lastCk.pains, lastCk.fatigue_muscles].filter(Boolean).join(' · '))}</p>` : ''}</section>
+      </div>${lastCk && (realTxt(lastCk.pains) || realTxt(lastCk.fatigue_muscles)) ? `<p class="small note">⚠️ ${esc([realTxt(lastCk.pains), realTxt(lastCk.fatigue_muscles)].filter(Boolean).join(' · '))}</p>` : ''}</section>
       <form class="card" data-ficha><h3>Datos de la ficha</h3>
         <div class="form-grid">
           <label>Fecha de nacimiento<input type="date" name="birth_date" value="${esc(c.birth_date || '')}"></label>
@@ -2718,7 +2718,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const short = { train_adh: 'Entreno', diet_adh: 'Nutrición', hunger: 'Hambre', satiety: 'Saciedad', fatigue: 'Fatiga', energy10: 'Energía', sleep_q: 'Sueño', stress: 'Estrés', motivation: 'Motivación' };
     const bad = key => ['hunger', 'fatigue', 'stress'].includes(key);       // aquí un número alto es mala señal
     const tone = (key, v) => { const g = bad(key) ? 11 - v : v; return g >= 7 ? 'g' : g >= 5 ? 'm' : 'b'; };
-    const texts = Object.entries(CK_TEXTS).filter(([key]) => k[key]);
+    const texts = Object.entries(CK_TEXTS).filter(([key]) => (key === 'notes' ? k[key] : realTxt(k[key])));
     const dw = prev && prev.weight && k.weight ? Number(k.weight) - Number(prev.weight) : null;
     el.innerHTML = `${who ? `<a class="ck-who" href="#/cliente/${who.id}/progreso">${esc(who.name)}</a>` : ''}<header><b>${fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })}</b>${k.weight ? `<span class="pill">${fmtKg(k.weight)} kg${dw != null ? ` · ${dw > 0 ? '+' : ''}${fmtKg(dw)}` : ''}</span>` : ''}${k.source === 'harbiz' ? '<span class="pill">Harbiz</span>' : ''}
         ${asCoach ? `<span class="grow"></span><button type="button" class="icon-btn sm" data-delck aria-label="Borrar check-in" title="Borrar check-in">${ic('trash')}</button>` : ''}</header>
@@ -3340,6 +3340,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     stress: ['Estrés', '1 nada · 10 muchísimo'],
     motivation: ['Motivación para la semana que viene', '1 nada · 10 muchísima']
   };
+  // «No», «nada», «ninguna», «todo bien»… cuentan como en blanco (no son molestias ni fatiga)
+  const NONE_RX = /^\s*(no+|nop|nada|ningun[oa]?|ninguna?s?|no tengo( ninguna?| nada)?|no hay|sin (molestias|dolor(es)?|fatiga|nada)|todo (bien|ok|perfecto)|bien|ok|perfect[oa]|genial|-+|0|n\/a)\s*[.!]*\s*$/i;
+  const realTxt = v => (v && !NONE_RX.test(String(v)) ? v : '');
+  window.JMRealTxt = realTxt;
   const CK_TEXTS = { fatigue_muscles: 'Fatiga periférica (músculos sin recuperar)', pains: 'Molestias o dolores', misses: '¿Has fallado en algo esta semana?', notes: 'Dudas o comentarios para Jorge' };
   function checkinForm(c) {
     const scale = n => `<fieldset class="scale ten"><legend>${CK_SCALES[n][0]} <small>${CK_SCALES[n][1]}</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
@@ -3353,7 +3357,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${scale('train_adh')}${scale('diet_adh')}
       <label>Media de pasos de la semana<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="Ej: 9000"></label>
       ${scale('hunger')}${scale('satiety')}${scale('fatigue')}
-      ${text('fatigue_muscles', 1, 'Ej: piernas cargadas desde el martes')}${text('pains', 1, 'Dónde y desde cuándo')}${text('misses', 2, 'Comidas, entrenos, descanso…')}
+      ${text('fatigue_muscles', 1, 'Si no tienes, déjalo en blanco · Ej: piernas cargadas desde el martes')}${text('pains', 1, 'Si no tienes, déjalo en blanco · Dónde y desde cuándo')}${text('misses', 2, 'Si no, déjalo en blanco · Comidas, entrenos, descanso…')}
       ${scale('energy10')}
       <label>Horas de sueño (media por noche)<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="Ej: 7,5"></label>
       ${scale('sleep_q')}${scale('stress')}${scale('motivation')}
@@ -3371,7 +3375,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         const n = k => num(String(fd.get(k) || '').replace(',', '.'));
         ['weight', 'waist', 'hip', 'chest', 'arm', 'thigh', 'calf', 'neck', 'shoulders', 'body_fat', 'steps', 'sleep_h', ...Object.keys(CK_SCALES)].forEach(k => { const v = n(k); if (v != null) d[k] = v; });
         if (d.steps != null) d.steps = Math.round(d.steps);
-        Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v) d[k] = v; });
+        Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v && (k === 'notes' || realTxt(v))) d[k] = v; });
         if (!d.weight) { toast('Pon tu peso en ayunas', 'err'); return false; }
         const files = CK_POSES.map(([p]) => [p, form['ph_' + p] && form['ph_' + p].files[0]]).filter(x => x[1]);
         [...(form.ph_extra ? form.ph_extra.files : [])].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
