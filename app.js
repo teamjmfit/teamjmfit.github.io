@@ -1130,7 +1130,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <div class="row gap wrap"><span class="grow"><b>${esc(prog.name)}</b>${prog.meso_weeks ? ` <span class="pill">Mesociclo · ${Math.max(prog.meso_weeks, pweeks.length)} semanas</span>` : ''}<small class="muted">${pweeks.length} semana${pweeks.length === 1 ? '' : 's'} · ${live ? 'el cliente ve ahora la ' + esc(weekLabel(live)) + (prog.meso_weeks ? ` (${live.week_no}/${Math.max(prog.meso_weeks, pweeks.length)})` : '') : 'el cliente ve sus rutinas fijas hasta que publiques una semana ya empezada'}</small></span>
             <button class="btn small ${mesoEnd ? 'primary' : 'ghost'}" data-meso>${ic('plus')} ${prog.meso_weeks ? 'Siguiente mesociclo' : 'Nuevo mesociclo'}</button>
             ${prog.meso_weeks && pweeks[0] && pweeks[0].start_date >= mondayOf(today()) ? `<button class="btn small ghost" data-delaymeso title="Empezar el mesociclo una semana más tarde">${ic('clock')} Retrasar 1 semana</button>` : ''}
-            ${prog.meso_weeks ? `<button class="btn small ghost danger" data-delmeso title="Quitar este mesociclo">${ic('trash')} Quitar</button>` : ''}</div>
+            <button class="btn small ghost danger" data-delmeso title="Quitar este bloque y volver a las rutinas fijas (lo ya entrenado se guarda)">${ic('trash')} Quitar bloque</button></div>
           ${mesoEnd ? `<p class="note small">${live && live.kind === 'deload' ? 'Está en la semana de descarga: ' : 'El bloque ha terminado: '}prepara el siguiente mesociclo para que no se quede sin plan.</p>` : ''}
           ${prog.meso_weeks ? `<div class="meso-line">${pweeks.map(w => `<span class="${w.kind === 'deload' ? 'dl' : ''} ${live && live.id === w.id ? 'now' : ''} ${live && w.week_no < live.week_no ? 'past' : ''}" title="${esc(weekLabel(w))}">${w.kind === 'deload' ? 'Descarga' : 'Carga ' + pweeks.filter(x => x.week_no <= w.week_no && x.kind !== 'deload').length}</span>`).join('')}</div>`
             : `<label class="check"><input type="checkbox" data-auto ${prog.auto_repeat !== false ? 'checked' : ''}> Repetir sola cada semana con los pesos que hizo <small class="muted">(si no has preparado la siguiente)</small></label>`}
@@ -1391,16 +1391,17 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const fut = pweeks.filter(w => w.start_date >= mon && !trained.has(w.id)).length, all = pweeks.filter(w => !trained.has(w.id)).length;
     const kept = pweeks.filter(w => trained.has(w.id)).length;
     if (!all) { toast('Todas sus semanas tienen entrenos: no hay nada que quitar', 'err'); return; }
-    modal('Quitar mesociclo', `<p>«<b>${esc(prog.name)}</b>» · ${pweeks.length} semanas.</p>
+    const drafts = pweeks.every(w => !w.published);
+    modal('Quitar bloque', `<p>«<b>${esc(prog.name)}</b>» · ${pweeks.length} semana${pweeks.length === 1 ? '' : 's'}${drafts ? ' · <b>en borrador</b> (el cliente no lo ha visto)' : ''}.</p>
       <div class="choices">
-        <label class="choice"><input type="radio" name="scope" value="future" ${fut ? 'checked' : 'disabled'}><span><b>Desde esta semana</b><small>Quita ${fut} semana${fut === 1 ? '' : 's'} (la actual y las siguientes) que aún no ha entrenado.</small></span></label>
-        <label class="choice"><input type="radio" name="scope" value="all" ${fut ? '' : 'checked'}><span><b>Todo lo que no ha entrenado</b><small>Quita ${all} semana${all === 1 ? '' : 's'}, también las pasadas sin entrenos.</small></span></label>
+        <label class="choice"><input type="radio" name="scope" value="future" ${fut && !drafts ? 'checked' : fut ? '' : 'disabled'}><span><b>Desde esta semana</b><small>Quita ${fut} semana${fut === 1 ? '' : 's'} (la actual y las siguientes) que aún no ha entrenado.</small></span></label>
+        <label class="choice"><input type="radio" name="scope" value="all" ${fut && !drafts ? '' : 'checked'}><span><b>Todo lo que no ha entrenado</b><small>Quita ${all} semana${all === 1 ? '' : 's'}, también las pasadas sin entrenos.</small></span></label>
       </div>
       <p class="muted small">${kept ? `Las ${kept} semana${kept === 1 ? '' : 's'} con entrenos se guardan como historial. ` : ''}El cliente vuelve a ver lo que tenía antes (su programa anterior o sus rutinas fijas). No se puede deshacer.</p>`, {
-      submitLabel: 'Quitar mesociclo',
+      submitLabel: 'Quitar bloque',
       onSubmit: async (f, fd) => {
         const n = await safe(() => DB.rpc('delete_mesocycle', { p_program: prog.id, p_scope: fd.get('scope') || 'future' }));
-        toast(`Mesociclo quitado (${n || 0} semana${n === 1 ? '' : 's'})`, 'ok'); after && after();
+        toast(`Bloque quitado (${n || 0} semana${n === 1 ? '' : 's'}). Vuelven sus rutinas fijas`, 'ok'); after && after();
       }
     });
   }
@@ -2251,7 +2252,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     return rows;
   }
   // Gráfica de líneas con varias series (null = sin dato) y línea de objetivo opcional
-  function multiChart(labels, series, { min, max, goal, unit = '', label = 'Gráfica' } = {}) {
+  function multiChart(labels, series, { min, max, goal, unit = '', label = 'Gráfica', daily = false } = {}) {
     const W = 520, H = 270, P = 50, n = labels.length;
     const all = series.flatMap(s => s.vals).filter(v => v != null).concat(goal != null ? [goal] : []);
     if (!all.length) return '';
@@ -2263,7 +2264,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const paths = series.map(s => {
       let d = '', pen = false;
       s.vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `; pen = true; });
-      const pts = s.vals.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="5" class="pt ${s.cls}"><title>${esc(s.name)} · semana del ${fmtDate(labels[i])}: ${fmt(v)}${unit ? ' ' + unit : ''}</title></circle>`)).join('');
+      const pts = s.vals.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${n > 60 ? 3 : n > 30 ? 4 : 5}" class="pt ${s.cls}"><title>${esc(s.name)} · ${daily ? cap1(fmtDate(labels[i], { weekday: 'short', day: 'numeric', month: 'short' })) : 'semana del ' + fmtDate(labels[i])}: ${fmt(v)}${unit ? ' ' + unit : ''}</title></circle>`)).join('');
       return `<path d="${d}" class="line ${s.cls}"/>${pts}`;
     }).join('');
     const step = Math.max(1, Math.ceil(n / 6));
@@ -2272,7 +2273,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <text x="${W - P + 4}" y="${y(hi) + 4}" class="lbl">${fmt(hi)}</text><text x="${W - P + 4}" y="${y(lo) + 4}" class="lbl">${fmt(lo)}</text>
       ${goal != null ? `<line x1="${P}" x2="${W - P}" y1="${y(goal)}" y2="${y(goal)}" class="goal"/><text x="${P + 4}" y="${y(goal) - 6}" class="lbl goal-t">Objetivo ${fmt(goal)}</text>` : ''}
       ${paths}
-      ${labels.map((l, i) => (i % step === 0 || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" class="lbl" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${fmtDate(l)}</text>` : '')).join('')}
+      ${labels.map((l, i) => ((i % step === 0 && n - 1 - i >= step / 2) || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" class="lbl" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${fmtDate(l)}</text>` : '')).join('')}
     </svg></div>${series.length > 1 ? `<div class="legend">${series.map(s => `<span><i class="${s.cls}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}`;
   }
 
@@ -2373,6 +2374,12 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const vsT = d => (target == null || d == null ? '' : Math.abs(d - target) <= 0.2 ? 'ok' : 'off');
     const labels = rows.map(r => r.wk);
     const hasFat = rows.some(r => r.fatigue != null || r.stress != null || r.energy != null);
+    // Peso diario: lo que apunta cada día (o el del check-in si ese día no apuntó nada), con rango elegible
+    const wByDay = {}; checkins.forEach(k => { if (k.weight) wByDay[String(k.date).slice(0, 10)] = Number(k.weight); });
+    daily.forEach(d => { if (d.weight != null && d.weight !== '') wByDay[String(d.date).slice(0, 10)] = Number(d.weight); });
+    const wpts = Object.keys(wByDay).sort().map(d => ({ d, w: wByDay[d] }));
+    const WR = [['28', '4 semanas'], ['90', '3 meses'], ['182', '6 meses'], ['all', 'Todo']];
+    let wr = (() => { try { return localStorage.getItem('jmfit-wrange') || '90'; } catch (e) { return '90'; } })();
 
     box.innerHTML = `
       ${asCoach && 'ui_prefs' in c ? '<p class="pv-bar"><button type="button" class="btn small ghost" data-preview>👁 Ver como el cliente</button></p>' : ''}
@@ -2389,7 +2396,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <div data-goals></div>
       ${VZ.map(v => v.html).join('')}
       ${LP ? LP.html : ''}
-      ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
+      ${wpts.length > 1 ? `<section class="card" data-wchart><h3>Peso diario</h3><div class="np-plans wc-rng">${WR.map(([k, l]) => `<button type="button" class="chip ${k === wr ? 'on' : ''}" data-wr="${k}">${l}</button>`).join('')}</div><div data-wc></div><p class="muted small">Cada punto es un día que se pesó (o su check-in). La media de cada semana está en «Semana a semana».</p></section>` : ''}
       ${hasFat && !asCoach && see('bienestar') ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
         { name: 'Estrés', cls: 's4', vals: rows.map(r => r.stress) },
@@ -2407,7 +2414,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
-    if (!asCoach) foldify(box, 'prog', ['Peso medio']);
+    const wcBox = box.querySelector('[data-wchart]');
+    const drawW = () => {
+      const from = wr === 'all' ? '' : addDays(today(), -Number(wr)), ps = wpts.filter(x => x.d >= from), use = ps.length > 1 ? ps : wpts.slice(-2);
+      wcBox.querySelector('[data-wc]').innerHTML = multiChart(use.map(x => x.d), [{ name: 'Peso', cls: 's1', vals: use.map(x => x.w) }], { goal, unit: 'kg', label: 'Peso diario', daily: true });
+      wcBox.querySelectorAll('[data-wr]').forEach(b => b.classList.toggle('on', b.dataset.wr === wr));
+    };
+    if (wcBox) { drawW(); wcBox.querySelectorAll('[data-wr]').forEach(b => b.onclick = () => { wr = b.dataset.wr; try { localStorage.setItem('jmfit-wrange', wr); } catch (e) { /* solo esta vez */ } drawW(); }); }
+    if (!asCoach) foldify(box, 'prog', ['Peso']);
     VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
     if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
     const unp = box.querySelector('[data-unpreview]'); if (unp) unp.onclick = () => tabProgress(c, box, true);
@@ -3078,7 +3092,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     // Columna principal: el check-in entero (fotos, respuestas, responder) y la evolución del peso
     const main = box.querySelector('[data-main]');
     main.appendChild(checkinCard(k, true, { who: c, prev, photos }));
-    if (wts.length > 1) main.insertAdjacentHTML('beforeend', `<section class="card"><h3>Peso en sus revisiones</h3>${multiChart(wts.map(x => x.date), [{ name: 'Peso', cls: 's1', vals: wts.map(x => Number(x.weight)) }], { unit: 'kg', label: 'Peso en las revisiones' })}</section>`);
+    if (wts.length > 1) main.insertAdjacentHTML('beforeend', `<section class="card"><h3>Peso en sus revisiones</h3>${multiChart(wts.map(x => x.date), [{ name: 'Peso', cls: 's1', vals: wts.map(x => Number(x.weight)) }], { unit: 'kg', label: 'Peso en las revisiones', daily: true })}</section>`);
     if (hist.length > 1) main.insertAdjacentHTML('beforeend', `<section class="card"><h3>Revisiones anteriores</h3><ul class="list rv-mini">${hist.filter(x => x.id !== k.id).slice(0, 6).map(x => `<li><a href="#/revision/${x.id}"><span class="grow">${esc(cap1(fmtDate(x.date, { day: 'numeric', month: 'short' })))}${x.weight ? ' · ' + fmtKg(x.weight) + ' kg' : ''}<small>${[x.train_adh != null ? 'Ent ' + x.train_adh : '', x.diet_adh != null ? 'Nut ' + x.diet_adh : '', x.fatigue != null ? 'Fat ' + x.fatigue : ''].filter(Boolean).join(' · ')}</small></span>${painTxt(x) ? '⚠️' : ''}${ic('next')}</a></li>`).join('')}</ul></section>`);
 
     // Nutrición: subir o bajar calorías y ajustar macros sin salir

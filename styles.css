@@ -1461,3 +1461,5 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
   .rc-kcal { grid-template-columns: repeat(4, 1fr); }
   .rc-kcal label { grid-column: 1 / -1; order: -1; }
 }
+.wc-rng { margin: -2px 0 6px; }
+.wc-rng .chip { min-height: 32px; padding: 5px 11px; font-size: 13px; }
