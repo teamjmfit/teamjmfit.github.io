@@ -146,6 +146,7 @@
   const byId = (arr, id) => arr.find(x => x.id === id);
 
   const ICON = {
+    next: '<path d="M9 6l6 6-6 6"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
@@ -396,7 +397,7 @@
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
           <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
-          ${S.profile.role === 'client' && S.client ? `<button class="icon-btn" data-priv aria-label="Privacidad y mis datos" title="Privacidad y mis datos">${ic('shield')}</button>` : ''}
+          ${S.profile.role === 'client' && S.client ? `<button class="icon-btn" data-priv aria-label="Ajustes" title="Ajustes: apariencia, privacidad y mis datos">${ic('cog')}</button>` : ''}
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
         <div class="content">${content}</div>
       </div>
@@ -457,6 +458,15 @@
   }
 
   // Vencimientos: quién tiene el plan vencido, quién dice que ya ha pagado y a quién has cortado el acceso
+  // Listas largas en tarjetas de Inicio: se ven las primeras y el resto con «Ver N más»
+  function clampList(sec, max) {
+    const ul = sec.querySelector('ul.list'); if (!ul) return;
+    const lis = [...ul.children]; if (lis.length <= max + 1) return;
+    lis.slice(max).forEach(li => { li.hidden = true; });
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small ghost block more-btn'; b.textContent = `Ver ${lis.length - max} más`;
+    b.onclick = () => { lis.forEach(li => { li.hidden = false; }); b.remove(); };
+    ul.after(b);
+  }
   async function payAlerts(stack) {
     const all = (S.clients || []).filter(c => !c.is_template && 'grace_days' in c);
     const claims = await DB.list('payment_claims', { eq: { status: 'pendiente' }, order: ['created_at', 'desc'], limit: 50 }).catch(() => []);
@@ -466,14 +476,14 @@
     if (!rows.length) return;
     rows.sort((a, b) => (b.k ? 1 : 0) - (a.k ? 1 : 0) || (b.over ?? -1) - (a.over ?? -1));
     const st = r => (r.c.access_blocked ? ['red', 'sin acceso'] : r.k ? ['amber', 'dice que pagó'] : r.over === 0 ? ['amber', 'vence hoy'] : ['red', `vencido ${r.over} d`]);
-    const sec = document.createElement('section'); sec.className = 'card stor-card'; sec.setAttribute('data-payalert', '');
+    const sec = document.createElement('section'); sec.className = 'card stor-card venc-card'; sec.setAttribute('data-payalert', '');
     sec.innerHTML = `<h3>💶 Vencimientos</h3><ul class="list">${rows.map(r => { const [cl2, t] = st(r);
       return `<li><span class="pill ${cl2}">${t}</span><span class="grow"><a href="#/cliente/${r.c.id}/ficha">${esc(r.c.name)}</a><small>${r.over > 0 ? `Venció hace ${r.over} d` : r.over === 0 ? 'Vence hoy' : ''}${r.k ? ` · <b>Dice que ya ha pagado</b>${r.k.note ? ': «' + esc(r.k.note) + '»' : ''} (${ago(r.k.created_at)})` : ''}</small></span>
         ${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Pago comprobado">✓</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕</button>` : ''}
         ${'access_blocked' in r.c ? `<button class="btn small ${r.c.access_blocked ? 'primary' : 'ghost'}" data-acc="${r.c.id}">${r.c.access_blocked ? 'Reactivar' : 'Quitar acceso'}</button>` : ''}
         ${r.c.phone ? `<a class="icon-btn sm" target="_blank" rel="noopener" href="https://wa.me/${esc(String(r.c.phone).replace(/\D/g, ''))}" title="WhatsApp">${ic('wa')}</a>` : ''}</li>`; }).join('')}</ul>
       <p class="muted small">El cliente ve un aviso diario hasta que registres el pago en tu hoja de cobros. «Quitar acceso» le deja solo una pantalla de «No tienes acceso».</p>`;
-    stack.prepend(sec);
+    stack.prepend(sec); clampList(sec, 4);
     const again = async () => { S.clients = null; await loadClients(); payAlerts(stack); };
     const resolve = (id, ok) => (DB.mode !== 'demo' ? DB.rpc('resolve_payment_claim', { p_claim: id, p_ok: ok, p_days: 0 }) : DB.update('payment_claims', id, { status: ok ? 'confirmado' : 'rechazado', resolved_at: new Date().toISOString() }));
     sec.querySelectorAll('[data-pok]').forEach(b => b.onclick = async () => { await safe(() => resolve(b.dataset.pok, true), 'Pago marcado como comprobado. Recuerda apuntarlo en la hoja'); again(); });
@@ -512,6 +522,7 @@
     if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
     if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : r1 === 'plantillas' ? coachTemplates() : coachPrograms(); }
     if (r0 === 'revisiones') return coachReviews(r1);
+    if (r0 === 'revision' && r1) return reviewCenter(r1);
     if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     if (r0 === 'notas') { setTimeout(refreshReviewBadge, 0); return coachNotes(r1); }
@@ -588,6 +599,7 @@
     draw();
   }
 
+  const nutriOnly = c => /^nutri/i.test(String((c && c.service) || '').trim());
   // ---------- Qué ve cada cliente en su app (029: clients.ui_prefs guarda solo lo que cambia el entrenador)
   const UI_MODS = [
     ['nutricion', 'Pestaña Nutrición', true, 'Su plan de comidas'],
@@ -659,7 +671,7 @@
     const week = sessions.filter(s => s.started_at >= weekAgo && s.finished_at);
     const unseenCk = checkins.filter(c => !c.coach_seen);
     const trainedIds = new Set(week.map(s => s.client_id));
-    const idle = active.filter(c => !trainedIds.has(c.id));
+    const idle = active.filter(c => !trainedIds.has(c.id) && !nutriOnly(c));   // los de solo nutrición no entrenan con la app
 
     const feed = activityFeed({ clients, sessions, checkins, metrics, forms, since: d8i });
     const html = `
@@ -694,6 +706,7 @@
       box.innerHTML = `<h3>Próximos cobros <a class="link small" href="#/cobros">Ver todo</a></h3>` + (rows.length
         ? `<ul class="list">${rows.map(c => `<li><span class="pill ${c.d < 0 ? 'red' : c.d <= 7 ? 'amber' : 'green'}">${c.d < 0 ? `vencido ${-c.d} d` : c.d === 0 ? 'hoy' : `${c.d} d`}</span><span class="grow">${esc(c.nombre)}<small>${esc(c.plan)}</small></span><b>${eur(c.cuota)}</b></li>`).join('')}</ul>`
         : '<p class="empty">Nada vence en los próximos 30 días.</p>');
+      box.classList.add('venc-card'); clampList(box, 5);
     } catch (e) {
       box.innerHTML = `<h3>Próximos cobros</h3><p class="empty">${e.message === 'NO_SHEET' ? 'Conecta tu hoja de cobros para ver aquí los vencimientos.' : 'No se pudo leer la hoja: ' + esc(e.message)}</p><a class="btn small" href="#/cobros">${ic('euro')} Ir a Cobros</a>`;
     }
@@ -823,7 +836,7 @@
     const out = {};
     cs.forEach(c => {
       if (!c.user_id) { out[c.id] = { lv: 'none', why: [], score: 0 }; return; }
-      const why = [], add = (lv, t) => why.push([lv, t]);
+      const why = [], add = (lv, t) => why.push([lv, t]), nOnly = nutriOnly(c);   // solo nutrición: sin avisos de entreno
       const ss = sessions.filter(s => s.client_id === c.id && s.finished_at);
       const dm = daily.filter(d => d.client_id === c.id && day(d.date) >= day(d14));
       const ck = cks.filter(k => k.client_id === c.id);
@@ -836,16 +849,16 @@
       const fbc = fb.filter(x => x.client_id === c.id && x.kind === 'comment' && x.created_at >= new Date(Date.now() - 7 * 864e5).toISOString());
       if (fbc.some(x => pain.test(x.body || ''))) add('red', 'molestias en un ejercicio');
       const ck7 = ck.find(k => k.created_at >= new Date(Date.now() - 8 * 864e5).toISOString());
-      if (ck7 && realTxt(ck7.pains)) add('red', 'molestias en el check-in');
+      if (ck7 && painTxt(ck7)) add('red', 'molestias en el check-in');
       // 3) caída de rendimiento: el último entreno de una rutina con ≥ 20 % menos volumen que la media de los 3 anteriores
       const lastS = ss[0];
-      if (lastS && lastS.volume > 0) { const prevS = ss.slice(1).filter(s => s.routine_name === lastS.routine_name && s.volume > 0).slice(0, 3);
+      if (!nOnly && lastS && lastS.volume > 0) { const prevS = ss.slice(1).filter(s => s.routine_name === lastS.routine_name && s.volume > 0).slice(0, 3);
         if (prevS.length >= 2) { const m = prevS.reduce((a, s) => a + Number(s.volume), 0) / prevS.length; if (lastS.volume < m * 0.8) add('red', `rendimiento −${Math.round((1 - lastS.volume / m) * 100)} % en ${lastS.routine_name}`); } }
       // 4) entrenos fallados esta semana (días pautados ya pasados sin entreno)
       const cw = pws.filter(w => w.client_id === c.id && w.published && actP.has(w.program_id) && w.start_date <= td).sort((a, b) => b.start_date.localeCompare(a.start_date) || b.week_no - a.week_no)[0];
       const planned = routines.filter(r => r.client_id === c.id && r.day && (cw ? r.program_week_id === cw.id : !r.program_week_id)).filter(r => r.day < dow).length;
       const doneW = ss.filter(s => day(s.started_at) >= mon).length;
-      if (planned > doneW) add('amber', `${planned - doneW} entreno${planned - doneW > 1 ? 's' : ''} sin hacer esta semana`);
+      if (!nOnly && planned > doneW) add('amber', `${planned - doneW} entreno${planned - doneW > 1 ? 's' : ''} sin hacer esta semana`);
       // 5) peso atípico: media de 7 días vs la semana anterior
       const ws = dm.filter(d => d.weight != null).map(d => ({ d: day(d.date), w: Number(d.weight) }));
       const a1 = avg(ws.filter(x => x.d > day(new Date(Date.now() - 7 * 864e5).toISOString())).map(x => x.w)), a0 = avg(ws.filter(x => x.d <= day(new Date(Date.now() - 7 * 864e5).toISOString())).map(x => x.w));
@@ -853,7 +866,7 @@
         if (Math.abs(dlt - (tgt || 0)) > lim) add('amber', `peso ${dlt > 0 ? '+' : ''}${fmtKg(Math.round(dlt * 10) / 10)} kg en la semana`); }
       // 6) estancado
       const st = (stag || []).filter(x => x.client_id === c.id);
-      if (st.length) add('amber', `estancado en ${st[0].exercise_name}${st.length > 1 ? ` y ${st.length - 1} más` : ''}`);
+      if (!nOnly && st.length) add('amber', `estancado en ${st[0].exercise_name}${st.length > 1 ? ` y ${st.length - 1} más` : ''}`);
       const lv = why.some(w => w[0] === 'red') ? 'red' : why.length ? 'amber' : 'green';
       if (lv === 'green' && ss.length) why.push(['green', doneW ? `${doneW} entreno${doneW > 1 ? 's' : ''} esta semana` : 'al día']);
       out[c.id] = { lv, why, score: why.filter(w => w[0] === 'red').length * 10 + why.filter(w => w[0] === 'amber').length };
@@ -1466,7 +1479,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <label>RIR de los prioritarios<span class="row gap"><small>de</small>${rirSel('prio_rir_hi', 1)}<small>a</small>${rirSel('prio_rir_lo', 0)}</span></label>
           <label>Series de los prioritarios<select name="prio_sets">${[[0, 'Igual'], [1, '+1 por ejercicio'], [2, '+2 por ejercicio']].map(([v, l]) => `<option value="${v}" ${v === 1 ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Series del resto<select name="other_sets">${[[0, 'Igual'], [-1, '−1 por ejercicio (mín. 1)']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-          <label>RIR en la descarga<span class="row gap"><small>prioritarios</small>${rirSel('prio_dl_rir', 2)}<small>resto</small>${rirSel('dl_rir', 3)}</span></label>
+          <label>RIR en la descarga<span class="row gap"><small>prioritarios</small>${rirSel('prio_dl_rir', 2, false)}<small>resto</small>${rirSel('dl_rir', 3, false)}</span></label>
         </div>
         <small class="muted" data-prio-hint>Elige los grupos que quieres priorizar en este bloque: más series y más cerca del fallo; el resto se mantiene.</small></fieldset>
       <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
@@ -1488,7 +1501,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         return after ? after() : render();
       }
     });
-    function rirSel(name, def) { return `<select name="${name}" aria-label="RIR">${[0, 1, 2, 3, 4].map(v => `<option value="${v}" ${v === def ? 'selected' : ''}>${v === 0 ? 'Fallo (0)' : v}</option>`).join('')}</select>`; }
+    // RIR 0 y «al fallo» son distintos: F = RIR 0 con fallo (progression.fail); 0 = RIR 0 sin llegar al fallo
+    function rirSel(name, def, withF = true) { return `<select name="${name}" aria-label="RIR">${(withF ? ['F'] : []).concat([0, 1, 2, 3, 4]).map(v => `<option value="${v}" ${String(v) === String(def) ? 'selected' : ''}>${v === 'F' ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select>`; }
     // ejercicios de las rutinas de partida y su grupo muscular principal
     const srcItems = src => routines.filter(r => (src ? r.program_week_id === src : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position)
       .flatMap(r => items.filter(i => i.routine_id === r.id).sort((a, b) => a.position - b.position));
@@ -1498,12 +1512,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const pm = new Set(fd.getAll('prio_m')), prio = pm.size ? srcItems(fd.get('src') || null).filter(it => pm.has(mOf(it))).map(it => it.id) : [];
       const o = { offset: +fd.get('offset') || 0, prog: fd.get('prog'), inc_kg: Math.max(0, +fd.get('inc_kg') || 0), inc_reps: Math.max(0, Math.round(+fd.get('inc_reps') || 0)),
         rir_mode: mode, rir_ramp: mode === 'routine', deload_vol: pct(fd.get('dvol'), 80), deload_int: pct(fd.get('dint'), 50), publish: !!fd.get('publish'),
-        weeks: Array.from({ length: +fd.get('weeks') || 4 }, (_, k) => { const r = fd.get('wr' + k), z = +fd.get('ws' + k) || 0; return Object.assign({}, r != null && r !== '' ? { rir: +r } : {}, z ? { sets: z } : {}); }) };
-      if (mode === 'range') { o.rir_hi = +fd.get('rir_hi'); o.rir_lo = Math.min(+fd.get('rir_lo'), o.rir_hi); }
+        weeks: Array.from({ length: +fd.get('weeks') || 4 }, (_, k) => { const r = fd.get('wr' + k), z = +fd.get('ws' + k) || 0; return Object.assign({}, r === 'F' ? { rir: 0, fail: true } : r != null && r !== '' ? { rir: +r, fail: false } : {}, z ? { sets: z } : {}); }) };
+      const rv = n => (fd.get(n) === 'F' ? 0 : +fd.get(n)), isF = n => fd.get(n) === 'F';
+      if (mode === 'range') { o.rir_hi = rv('rir_hi'); o.rir_lo = Math.min(rv('rir_lo'), o.rir_hi); if (isF('rir_lo') || isF('rir_hi')) o.zero_fail = true; }
       if (fd.get('rep_cap') !== '' && fd.get('rep_cap') != null) o.rep_cap = +fd.get('rep_cap');
       if (prio.length) {
         o.prio = prio; o.prio_muscles = [...pm];
-        o.prio_rir_hi = +fd.get('prio_rir_hi'); o.prio_rir_lo = Math.min(+fd.get('prio_rir_lo'), o.prio_rir_hi);
+        o.prio_rir_hi = rv('prio_rir_hi'); o.prio_rir_lo = Math.min(rv('prio_rir_lo'), o.prio_rir_hi); if (isF('prio_rir_lo') || isF('prio_rir_hi')) o.zero_fail = true;
         o.prio_sets = +fd.get('prio_sets') || 0; o.other_sets = +fd.get('other_sets') || 0; o.prio_dl_rir = +fd.get('prio_dl_rir'); o.dl_rir = +fd.get('dl_rir');
       }
       return o;
@@ -1521,16 +1536,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       f.querySelector('[data-rng]').hidden = fd.get('rir_mode') !== 'range';
       f.querySelector('[data-dlnote]').textContent = hasP ? `RIR ${o.prio_dl_rir} en los prioritarios y RIR ${o.dl_rir} en el resto. Parte de la última semana de carga.` : 'Y RIR 2 en todas las series. Parte de la última semana de carga.';
       const P = window.JMMeso.project, show = its.filter(it => pset.has(it.id)).concat(its.filter(it => !pset.has(it.id))).slice(0, 8);
-      const cell = v => `${v.sets}×${esc(v.reps || '')}${v.load_kg != null ? ' · ' + nf(v.load_kg) + ' kg' : ''}${v.target_rir != null ? ' · RIR ' + nf(v.target_rir) : ''}`;
+      // como el servidor (migración 030): ¿ese RIR 0 es «al fallo»?
+      const failAt = (it, k) => (window.JMMeso.failAt ? window.JMMeso.failAt(it, k, o) : false);
+      const cell = (v, it, k) => `${v.sets}×${esc(v.reps || '')}${v.load_kg != null ? ' · ' + nf(v.load_kg) + ' kg' : ''}${v.target_rir != null ? (Number(v.target_rir) === 0 && it && failAt(it, k) ? ' · Fallo' : ' · RIR ' + nf(v.target_rir)) : ''}`;
       const sets = Array.from({ length: n }, (_, k) => its.reduce((a, it) => a + P(it, k, n, o).sets, 0));
       const ld = window.JMMeso.weekLoads(its, n, o), mx = Math.max(...ld, 1);
       const sd = f.querySelector('[name=start]').value || st0;
       f.querySelector('[data-prev]').innerHTML = `<h4>Proyección del bloque</h4>
         <div class="meso-bars" aria-hidden="true">${ld.map((x, k) => `<span class="${k === n - 1 ? 'dl' : ''}" style="height:${Math.max(8, Math.round(x / mx * 100))}%"><i>S${k + 1}</i></span>`).join('')}</div>
         <div class="table-wrap"><table class="meso-table"><thead><tr><th>Ejercicio</th>${Array.from({ length: n }, (_, k) => `<th class="${k === n - 1 ? 'dl' : ''}">S${k + 1}${k === n - 1 ? ' ↓' : ''}<small>${fmtDate(addDays(mon(sd), 7 * k), { day: 'numeric', month: 'short' })}</small></th>`).join('')}</tr></thead>
-        <tbody>${show.map(it => `<tr class="${pset.has(it.id) ? 'prio' : ''}"><td>${pset.has(it.id) ? '★ ' : ''}${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o))}</td>`).join('')}</tr>`).join('')}
+        <tbody>${show.map(it => `<tr class="${pset.has(it.id) ? 'prio' : ''}"><td>${pset.has(it.id) ? '★ ' : ''}${esc(it.exercise_name)}</td>${Array.from({ length: n }, (_, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${cell(P(it, k, n, o), it, k)}</td>`).join('')}</tr>`).join('')}
         <tr class="tot"><td>Series totales</td>${sets.map((x, k) => `<td class="${k === n - 1 ? 'dl' : ''}">${x}</td>`).join('')}</tr>
-        <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${[0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${v === 0 ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select></td>`; }).join('')}</tr>
+        <tr class="adj"><td>RIR de la semana <small>auto = progresión</small></td>${Array.from({ length: n }, (_, k) => { const cur = fd.get('wr' + k) ?? ''; return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="wr${k}" aria-label="RIR de la semana ${k + 1}"><option value="">auto</option>${['F', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${v === 'F' ? 'Fallo' : 'RIR ' + v}</option>`).join('')}</select></td>`; }).join('')}</tr>
         <tr class="adj"><td>Series <small>de más o de menos por ejercicio</small></td>${Array.from({ length: n }, (_, k) => { const cur = +(fd.get('ws' + k) || 0); return `<td class="${k === n - 1 ? 'dl' : ''}"><select name="ws${k}" aria-label="Ajuste de series de la semana ${k + 1}">${[-2, -1, 0, 1, 2, 3].map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${v > 0 ? '+' + v : v === 0 ? '±0' : v}</option>`).join('')}</select></td>`; }).join('')}</tr></tbody></table></div>
         <p class="muted small">Cambia el RIR o las series de cualquier semana y la tabla se recalcula. Después también puedes editar cada ejercicio de cada semana en Rutinas.</p>
         ${its.length > show.length ? `<p class="muted small">Y ${its.length - show.length} ejercicios más con la misma lógica.</p>` : ''}`;
@@ -2276,7 +2293,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     try { localStorage.setItem('jmfit-theme', t); } catch (e) { /* solo esta sesión */ }
     document.documentElement.dataset.theme = t;
     const m = document.querySelector('meta[name=theme-color]'), dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-    if (m) m.content = dark ? '#232328' : '#e9e3d6';
+    if (m) m.content = dark ? '#0e0e10' : '#e9e3d6';
   }
   function themeModal() {
     const f = modal('Apariencia', `<p class="muted small">Solo cambia en este dispositivo.</p><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div>`, { submitLabel: 'Listo', onSubmit: () => {} });
@@ -2412,7 +2429,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short' })}</span>
             <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
             <span class="ck-m">${k.fatigue != null ? `Fat ${k.fatigue}` : ''}${k.energy10 != null ? ` · En ${k.energy10}` : ''}${k.diet_adh != null ? ` · Nut ${k.diet_adh}` : ''}</span>
-            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${realTxt(k.pains) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${painTxt(k) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
       }).join('') + (checkins.length > ckShown ? `<button type="button" class="btn small ghost block" data-ckmore>Ver más (${checkins.length - ckShown})</button>` : '');
       ckBox.querySelectorAll('.ck-item').forEach(el => {
         el.querySelector('.ck-row').onclick = () => {
@@ -2581,7 +2598,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (!checkins.length) { box.innerHTML = ckHead + '<p class="empty">Este cliente todavía no ha enviado ninguna revisión.</p>'; wireHead(); return; }
     const nPh = k => photos.filter(p => p.checkin_id === k.id).length || (k.photo_path ? 1 : 0);
     const FIL = [['all', 'Todas'], ['pend', 'Sin revisar'], ['fotos', 'Con fotos'], ['dolor', 'Con molestias']];
-    const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!realTxt(k.pains) };
+    const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!painTxt(k) };
     let fil = 'all';
     const first = checkins[checkins.length - 1], lastW = checkins.find(k => k.weight), firstW = checkins.slice().reverse().find(k => k.weight);
     const draw = () => {
@@ -2598,7 +2615,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
             <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
             <span class="ck-m">${[k.train_adh != null ? `Ent ${k.train_adh}` : '', k.diet_adh != null ? `Nut ${k.diet_adh}` : '', k.fatigue != null ? `Fat ${k.fatigue}` : '', k.energy10 != null ? `En ${k.energy10}` : ''].filter(Boolean).join(' · ')}</span>
-            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${realTxt(k.pains) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${painTxt(k) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
         }).join('') : '<p class="empty">Ninguna revisión con este filtro.</p>'}</section>
         <p class="muted small">Toca una revisión para verla entera (medidas, respuestas, fotos) y responderla.</p>`;
       box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { fil = b.dataset.f; draw(); }); wireHead();
@@ -2637,7 +2654,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         ${item('Peso inicial', ini ? fmtKg(ini.avg) + ' kg' : '–')}${item('Peso actual (media)', cur ? fmtKg(cur.avg) + ' kg' : '–')}${item('Cambio total', ini && cur && ini !== cur ? sgn(cur.avg - ini.avg) + ' kg' : '–')}
         ${item('Peso objetivo', c.goal_weight ? fmtKg(c.goal_weight) + ' kg' : '–')}${item('Ritmo buscado', c.weekly_target != null && c.weekly_target !== '' ? sgn(Number(c.weekly_target)) + ' kg/sem' + (bandF ? `<small class="muted"> · ${esc(bandF.l)}${bandF.s ? ' (' + fmtKg(Math.abs(bandF.pct)) + ' %)' : ''}</small>` : '') : '–')}${item('IMC', bmi ? fmtKg(bmi) : '–')}
         ${item('En el equipo', weeks != null ? weeks + ' semanas' : '–')}${item('Último check-in', lastCk ? fmtDate(lastCk.date) : '–')}${item('Fatiga (último)', lastCk && lastCk.fatigue ? lastCk.fatigue + '/10' : '–')}
-      </div>${lastCk && (realTxt(lastCk.pains) || realTxt(lastCk.fatigue_muscles)) ? `<p class="small note">⚠️ ${esc([realTxt(lastCk.pains), realTxt(lastCk.fatigue_muscles)].filter(Boolean).join(' · '))}</p>` : ''}</section>
+      </div>${lastCk && (painTxt(lastCk) || (!lastCk.pain_ok && realTxt(lastCk.fatigue_muscles))) ? `<p class="small note">⚠️ ${esc([painTxt(lastCk), lastCk.pain_ok ? '' : realTxt(lastCk.fatigue_muscles)].filter(Boolean).join(' · '))}</p>` : ''}</section>
       <form class="card" data-ficha><h3>Datos de la ficha</h3>
         <div class="form-grid">
           <label>Fecha de nacimiento<input type="date" name="birth_date" value="${esc(c.birth_date || '')}"></label>
@@ -2844,7 +2861,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${k.steps != null || k.sleep_h != null ? `<p class="small">${[k.steps != null ? `👣 ${Number(k.steps).toLocaleString('es-ES')} pasos/día` : '', k.sleep_h != null ? `😴 ${fmtKg(k.sleep_h)} h de sueño` : ''].filter(Boolean).join(' · ')}</p>` : ''}
       ${old.length ? `<div class="scores">${old.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(Math.max(0, 5 - m[1]))}</b></span>`).join('')}</div>` : ''}
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
-      ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
+      ${texts.map(([key, l]) => `<p class="ck-txt ${key === 'pains' && !k.pain_ok ? 'pain' : ''}"><small>${esc(l)}${key === 'pains' && k.pain_ok ? ' · aviso quitado' : ''}</small>${nl2br(k[key])}</p>`).join('')}
+      ${asCoach && 'pain_ok' in k && realTxt(k.pains) ? `<button type="button" class="btn small ghost" data-painok>${k.pain_ok ? '⚠️ Volver a marcar como molestia' : '✓ No es una molestia: quitar el aviso'}</button>` : ''}
       <div class="ck-pics" data-photos hidden></div>
       ${window.JMAnalysis && (asCoach || canSee(who || S.client, 'mejoras')) ? `<button type="button" class="btn small an-btn" data-analyze>${asCoach ? '📊 Análisis de la semana' : '💪 Mis mejoras de la semana'}</button>` : ''}
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
@@ -2868,6 +2886,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (photos) showPhotos(photos); else DB.list('checkin_photos', { eq: { checkin_id: k.id } }).then(showPhotos).catch(() => showPhotos([]));
     const rf = el.querySelector('[data-reply]');
     if (rf) rf.onsubmit = async e => { e.preventDefault(); const v = rf.r.value.trim(); const patch = { coach_seen: true }; if (v) patch.coach_reply = v; await safe(() => DB.update('checkins', k.id, patch), 'Check-in revisado'); render(); };
+    const pk = el.querySelector('[data-painok]');
+    if (pk) pk.onclick = async () => { pk.disabled = true; try { await safe(() => DB.update('checkins', k.id, { pain_ok: !k.pain_ok }), k.pain_ok ? 'Aviso de molestias activado' : 'Aviso de molestias quitado'); } catch (e) { pk.disabled = false; return; } k.pain_ok = !k.pain_ok; S.triCache = null; el.replaceWith(checkinCard(k, asCoach, { who, prev, photos })); };
     const del = el.querySelector('[data-delck]');
     if (del) del.onclick = async () => {
       if (!(await confirmBox(`¿Borrar el check-in del ${fmtDate(k.date, { day: 'numeric', month: 'long' })}${k.weight ? ` (${fmtKg(k.weight)} kg)` : ''} con sus fotos? No se puede deshacer.`))) return;
@@ -3006,14 +3026,144 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     box.innerHTML = `<div class="tabs"><a href="#/revisiones" class="${all ? '' : 'on'}">Pendientes${pend.length ? ` (${pend.length})` : ''}</a><a href="#/revisiones/todas" class="${all ? 'on' : ''}">Todas</a></div>
       ${list.length ? '<section class="card" data-list></section>' : `<div class="hero-empty">${ic('inbox', 'xl')}<h2>${all ? 'Aún no hay check-ins' : 'Todo revisado'}</h2><p>${all ? 'Cuando tus clientes envíen su check-in semanal aparecerá aquí.' : 'No tienes check-ins pendientes. Buen trabajo.'}</p>${all ? '' : '<a class="btn" href="#/revisiones/todas">Ver todos</a>'}</div>`}`;
     const wrap = box.querySelector('[data-list]');
-    const photos = list.length ? await DB.list('checkin_photos', { in: { checkin_id: list.map(k => k.id) } }).catch(() => []) : [];
-    list.forEach(k => {
-      const who = byId(clients, k.client_id) || { id: k.client_id, name: 'Cliente' };
-      const idx = checkins.indexOf(k);
-      const prev = checkins.slice(idx + 1).find(x => x.client_id === k.client_id && x.weight);
-      wrap.appendChild(checkinCard(k, true, { who, prev, photos: photos.filter(p => p.checkin_id === k.id) }));
-    });
+    if (wrap) {
+      wrap.classList.add('flush'); wrap.innerHTML = `<p class="muted small pad">Toca una revisión para abrirla con todo: datos, nutrición, entreno y notas, y ajustarlo desde ahí.</p><ul class="list rv-list">${list.map(k => {
+        const who = byId(clients, k.client_id) || { id: k.client_id, name: 'Cliente' }, idx = checkins.indexOf(k);
+        const prev = checkins.slice(idx + 1).find(x => x.client_id === k.client_id && x.weight), dw = prev && k.weight ? Number(k.weight) - Number(prev.weight) : null;
+        return `<li><a href="#/revision/${k.id}"><span class="av">${initials(who.name)}</span><span class="grow"><b>${esc(who.name)}</b><small>${esc(cap1(fmtDate(k.date, { weekday: 'short', day: 'numeric', month: 'short' })))}${k.weight ? ` · ${fmtKg(k.weight)} kg` : ''}${dw != null ? ` (${dw > 0 ? '+' : ''}${fmtKg(dw)})` : ''}${k.train_adh != null ? ` · Ent ${k.train_adh}` : ''}${k.diet_adh != null ? ` · Nut ${k.diet_adh}` : ''}</small></span>
+          <span class="right">${painTxt(k) ? '⚠️' : ''}${k.photo_path ? '📷' : ''}${k.coach_reply ? '💬' : ''}${!k.coach_seen ? '<i class="dot"></i>' : ''}${ic('next')}</span></a></li>`; }).join('')}</ul>`;
+    }
     refreshReviewBadge();
+  }
+
+  // ---------- Centro de revisión: el check-in, sus datos y los ajustes (nutrición, ejercicios, notas) en una sola pantalla
+  async function reviewCenter(id) {
+    shell(COACH_NAV, 'revisiones', loading(), { title: 'Revisión', back: 'revisiones' });
+    const k = await DB.get('checkins', id);
+    if (!k) { toast('Revisión no encontrada', 'err'); return go('#/revisiones'); }
+    const clients = await loadClients(), c = byId(clients, k.client_id) || { id: k.client_id, name: 'Cliente' };
+    const d14 = new Date(Date.now() - 14 * 864e5).toISOString();
+    const [hist, photos, plan, sessions, programs, weeks, routines, pendAll] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 12 }).catch(() => [k]),
+      DB.list('checkin_photos', { eq: { checkin_id: k.id } }).catch(() => []),
+      DB.get('nutrition_plans', c.id, 'client_id').catch(() => null),
+      DB.list('sessions', { eq: { client_id: c.id }, gte: { started_at: d14 }, order: ['started_at', 'desc'], limit: 60 }).catch(() => []),
+      DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }).catch(() => []),
+      DB.list('checkins', { eq: { coach_seen: false }, order: ['created_at', 'asc'], limit: 100 }).catch(() => [])]);
+    if (!S.exercises.length) await loadExercises().catch(() => []);
+    const cw = currentWeek(weeks.filter(w => w.published !== false), programs);
+    const wkR = routines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id)).sort((a, b) => (a.day || 9) - (b.day || 9) || a.position - b.position);
+    const items = wkR.length ? await DB.list('routine_items', { in: { routine_id: wkR.map(r => r.id) }, order: ['position', 'asc'] }).catch(() => []) : [];
+    const i0 = hist.findIndex(x => x.id === k.id), prev = hist.slice(i0 + 1).find(x => x.weight), wts = hist.slice(i0).filter(x => x.weight).reverse();
+    const dw = prev && k.weight ? Number(k.weight) - Number(prev.weight) : null, w4 = hist.slice(i0).filter(x => x.weight)[4], d4 = w4 && k.weight ? Number(k.weight) - Number(w4.weight) : null;
+    const done7 = sessions.filter(x => x.finished_at && x.started_at >= new Date(Date.now() - 7 * 864e5).toISOString()).length, planned = wkR.filter(r => r.day).length;
+    const next = pendAll.find(x => x.id !== k.id);
+    const nOnly = nutriOnly(c);
+    const box = $app.querySelector('.content');
+    $app.querySelector('.top h1').textContent = c.name;
+    box.innerHTML = `<div class="rc-head"><a class="btn small ghost" href="#/cliente/${c.id}/progreso">Ficha completa</a>${next ? `<a class="btn small" href="#/revision/${next.id}">Siguiente pendiente ›</a>` : ''}</div>
+      <div class="kpis small rc-kpis">
+        <div class="kpi"><small>Peso</small><b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b><span>${dw != null ? `${dw > 0 ? '+' : ''}${fmtKg(dw)} kg vs anterior` : 'sin anterior'}</span></div>
+        <div class="kpi"><small>4 revisiones</small><b>${d4 != null ? (d4 > 0 ? '+' : '') + fmtKg(d4) + ' kg' : '–'}</b><span>${c.goal ? esc(c.goal) : 'tendencia'}</span></div>
+        ${nOnly ? '' : `<div class="kpi ${planned && done7 < planned ? 'warn' : ''}"><small>Entrenos 7 días</small><b>${done7}${planned ? '/' + planned : ''}</b><span>${sessions[0] ? 'último ' + ago(sessions[0].started_at) : 'sin entrenos'}</span></div>`}
+        <div class="kpi"><small>Adherencia</small><b>${k.train_adh != null && !nOnly ? 'E ' + k.train_adh + ' · ' : ''}${k.diet_adh != null ? 'N ' + k.diet_adh : '–'}</b><span>de 10 en el check-in</span></div>
+      </div>
+      <div class="rc-grid"><div class="rc-main" data-main></div><aside class="rc-side">
+        <section class="card rc-panel" data-nut><h3>🍽️ Nutrición</h3></section>
+        ${nOnly ? '' : '<section class="card rc-panel" data-ex><h3>🏋️ Ejercicios de esta semana</h3></section>'}
+        <section class="card rc-panel" data-notes><h3>📝 Notas de la revisión <small class="muted">solo tú</small></h3></section>
+      </aside></div>`;
+    // Columna principal: el check-in entero (fotos, respuestas, responder) y la evolución del peso
+    const main = box.querySelector('[data-main]');
+    main.appendChild(checkinCard(k, true, { who: c, prev, photos }));
+    if (wts.length > 1) main.insertAdjacentHTML('beforeend', `<section class="card"><h3>Peso en sus revisiones</h3>${multiChart(wts.map(x => x.date), [{ name: 'Peso', cls: 's1', vals: wts.map(x => Number(x.weight)) }], { unit: 'kg', label: 'Peso en las revisiones' })}</section>`);
+    if (hist.length > 1) main.insertAdjacentHTML('beforeend', `<section class="card"><h3>Revisiones anteriores</h3><ul class="list rv-mini">${hist.filter(x => x.id !== k.id).slice(0, 6).map(x => `<li><a href="#/revision/${x.id}"><span class="grow">${esc(cap1(fmtDate(x.date, { day: 'numeric', month: 'short' })))}${x.weight ? ' · ' + fmtKg(x.weight) + ' kg' : ''}<small>${[x.train_adh != null ? 'Ent ' + x.train_adh : '', x.diet_adh != null ? 'Nut ' + x.diet_adh : '', x.fatigue != null ? 'Fat ' + x.fatigue : ''].filter(Boolean).join(' · ')}</small></span>${painTxt(x) ? '⚠️' : ''}${ic('next')}</a></li>`).join('')}</ul></section>`);
+
+    // Nutrición: subir o bajar calorías y ajustar macros sin salir
+    const nut = box.querySelector('[data-nut]'), p0 = plan || {};
+    const drawNut = pl => {
+      const mk = (pl.protein || 0) * 4 + (pl.carbs || 0) * 4 + (pl.fat || 0) * 9;
+      nut.innerHTML = `<h3>🍽️ Nutrición <small class="muted">${pl.updated_at ? 'cambiada ' + ago(pl.updated_at) : pl.kcal ? 'plan actual' : 'sin plan'}</small></h3>
+        <form class="rc-nut" data-nf>
+          <div class="rc-kcal"><button type="button" class="btn small" data-dk="-200">−200</button><button type="button" class="btn small" data-dk="-100">−100</button>
+            <label><input name="kcal" type="number" inputmode="numeric" value="${esc(pl.kcal ?? '')}" aria-label="Kcal por día"><small>kcal/día</small></label>
+            <button type="button" class="btn small" data-dk="100">+100</button><button type="button" class="btn small" data-dk="200">+200</button></div>
+          <label class="rc-move">Al cambiar las kcal, mover<select name="move"><option value="carbs">carbohidratos</option><option value="fat">grasas</option><option value="both">carbos y grasas (mitad y mitad)</option></select></label>
+          <div class="rc-macros"><label>Proteína (g)<input name="protein" type="number" inputmode="numeric" value="${esc(pl.protein ?? '')}"></label>
+            <label>Carbos (g)<input name="carbs" type="number" inputmode="numeric" value="${esc(pl.carbs ?? '')}"></label>
+            <label>Grasas (g)<input name="fat" type="number" inputmode="numeric" value="${esc(pl.fat ?? '')}"></label></div>
+          <p class="muted small" data-sum>${mk ? `Los macros suman ${mk} kcal` : 'Pon las kcal y los macros'}${pl.kcal ? ` · antes ${pl.kcal} kcal` : ''}</p>
+          <div class="row gap"><a class="small link-a" href="#/cliente/${c.id}/nutricion">Plan de comidas completo ›</a><span class="grow"></span><button class="btn small primary">Guardar nutrición</button></div>
+        </form>`;
+      const f = nut.querySelector('[data-nf]'), g = n => Number(f[n].value) || 0;
+      const sum = () => { const m = g('protein') * 4 + g('carbs') * 4 + g('fat') * 9; f.querySelector('[data-sum]').textContent = `${m ? `Los macros suman ${m} kcal` : 'Sin macros'}${g('kcal') && m ? ` (${m - g('kcal') > 0 ? '+' : ''}${m - g('kcal')} vs kcal)` : ''}${pl.kcal ? ` · antes ${pl.kcal} kcal` : ''}`; };
+      f.oninput = sum;
+      f.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => {
+        const dk = +b.dataset.dk, mv = f.move.value;
+        f.kcal.value = Math.max(0, g('kcal') + dk);
+        if (mv === 'carbs') f.carbs.value = Math.max(0, Math.round(g('carbs') + dk / 4));
+        else if (mv === 'fat') f.fat.value = Math.max(0, Math.round(g('fat') + dk / 9));
+        else { f.carbs.value = Math.max(0, Math.round(g('carbs') + dk / 8)); f.fat.value = Math.max(0, Math.round(g('fat') + dk / 18)); }
+        sum();
+      });
+      f.onsubmit = async e => {
+        e.preventDefault();
+        const d = { client_id: c.id, kcal: num(f.kcal.value), protein: num(f.protein.value), carbs: num(f.carbs.value), fat: num(f.fat.value), updated_at: new Date().toISOString() };
+        try { await safe(() => DB.upsert('nutrition_plans', d, 'client_id'), 'Nutrición actualizada'); } catch (er) { return; }
+        drawNut(Object.assign({}, pl, d));
+      };
+    };
+    drawNut(p0);
+
+    // Ejercicios: cambiar uno por otro (alternativas del catálogo o cualquiera), en esta semana y las siguientes del mesociclo
+    const exBox = box.querySelector('[data-ex]');
+    const drawEx = () => {
+      if (!exBox) return;
+      exBox.innerHTML = `<h3>🏋️ Ejercicios ${cw ? `<small class="muted">${esc(weekLabel(cw))}</small>` : '<small class="muted">rutinas fijas</small>'}</h3>${wkR.length ? wkR.map(r => {
+        const its = items.filter(i => i.routine_id === r.id);
+        return `<div class="rc-rt"><b>${r.day ? esc(DIAS[r.day].slice(0, 3)) + ' · ' : ''}${esc(r.name)}</b><ul>${its.map(i => `<li data-it="${i.id}"><span class="grow">${esc(i.exercise_name)}<small>${i.sets}×${esc(i.reps || '')}${loadLabel(i) ? ' · ' + esc(loadLabel(i)) : ''}</small></span><button type="button" class="btn small ghost" data-swap="${i.id}">Cambiar</button></li>`).join('')}</ul></div>`;
+      }).join('') + '<p class="muted small">El cambio se aplica a esta semana y a las siguientes del mesociclo (mismas series, reps y RIR).</p>' : '<p class="empty">No tiene rutinas esta semana.</p>'}
+      <datalist id="rc-exlist">${S.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>`;
+      exBox.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => {
+        const it = items.find(i => i.id === b.dataset.swap), li = b.closest('li');
+        const alts = window.JMSwap ? JMSwap.altsFor(it.exercise_name, S.exercises, 8).list : [];
+        li.insertAdjacentHTML('afterend', `<li class="rc-swap"><form class="stack" data-sw>${alts.length ? `<div class="rc-alts">${alts.map(a => `<button type="button" class="chip" data-alt="${esc(a.name)}">${esc(a.name)}</button>`).join('')}</div>` : ''}
+          <div class="row gap"><input name="name" list="rc-exlist" placeholder="O escribe cualquier ejercicio…" required><button class="btn small primary">Cambiar</button><button type="button" class="btn small ghost" data-cancel>✕</button></div></form></li>`);
+        const sw = li.nextElementSibling, f = sw.querySelector('form');
+        sw.querySelectorAll('[data-alt]').forEach(x => x.onclick = () => { f.name.value = x.dataset.alt; f.requestSubmit(); });
+        sw.querySelector('[data-cancel]').onclick = () => sw.remove();
+        b.disabled = true; sw.querySelector('[data-cancel]').addEventListener('click', () => { b.disabled = false; });
+        f.onsubmit = async e => {
+          e.preventDefault();
+          const name = String(f.name.value || '').trim(); if (!name) return;
+          const ex = S.exercises.find(x => x.name.toLowerCase() === name.toLowerCase());
+          const patch = { exercise_name: ex ? ex.name : name, exercise_id: ex ? ex.id : null, media_url: (ex && ex.media_url) || '' };
+          // la misma línea del ejercicio en esta semana y en las siguientes del mismo mesociclo
+          let ids = [it.id];
+          if (it.lineage_id && cw) {
+            const fut = new Set(weeks.filter(w => w.program_id === cw.program_id && w.start_date >= cw.start_date).map(w => w.id));
+            const rids = routines.filter(r => fut.has(r.program_week_id)).map(r => r.id);
+            const same = rids.length ? await DB.list('routine_items', { in: { routine_id: rids }, eq: { lineage_id: it.lineage_id } }).catch(() => []) : [];
+            ids = [...new Set(ids.concat(same.map(x => x.id)))];
+          }
+          try { await safe(async () => { for (const iid of ids) await DB.update('routine_items', iid, patch); }, ids.length > 1 ? `Cambiado en ${ids.length} semanas` : 'Ejercicio cambiado'); } catch (er) { return; }
+          Object.assign(it, patch); drawEx();
+        };
+        f.name.focus();
+      });
+    };
+    drawEx();
+
+    // Notas privadas del cliente (las mismas de su ficha)
+    const nb = box.querySelector('[data-notes]');
+    nb.insertAdjacentHTML('beforeend', `<form data-nt class="stack"><textarea name="notes" rows="5" placeholder="Qué has ajustado y por qué, lesiones, próximos pasos…">${esc(c.notes || '')}</textarea>
+      <div class="row gap"><button type="button" class="btn small ghost" data-stamp>+ Fecha de hoy</button><span class="grow"></span><button class="btn small primary">Guardar notas</button></div>
+      <small class="muted">Son las notas privadas de su ficha. Para escribirle al cliente, usa «Responder» en el check-in.</small></form>`);
+    const nf = nb.querySelector('[data-nt]');
+    nb.querySelector('[data-stamp]').onclick = () => { const t = nf.notes; t.value = `${t.value ? t.value.replace(/\s*$/, '') + '\n' : ''}${fmtDate(today(), { day: 'numeric', month: 'short' })}: `; t.focus(); t.setSelectionRange(t.value.length, t.value.length); };
+    nf.onsubmit = async e => { e.preventDefault(); const v = nf.notes.value; try { await safe(() => DB.update('clients', c.id, { notes: v }), 'Notas guardadas'); } catch (er) { return; } c.notes = v; S.clients = null; };
   }
 
   // ---------- Catálogo de ejercicios
@@ -3098,7 +3248,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <li>${ic('dumbbell')}<span><b>Qué guardo</b>Tus entrenos, tu peso y medidas, cómo te encuentras (sueño, energía, estrés), molestias o lesiones, tu alimentación y, si quieres, fotos de progreso.</span></li>
         <li>${ic('shield')}<span><b>Para qué</b>Solo para planificar y ajustar tu entrenamiento y tu nutrición. No se vende ni se usa para publicidad.</span></li>
         <li>${ic('users')}<span><b>Quién lo ve</b>Solo tú y tu entrenador de TEAM JMFIT. Se guarda en servidores protegidos.</span></li>
-        <li>${ic('download')}<span><b>Tus derechos</b>Puedes descargar tus datos, pedir que se borren o retirar este permiso cuando quieras, desde el escudo de arriba.</span></li>
+        <li>${ic('download')}<span><b>Tus derechos</b>Puedes descargar tus datos, pedir que se borren o retirar este permiso cuando quieras, desde el engranaje ⚙️ de arriba.</span></li>
       </ul>
       <form id="cs" class="stack">
         <label class="check"><input type="checkbox" name="policy" required><span>He leído la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y acepto el tratamiento de mis datos para el servicio.</span></label>
@@ -3129,7 +3279,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function privacyModal() {
     const c = S.client; if (!c) return;
     const req = c.data_request === 'delete';
-    modal('Privacidad y mis datos', `
+    modal('Ajustes', `
       <p>${c.consent_at ? `Aceptaste el uso de tus datos el <b>${fmtDate(c.consent_at.slice(0, 10), { day: 'numeric', month: 'long', year: 'numeric' })}</b>.` : 'Uso de datos aceptado.'} <a href="privacidad.html" target="_blank" rel="noopener">Ver la política de privacidad</a></p>
       <label class="check"><input type="checkbox" name="photos" ${c.consent_photos !== false ? 'checked' : ''}> Permitir fotos de progreso en los check-ins</label>
       <div class="priv-acts">
@@ -3469,8 +3619,16 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     motivation: ['Motivación para la semana que viene', '1 nada · 10 muchísima']
   };
   // «No», «nada», «ninguna», «todo bien»… cuentan como en blanco (no son molestias ni fatiga)
-  const NONE_RX = /^\s*(no+|nop|nada|ningun[oa]?|ninguna?s?|no tengo( ninguna?| nada)?|no hay|sin (molestias|dolor(es)?|fatiga|nada)|todo (bien|ok|perfecto)|bien|ok|perfect[oa]|genial|-+|0|n\/a)\s*[.!]*\s*$/i;
-  const realTxt = v => (v && !NONE_RX.test(String(v)) ? v : '');
+  // «No», «nada», «ninguna molestia», «no tengo ninguna molestia esta semana», «todo bien»… cuentan como en blanco.
+  // Una respuesta solo con palabras de esta lista y con alguna negación (o «bien/ok») no es una molestia.
+  const NONE_W = new Set('no nop noo nada ningun ninguno ninguna ningunas ningunos sin ni tengo tenido he hay ha habido me duele duelen molestia molestias dolor dolores fatiga cansancio agujetas de en esta semana la el que muscular musculares ninguna todo bien ok okey perfecto perfecta genial estoy estado ha sido por ahora momento y o nadita tampoco nunca'.split(' '));
+  const NONE_NEG = /^(no|nop|noo|nada|nadita|ningun[oa]?s?|sin|ni|tampoco|nunca|bien|ok|okey|perfect[oa]|genial)$/;
+  const isNone = v => { const t = String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    if (!t || /^[-–.0\s]+$/.test(t) || t === 'n/a') return true;
+    const w = t.split(/[^a-zñ]+/).filter(Boolean); return !!w.length && w.every(x => NONE_W.has(x)) && w.some(x => NONE_NEG.test(x)); };
+  const realTxt = v => (v && !isNone(v) ? v : '');
+  // molestias del check-in: el entrenador puede quitar el aviso de uno concreto (checkins.pain_ok, migración 030)
+  const painTxt = k => (k && !k.pain_ok ? realTxt(k.pains) : '');
   window.JMRealTxt = realTxt;
   const CK_TEXTS = { fatigue_muscles: 'Fatiga periférica (músculos sin recuperar)', pains: 'Molestias o dolores', misses: '¿Has fallado en algo esta semana?', notes: 'Dudas o comentarios para Jorge' };
   function checkinForm(c) {
@@ -3493,7 +3651,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
         ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
         <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>
-      ${c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (escudo de arriba → Privacidad).</p>' : `<fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
+      ${c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (engranaje ⚙️ de arriba → Ajustes).</p>' : `<fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
         ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
         <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
       </fieldset>`}`, {

@@ -4,7 +4,7 @@
 (function () { let t = 'light'; try { t = localStorage.getItem('jmfit-theme') || 'light'; } catch (e) { /* sin almacenamiento */ }
   document.documentElement.dataset.theme = t;
   const dark = t === 'dark' || (t === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = dark ? '#232328' : '#e9e3d6'; })();
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = dark ? '#0e0e10' : '#e9e3d6'; })();
 (function () {
   const FRASES = [
     'La disciplina gana a la motivación.',

@@ -368,7 +368,7 @@
           for (let k = 0; k < n; k++) {
             const w = { id: uuid(), program_id: prog.id, client_id: a.p_client, week_no: k + 1, start_date: plus(start, 7 * k), kind: k === n - 1 ? 'deload' : 'normal', source_week_id: null, published: o.publish !== false, notes: k === n - 1 ? 'Descarga del mesociclo' : `Acumulación ${k + 1}/${n - 1}`, created_at: now() };
             T('program_weeks').push(w);
-            copyWeek(src, w.id, it => { const v = P(it, k, n, o); const r = { sets: v.sets, load_kg: v.load_kg, target_rir: v.target_rir, base: v.base || null };
+            copyWeek(src, w.id, it => { const v = P(it, k, n, o); const r = { sets: v.sets, load_kg: v.load_kg, target_rir: v.target_rir, base: v.base || null, progression: window.JMMeso.progressionAt ? window.JMMeso.progressionAt(it, k, o, v) : it.progression };
               if (v.reps !== it.reps) Object.assign(r, { reps: v.reps, reps_min: v.reps_min, reps_max: v.reps_max }); return r; });
           }
           save(); return prog.id;
