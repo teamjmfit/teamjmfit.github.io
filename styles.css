@@ -1487,3 +1487,16 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .np-mv .icon-btn.sm { width: 30px; height: 30px; }
 .np-mv .np-dn .ic { transform: rotate(180deg); }
 .np-t tbody tr:first-child [data-mv="-1"], .np-t tbody tr:last-child [data-mv="1"] { visibility: hidden; }
+
+/* ---------- Superseries */
+.ss-tag { display: inline-block; font: 700 11.5px var(--body); letter-spacing: .02em; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 9px; margin-bottom: 8px; }
+.ex-row.ss, .wk-ex.ss { box-shadow: inset 4px 0 0 var(--ssc, var(--accent)); }
+.ss-A { --ssc: #c7861a; } .ss-B { --ssc: #3f7fc2; } .ss-C { --ssc: #3aa56b; } .ss-D { --ssc: #b5487c; } .ss-E { --ssc: #7a5bc4; } .ss-F { --ssc: #c25a3f; }
+.ss .ss-tag { color: var(--ssc); background: color-mix(in srgb, var(--ssc) 14%, transparent); }
+.ss-mini { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; font: 700 11px var(--body); color: #fff; background: var(--ssc, var(--accent)); vertical-align: 1px; }
+/* Revisiones por semana */
+.rv-wk { border-top: 1px solid var(--line); }
+.rv-wk > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: flex; align-items: center; gap: 8px; }
+.rv-wk > summary::-webkit-details-marker { display: none; }
+.rv-wk > summary::after { content: '▾'; margin-left: auto; color: var(--muted); transition: transform .15s; }
+.rv-wk:not([open]) > summary::after { transform: rotate(-90deg); }
