@@ -1324,3 +1324,12 @@ details.r-fold > summary { color: var(--text); }
 .post .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; justify-self: center; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .post-photo label.row { display: flex; justify-content: center; align-items: center; gap: 8px; }
+
+/* ---------- Check-in pendiente fijo arriba y atrasados (029) */
+.notice.ck-pin.late { box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent); background: linear-gradient(160deg, color-mix(in srgb, var(--amber) 14%, transparent), var(--card) 75%); }
+.notice.ck-pin.late .n-ic { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
+.ck-late .list li, .ck-skips li { align-items: center; }
+.ck-head .row { align-items: center; flex-wrap: wrap; }
+.ck-head small { display: block; margin-top: 2px; }
+.ck-skips { margin-top: 10px; }
+.ck-set select, .ck-set input[type=date] { width: 100%; }

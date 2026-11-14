@@ -585,6 +585,45 @@
     draw();
   }
 
+  // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
+  const ckOn = c => 'ck_freq' in (c || {});
+  const ckOff = c => !!(window.JMCk && JMCk.off(c));
+  const loadSkips = cid => DB.list('checkin_skips', cid ? { eq: { client_id: cid }, order: ['period_start', 'desc'] } : { gte: { period_end: addDays(today(), -200) }, order: ['period_start', 'desc'], limit: 2000 }).catch(() => []);
+  async function ckLateMap(clients) {
+    if (!window.JMCk || !clients.some(ckOn)) return {};
+    if (S.ckLate && Date.now() - S.ckLate.t < 60e3) return S.ckLate.v;
+    const [cks, sks] = await Promise.all([DB.list('checkins', { gte: { date: addDays(today(), -200) }, order: ['date', 'desc'], limit: 3000 }).catch(() => []), loadSkips()]);
+    const v = {};
+    clients.filter(c => c.active && c.user_id && !c.is_template && ckOn(c)).forEach(c => {
+      const st = JMCk.status(c, cks.filter(k => k.client_id === c.id), sks.filter(k => k.client_id === c.id), today());
+      if (st.state === 'atrasado') v[c.id] = st;
+    });
+    S.ckLate = { t: Date.now(), v }; return v;
+  }
+  const ckLateTxt = st => `${st.pending.length > 1 ? st.pending.length + ' sin enviar' : 'Sin enviar'} · ${st.late} día${st.late === 1 ? '' : 's'} de retraso`;
+  // Descartar los pendientes de un cliente (solo el entrenador): sigue directamente con el siguiente periodo
+  function ckSkip(c, st, done) {
+    const a = st.pending[0], b = st.pending[st.pending.length - 1];
+    modal('Descartar check-in', `<p>${esc(c.name)} no tendrá que enviar ${st.pending.length > 1 ? `los ${st.pending.length} check-ins pendientes` : 'el check-in pendiente'} (${esc(fmtDate(a.start, { day: 'numeric', month: 'short' }))} – ${esc(fmtDate(b.end, { day: 'numeric', month: 'short' }))}). Sigue con el siguiente.</p>
+      <label>Motivo <small class="muted">(opcional, solo lo ves tú)</small><input name="reason" maxlength="120" placeholder="Ej: vacaciones, enfermo…"></label>`, {
+      submitLabel: 'Descartar',
+      onSubmit: async (f, fd) => {
+        try { await safe(() => DB.insert('checkin_skips', { client_id: c.id, period_start: a.start, period_end: b.end, reason: String(fd.get('reason') || '').trim() || null }), 'Check-in descartado'); } catch (e) { return false; }
+        S.ckLate = null; if (done) done();
+      }
+    });
+  }
+
+  async function ckLateCard(stack, clients) {
+    const late = await ckLateMap(clients), cs = clients.filter(c => late[c.id]);
+    let sec = stack.querySelector('[data-cklate]');
+    if (!cs.length) { if (sec) sec.remove(); return; }
+    if (!sec) { sec = document.createElement('section'); sec.className = 'card ck-late'; sec.dataset.cklate = ''; stack.prepend(sec); }
+    sec.innerHTML = `<h3>Check-ins atrasados <small class="muted">${cs.length}</small></h3><ul class="list">${cs.map(c => `<li><span class="pill amber">${late[c.id].pending.length > 1 ? late[c.id].pending.length : '1'}</span><span class="grow"><a href="#/cliente/${c.id}/revisiones">${esc(c.name)}</a><small>${esc(ckLateTxt(late[c.id]))}</small></span>
+      <button type="button" class="btn small" data-ckskip="${c.id}">Descartar</button></li>`).join('')}</ul><p class="muted small">Descartar = no tiene que enviarlo y sigue con el siguiente. Se puede deshacer en su ficha → Revisiones.</p>`;
+    sec.querySelectorAll('[data-ckskip]').forEach(b => b.onclick = () => { const c = byId(clients, b.dataset.ckskip); ckSkip(c, late[c.id], () => ckLateCard(stack, clients)); });
+  }
+
   // ---------- Inicio
   async function coachHome() {
     shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
@@ -626,7 +665,7 @@
     drawActivity($app.querySelector('[data-act]'), feed);
     {
       const stack = $app.querySelector('.content .stack');
-      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); payAlerts(stack).catch(e => console.warn(e)); refAlerts(stack); trainAlerts(stack).catch(e => console.warn(e)); };
+      const extras = () => { if (!document.body.contains(stack)) return; if (window.JMBackup) window.JMBackup.remind(stack); if (window.JMForms) window.JMForms.homeCard(stack); storageCard(stack); privacyAlerts(stack); ckLateCard(stack, clients).catch(e => console.warn('check-ins', e)); payAlerts(stack).catch(e => console.warn(e)); refAlerts(stack); trainAlerts(stack).catch(e => console.warn(e)); };
       if (window.JMForms && window.JMBackup) extras(); else window.addEventListener('load', extras, { once: true });   // scripts aún cargando
     }
     // cobros (no bloquea)
@@ -708,10 +747,11 @@
       $app.querySelector('[data-new2]').onclick = () => clientForm(); return;
     }
     const tri = await triage(act, sessions).catch(e => { console.warn('triaje', e); return null; });
+    const late = await ckLateMap(clients).catch(() => ({}));
     const tv = c => (tri && tri[c.id]) || null;
     const row = (c, why) => { const t = tv(c); return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
-        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${privPill(c)}</span></a></li>`; };
+        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${late[c.id] ? '<span class="pill amber">check-in atrasado</span>' : ''}${privPill(c)}</span></a></li>`; };
     const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
     const inApp = act.filter(c => c.user_id), pend = act.filter(c => !c.user_id);
     const LV = [['red', '🔴 Atender ya', 'Más de 3 días sin datos, molestias o caída de rendimiento'], ['amber', '🟡 Vigilar', 'Entreno fallado, peso raro o estancado'], ['green', '🟢 Bien', 'Cumpliendo y progresando']];
@@ -838,8 +878,12 @@
         <label class="full">Objetivo<input name="goal" value="${esc(c.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
         <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
         <label class="check full"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Cliente activo</label>
+        ${!isNew && ckOn(c) && window.JMCk ? `<fieldset class="full rem-set ck-set"><legend>Check-in</legend>
+          <label>Frecuencia<select name="ck_freq">${JMCk.FREQ.map(([v, l]) => `<option value="${v}" ${JMCk.freqOf(c) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label data-ckanchor ${JMCk.freqOf(c) === 'quincenal' ? '' : 'hidden'}>Empieza la semana del<input name="ck_anchor" type="date" value="${esc(JMCk.freqOf(c) === 'quincenal' && c.ck_anchor ? c.ck_anchor : JMCk.monday(today()))}"><small class="muted">Le tocará el viernes de la segunda semana, y así cada 15 días.</small></label>
+          <small class="muted">El día clave es el viernes. Si no lo envía, le sale fijo arriba en Inicio hasta que lo envíe o tú lo descartes. Con «Sin check-in» no le sale nada (su historial se conserva).</small></fieldset>` : ''}
         ${!isNew && 'remind_checkin' in c ? `<fieldset class="full rem-set"><legend>Avisos en su app</legend>
-          <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Recordarle el check-in el viernes si aún no lo ha hecho</label>
+          <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Ventana de aviso del check-in al abrir la app (el día clave y si va atrasado)</label>
           <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
           <small class="muted">La fecha de renovación sale de tu hoja de cobros.</small></fieldset>` : ''}
         ${!isNew && 'grace_days' in c ? `<fieldset class="full rem-set"><legend>Pago y acceso</legend>
@@ -852,12 +896,20 @@
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
+        if (!isNew && ckOn(c) && window.JMCk) {
+          const fq = d.ck_freq || 'semanal', anc = d.ck_anchor ? JMCk.monday(d.ck_anchor) : null;
+          if (fq !== JMCk.freqOf(c)) d.ck_anchor = fq === 'quincenal' && anc ? anc : JMCk.monday(today());   // los periodos cuentan desde el cambio
+          else if (fq === 'quincenal' && anc) d.ck_anchor = anc; else delete d.ck_anchor;
+          S.ckLate = null;
+        } else { delete d.ck_freq; delete d.ck_anchor; }
         if (!isNew && 'grace_days' in c) { d.billing_off = !!fd.get('billing_off'); if ('access_blocked' in c) d.access_blocked = !!fd.get('access_blocked'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
         if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); invite(r[0]); return false; }
         await safe(() => DB.update('clients', c.id, d), 'Guardado'); render();
       }
     });
+    const fsel = document.querySelector('.modal [name=ck_freq]');
+    if (fsel) fsel.onchange = () => { fsel.closest('fieldset').querySelector('[data-ckanchor]').hidden = fsel.value !== 'quincenal'; };
   }
 
   function appUrl() { return location.origin + location.pathname; }
@@ -2186,8 +2238,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // Aviso compacto del check-in semanal (cliente): se resalta si toca enviarlo
-  function ckCta(lastCk) {
-    const days = lastCk ? Math.max(0, Math.floor((Date.now() - new Date(lastCk.date + 'T12:00:00')) / 864e5)) : null, due = days == null || days >= 6;
+  function ckCta(lastCk, st) {
+    const days = lastCk ? Math.max(0, Math.floor((Date.now() - new Date(lastCk.date + 'T12:00:00')) / 864e5)) : null, due = st ? !!st.state : (days == null || days >= 6);
     return `<section class="ck-cta ${due ? 'due' : ''}"><span class="ck-ic">${ic('camera')}</span><span class="grow"><b>Check-in semanal</b><small>${lastCk ? (days === 0 ? 'Enviado hoy ✓' : `Último hace ${days} día${days === 1 ? '' : 's'}${due ? ' · toca enviarlo' : ''}`) : 'Aún no has enviado ninguno'}</small></span><button type="button" class="btn small ${due ? 'primary' : ''}" data-ck>${due ? 'Enviar' : 'Nuevo'}</button></section>`;
   }
   // Tarjetas plegables (vista del cliente): se ve solo la cabecera hasta tocarla; se recuerda en este dispositivo
@@ -2257,7 +2309,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const hasFat = rows.some(r => r.fatigue != null || r.stress != null || r.energy != null);
 
     box.innerHTML = `
-      ${!asCoach ? ckCta(checkins[0]) : ''}
+      ${!asCoach && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
       <div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
@@ -2457,10 +2509,23 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   const ageOf = b => { if (!b) return null; const d = new Date(b + 'T12:00:00'), n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--; return a; };
   // ----- Revisiones del cliente: todos sus check-ins, con filtros; cada uno se abre entero al tocarlo
   async function tabReviews(c, box) {
-    const [checkins, photos] = await Promise.all([
+    const [checkins, photos, skips] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
-      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => [])]);
-    if (!checkins.length) { box.innerHTML = '<p class="empty">Este cliente todavía no ha enviado ninguna revisión.</p>'; return; }
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => []),
+      ckOn(c) ? loadSkips(c.id) : Promise.resolve([])]);
+    // Frecuencia, pendientes y descartes (029)
+    const st = window.JMCk && ckOn(c) ? JMCk.status(c, checkins, skips, today()) : null;
+    const fd2 = x => fmtDate(x, { day: 'numeric', month: 'short' });
+    const ckHead = st ? `<section class="card ck-head"><div class="row gap"><span class="grow"><b>Check-in: ${esc((JMCk.FREQ.find(f => f[0] === JMCk.freqOf(c)) || [])[1] || '')}</b>
+        <small class="muted">${st.off ? 'No se le piden check-ins; su historial se conserva.' : st.state === 'atrasado' ? esc(ckLateTxt(st)) : st.state === 'toca' ? 'Le toca esta semana y aún no lo ha enviado.' : `Al día · el próximo, el ${esc(fmtDate(st.pending.length ? st.pending[0].key : (st.cur.key >= today() ? st.cur.key : JMCk.period(c, st.cur.k + 1, JMCk.anchorOf(c, today())).key), { weekday: 'long', day: 'numeric', month: 'short' }))}.`}</small></span>
+        ${st.state ? '<button type="button" class="btn small" data-ckskip>Descartar</button>' : ''}<button type="button" class="btn small ghost" data-ckedit>Cambiar</button></div>
+        ${skips.length ? `<ul class="list ck-skips">${skips.slice(0, 6).map(k => `<li><span class="pill">descartado</span><span class="grow">${esc(fd2(k.period_start))} – ${esc(fd2(k.period_end))}<small>${k.reason ? esc(k.reason) + ' · ' : ''}${ago(k.created_at)}</small></span><button type="button" class="btn small ghost" data-ckundo="${k.id}">Deshacer</button></li>`).join('')}</ul>` : ''}</section>` : '';
+    const wireHead = () => {
+      const sb = box.querySelector('[data-ckskip]'); if (sb) sb.onclick = () => ckSkip(c, st, () => tabReviews(c, box));
+      const eb = box.querySelector('[data-ckedit]'); if (eb) eb.onclick = () => clientForm(c);
+      box.querySelectorAll('[data-ckundo]').forEach(b => b.onclick = async () => { b.disabled = true; try { await safe(() => DB.remove('checkin_skips', b.dataset.ckundo), 'Descarte deshecho'); } catch (e) { b.disabled = false; return; } S.ckLate = null; tabReviews(c, box); });
+    };
+    if (!checkins.length) { box.innerHTML = ckHead + '<p class="empty">Este cliente todavía no ha enviado ninguna revisión.</p>'; wireHead(); return; }
     const nPh = k => photos.filter(p => p.checkin_id === k.id).length || (k.photo_path ? 1 : 0);
     const FIL = [['all', 'Todas'], ['pend', 'Sin revisar'], ['fotos', 'Con fotos'], ['dolor', 'Con molestias']];
     const test = { all: () => true, pend: k => !k.coach_seen, fotos: k => nPh(k) > 0, dolor: k => !!realTxt(k.pains) };
@@ -2468,7 +2533,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const first = checkins[checkins.length - 1], lastW = checkins.find(k => k.weight), firstW = checkins.slice().reverse().find(k => k.weight);
     const draw = () => {
       const list = checkins.filter(test[fil]);
-      box.innerHTML = `<div class="kpis small">
+      box.innerHTML = `${ckHead}<div class="kpis small">
           <div class="kpi"><small>Revisiones</small><b>${checkins.length}</b><span>desde ${fmtDate(first.date, { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
           <div class="kpi ${checkins.some(k => !k.coach_seen) ? 'warn' : ''}"><small>Sin revisar</small><b>${checkins.filter(k => !k.coach_seen).length}</b><span>${checkins[0] ? 'última ' + fmtDate(checkins[0].date, { day: 'numeric', month: 'short' }) : ''}</span></div>
           <div class="kpi"><small>Peso</small><b>${lastW ? fmtKg(lastW.weight) + ' kg' : '–'}</b><span>${lastW && firstW && lastW !== firstW ? sgn(lastW.weight - firstW.weight) + ' kg desde la primera' : '—'}</span></div>
@@ -2483,7 +2548,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${realTxt(k.pains) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}${!k.coach_seen ? ' <i class="dot"></i>' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
         }).join('') : '<p class="empty">Ninguna revisión con este filtro.</p>'}</section>
         <p class="muted small">Toca una revisión para verla entera (medidas, respuestas, fotos) y responderla.</p>`;
-      box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { fil = b.dataset.f; draw(); });
+      box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { fil = b.dataset.f; draw(); }); wireHead();
       box.querySelectorAll('.ck-item').forEach(el => {
         el.querySelector('.ck-row').onclick = () => {
           const o = el.querySelector('.ck-open');
@@ -3160,7 +3225,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const t0 = today();
     const goalsC = window.JMGoals ? await loadGoals(c.id) : null, pg = primaryGoal(goalsC);
     const gData = pg ? await goalData(c, pg.metric === 'e1rm' ? 'e1rm' : 'w') : null;
-    const [events, ckins] = await Promise.all([loadEvents(c.id, addDays(t0, -7), addDays(t0, 13)).then(x => (x || []).filter(e => e.visible !== false)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 10 }).catch(() => [])]);
+    const [events, ckins] = await Promise.all([loadEvents(c.id, addDays(t0, -7), addDays(t0, 13)).then(x => (x || []).filter(e => e.visible !== false)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 20 }).catch(() => [])]);
+    const ckSt = window.JMCk ? JMCk.status(c, ckins, ckOn(c) ? await loadSkips(c.id) : [], t0) : null;
+    if (ckSt && ckSt.off) for (let i = events.length - 1; i >= 0; i--) if (events[i].kind === 'checkin') events.splice(i, 1);
     const cw = currentWeek(weeks, programs);
     const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
     routines.sort((a, b) => (a.day || 9) - (b.day || 9));
@@ -3197,14 +3264,15 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     // día elegido en la semana (por defecto, hoy): se ve lo que toca y se puede apuntar el peso de ese día
     let sel = S.daySel && S.daySel.wk === wkS ? S.daySel.n : d;
     let dm = await DB.list('daily_metrics', { eq: { client_id: c.id }, gte: { date: wkS }, order: ['date', 'asc'] }).catch(() => null);
-    const notices = clientNotices(c, ckins, wkS, d, t0);
+    const notices = clientNotices(c, ckins, wkS, d, t0, ckSt);
     const stripHtml = () => [1, 2, 3, 4, 5, 6, 7].map(n => { const ds = dateOf(n), has = routines.some(r => r.day === n), hasEv = events.some(e => e.date === ds && e.kind !== 'note');
       const did = doneWeek.some(s => String(s.started_at).slice(0, 10) === ds) || events.some(e => e.date === ds && e.kind !== 'note' && evDone(e, sessions, ckins));
       return `<button type="button" data-dsel="${n}" aria-pressed="${n === sel}" aria-label="${esc(DIAS[n])} ${+ds.slice(8)}" class="${n === d ? 'today' : ''} ${n === sel ? 'sel' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${+ds.slice(8)}</b><i></i></button>`; }).join('');
     $app.querySelector('.content').innerHTML = `<div class="c-home">
+      ${notices.filter(nt => nt.k === 'ck').map(nt => `<section class="notice n-ck ck-pin ${nt.late ? 'late' : ''}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span><button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button></section>`).join('')}
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
       ${installCardHtml()}
-      ${notices.map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
+      ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
       <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
         <div class="weekstrip" data-strip>${stripHtml()}</div></section>
@@ -3266,14 +3334,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(e => toast(e.message, 'err'));
     }
     drawDay();
-    noticePopup(c, notices.filter(nt => nt.k !== 'ck' || d === 5), t0);
+    noticePopup(c, notices.filter(nt => nt.k !== 'ck' || (c.remind_checkin !== false && (nt.key || nt.late))), t0);
   }
 
   // ---------- Avisos al cliente: check-in pendiente (desde el viernes) y renovación del plan (2 días antes, 1 día antes y el día)
   // El entrenador los activa o desactiva por cliente en «Editar cliente».
-  function clientNotices(c, ckins, wkS, d, t0) {
+  function clientNotices(c, ckins, wkS, d, t0, st) {
     const out = [];
-    if (c.remind_checkin !== false && d >= 5 && !(ckins || []).some(k => String(k.date) >= wkS))
+    if (st) {   // 029: frecuencia por cliente; la tarjeta sale siempre que haya pendiente, la ventana según remind_checkin
+      if (st.state === 'toca') out.push({ k: 'ck', ic: 'inbox', key: st.isKeyDay, t: st.isKeyDay ? 'Hoy toca tu check-in' : 'Tienes el check-in pendiente', s: 'Cuéntale a tu entrenador cómo ha ido: peso, sensaciones y fotos.', btn: 'Enviar ahora' });
+      else if (st.state === 'atrasado') out.push({ k: 'ck', ic: 'inbox', late: true, t: st.pending.length > 1 ? `Tienes ${st.pending.length} check-ins pendientes` : 'Tienes un check-in atrasado',
+        s: `${st.late ? `Lleva ${st.late} día${st.late === 1 ? '' : 's'} de retraso. ` : ''}Envíalo cuando puedas: uno solo cubre todo lo pendiente.`, btn: 'Enviar ahora' });
+    } else if (c.remind_checkin !== false && d >= 5 && !(ckins || []).some(k => String(k.date) >= wkS))
       out.push({ k: 'ck', ic: 'inbox', t: d === 5 ? 'Hoy toca tu check-in semanal' : 'Tienes el check-in semanal pendiente', s: 'Cuéntale a tu entrenador cómo ha ido la semana: peso, sensaciones y fotos.', btn: 'Hacer check-in' });
     if (c.remind_payment !== false && c.pay_due) {
       const dd = Math.round((new Date(c.pay_due + 'T12:00:00') - new Date(t0 + 'T12:00:00')) / 864e5);
@@ -3380,6 +3452,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         const files = CK_POSES.map(([p]) => [p, form['ph_' + p] && form['ph_' + p].files[0]]).filter(x => x[1]);
         [...(form.ph_extra ? form.ph_extra.files : [])].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
         try { await safe(async () => {
+          if (window.JMCk && ckOn(c)) {
+            const [cks, sks] = await Promise.all([DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 40 }).catch(() => []), loadSkips(c.id)]);
+            Object.assign(d, JMCk.cover(c, cks, sks, d.date));
+          }
           const [k] = await DB.insert('checkins', d);
           const rows = [];
           for (const [pose, file] of files) rows.push({ checkin_id: k.id, client_id: c.id, pose, path: await DB.uploadPhoto(c.id, await shrink(file)) });
