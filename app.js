@@ -2002,7 +2002,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <small class="muted">Mejor 1RM est.: ${Math.round(best.e1)} kg · ${h.length} ${h.length === 1 ? 'sesión' : 'sesiones'}</small></div>`;
     };
     const rowHtml = (i, idx) => `<div class="ex-row ${i.superset ? 'ss ss-' + esc(i.superset) : ''}" data-idx="${idx}">${i.superset ? `<span class="ss-tag">Superserie ${esc(i.superset)}</span>` : ''}
-        <div class="ex-row-top"><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>${(() => { const k = window.JMSwap && i.exercise_name ? JMSwap.profileOf(i.exercise_name, S.exercises) : null; return k != null ? `<span class="prof p${k}" title="${esc(JMSwap.PROFILES[k].tip)}">${JMSwap.PROFILES[k].short}</span>` : ''; })()}
+        <div class="ex-row-top"><span class="drag" data-drag title="Arrastra para cambiar el orden" aria-label="Arrastrar ejercicio">⋮⋮</span><span class="num">${idx + 1}</span><input list="exlist" name="ex" placeholder="Ejercicio" value="${esc(i.exercise_name || '')}" required>${(() => { const k = window.JMSwap && i.exercise_name ? JMSwap.profileOf(i.exercise_name, S.exercises) : null; return k != null ? `<span class="prof p${k}" title="${esc(JMSwap.PROFILES[k].tip)}">${JMSwap.PROFILES[k].short}</span>` : ''; })()}
+          <input class="ex-notes" name="notes" value="${esc(i.notes || '')}" placeholder="Indicaciones (técnica, pausas…)" aria-label="Indicaciones">
           <button type="button" class="icon-btn" data-up title="Subir">${ic('up')}</button><button type="button" class="icon-btn" data-down title="Bajar">${ic('down')}</button><button type="button" class="icon-btn danger" data-del title="Quitar">${ic('trash')}</button></div>
         <div class="ex-row-fields">
           <label>Series<input name="sets" type="number" min="1" max="20" value="${i.sets || 3}"></label>
@@ -2014,9 +2015,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <label>Tipo de serie<select name="scheme">${SET_SCHEMES.map(([v, l]) => `<option value="${v}" ${v === (i.scheme || 'straight') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Progresión<select name="prog">${(PROG_RULES.some(p => p[0] === i.prog) ? PROG_RULES : [...PROG_RULES, [i.prog, i.prog]]).map(([v, l]) => `<option value="${v}" ${v === (i.prog || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Superserie<select name="ss" title="Los ejercicios con la misma letra se hacen seguidos, sin descanso entre ellos">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(v => `<option value="${v}" ${v === (i.superset || '') ? 'selected' : ''}>${v ? 'Superserie ' + v : 'No'}</option>`).join('')}</select></label>
-          <label class="wide">Indicaciones<input name="notes" value="${esc(i.notes || '')}" placeholder="Técnica, pausas…"></label>
-          <label class="wide">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>
-        </div>${histHtml(i.exercise_name)}</div>`;
+        </div><details class="eh-d"><summary>Vídeo${histHtml(i.exercise_name) ? ', historial y progresión' : ''}${i.media_url ? ' · 🎬' : ''}</summary>
+          <label class="eh-media">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>${histHtml(i.exercise_name)}</details></div>`;
     const form = modal(isNew ? 'Nueva rutina para ' + c.name : 'Editar rutina', `
       <datalist id="exlist">${exOpts}</datalist>
       <div class="form-grid">
@@ -2075,7 +2075,32 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         render();
       }
     });
+    form.classList.add('rt-ed');
     const box = form.querySelector('[data-rows]');
+    // Arrastrar un ejercicio por el asa ⋮⋮ para cambiar su orden (ratón o dedo)
+    box.addEventListener('pointerdown', ev => {
+      const hd = ev.target.closest('[data-drag]'); if (!hd) return;
+      const row = hd.closest('.ex-row'), scroller = form.querySelector('.modal-body');
+      ev.preventDefault(); sync(); row.classList.add('dragging');   // al mover la fila en el DOM se perdería la captura: se escucha en window
+      let lastY = ev.clientY, raf = null;
+      const autoScroll = () => { const r = scroller.getBoundingClientRect(); const d = lastY < r.top + 60 ? -12 : lastY > r.bottom - 60 ? 12 : 0; if (d) scroller.scrollTop += d; raf = requestAnimationFrame(autoScroll); };
+      raf = requestAnimationFrame(autoScroll);
+      const move = e => {
+        lastY = e.clientY;
+        const others = [...box.querySelectorAll('.ex-row')].filter(x => x !== row);
+        const after = others.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+        if (after) { if (row.nextElementSibling !== after) box.insertBefore(row, after); } else if (box.lastElementChild !== row) box.appendChild(row);
+      };
+      const up = () => {
+        cancelAnimationFrame(raf); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+        row.classList.remove('dragging');
+        // el «click» que sigue al soltar no debe cerrar la ventana si se suelta fuera de ella
+        const eat = e2 => { e2.stopPropagation(); e2.preventDefault(); }; window.addEventListener('click', eat, { capture: true, once: true }); setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 300);
+        const order = [...box.querySelectorAll('.ex-row')].map(x => rows[+x.dataset.idx]);
+        rows.splice(0, rows.length, ...order); draw();
+      };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+    });
     function sync() {
       box.querySelectorAll('.ex-row').forEach(el => {
         const i = rows[+el.dataset.idx]; const v = n => el.querySelector(`[name=${n}]`).value;

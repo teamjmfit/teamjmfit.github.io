@@ -1500,3 +1500,35 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .rv-wk > summary::-webkit-details-marker { display: none; }
 .rv-wk > summary::after { content: '▾'; margin-left: auto; color: var(--muted); transition: transform .15s; }
 .rv-wk:not([open]) > summary::after { transform: rotate(-90deg); }
+
+/* ---------- Editor de rutina: más ancho, cada ejercicio en poca altura, arrastrar para ordenar */
+.modal.rt-ed { max-width: min(1240px, 96vw); }
+@media (min-width: 900px) { .modal-back:has(.rt-ed) { align-items: center; } .modal.rt-ed { border-radius: 22px; max-height: 94dvh; } }
+.rt-ed .ex-row { padding: 8px 10px; margin-bottom: 8px; }
+.rt-ed .ex-row-top input[name=ex] { font-size: 15px; padding: 7px 10px; }
+.rt-ed .ex-row-fields { gap: 6px 8px; margin-top: 6px; }
+.rt-ed .ex-row-fields label { font-size: 11px; gap: 3px; }
+.rt-ed .ex-row-fields input, .rt-ed .ex-row-fields select { padding: 6px 8px; font-size: 13.5px; min-height: 34px; }
+@media (min-width: 900px) {
+  .rt-ed .ex-row-fields { grid-template-columns: 64px 84px 84px minmax(110px, 1fr) 92px 82px minmax(120px, 1.1fr) minmax(130px, 1.2fr) 118px; }
+  .rt-ed .ex-row-fields .wide { grid-column: span 4; }
+  .rt-ed .ex-row-fields .wide:last-child { grid-column: span 5; }
+}
+.rt-ed .ex-row-top .icon-btn { width: 34px; height: 34px; }
+.drag { flex: none; width: 26px; height: 34px; display: grid; place-items: center; cursor: grab; color: var(--muted); font-weight: 900; letter-spacing: -3px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.drag:active { cursor: grabbing; }
+.ex-row.dragging { opacity: .85; box-shadow: 0 10px 28px rgba(0, 0, 0, .22); outline: 2px solid var(--accent); position: relative; z-index: 2; }
+.eh-d { margin-top: 6px; } .eh-d > summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
+.eh-d .ex-hist2 { margin-top: 6px; }
+.rt-ed .ex-row-top { flex-wrap: wrap; }
+.rt-ed .ex-row-top input[name=ex] { flex: 1 1 220px; min-width: 0; }
+.rt-ed .ex-notes { flex: 1 1 220px; min-width: 0; font-size: 13.5px; padding: 7px 10px; }
+.eh-media { display: grid; gap: 3px; font-size: 11px; margin-top: 6px; }
+@media (max-width: 600px) { .rt-ed .ex-notes { order: 5; flex-basis: 100%; } }
+.rt-ed .ex-notes { font-weight: 400 !important; }
+@media (max-width: 600px) {
+  .rt-ed .ex-row-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rt-ed .ex-row-fields input, .rt-ed .ex-row-fields select { padding: 6px; font-size: 13px; }
+  .rt-ed .ex-row-top .prof { font-size: 10px; }
+  .modal footer { gap: 6px; } .modal footer .btn { padding: 9px 12px; font-size: 14px; }
+}
