@@ -1470,3 +1470,13 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .top::before, .wk-top::before, .tabbar::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: color-mix(in srgb, var(--bg) 86%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .tabbar::before { background: color-mix(in srgb, var(--bg) 90%, transparent); }
+
+/* Vencimientos: nombre y situación en una línea, acciones debajo a lo ancho */
+.venc-card .list li.va-row { display: block; padding: 10px 0; }
+.va-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.va-top .pill { align-self: center; }
+.va-name { font-weight: 700; }
+.va-info { color: var(--muted); font-size: 13px; }
+.va-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.va-acts .btn .ic { width: 16px; height: 16px; }
+@media (min-width: 900px) { .va-info { font-size: 12.5px; } .venc-card .list li.va-row { padding: 8px 0; } }

@@ -478,10 +478,12 @@
     const st = r => (r.c.access_blocked ? ['red', 'sin acceso'] : r.k ? ['amber', 'dice que pagó'] : r.over === 0 ? ['amber', 'vence hoy'] : ['red', `vencido ${r.over} d`]);
     const sec = document.createElement('section'); sec.className = 'card stor-card venc-card'; sec.setAttribute('data-payalert', '');
     sec.innerHTML = `<h3>💶 Vencimientos</h3><ul class="list">${rows.map(r => { const [cl2, t] = st(r);
-      return `<li><span class="pill ${cl2}">${t}</span><span class="grow"><a href="#/cliente/${r.c.id}/ficha">${esc(r.c.name)}</a><small>${r.over > 0 ? `Venció hace ${r.over} d` : r.over === 0 ? 'Vence hoy' : ''}${r.k ? ` · <b>Dice que ya ha pagado</b>${r.k.note ? ': «' + esc(r.k.note) + '»' : ''} (${ago(r.k.created_at)})` : ''}</small></span>
-        ${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Pago comprobado">✓</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕</button>` : ''}
+      const due = r.over > 0 ? `venció hace ${r.over} d` : r.over === 0 ? 'vence hoy' : '';
+      return `<li class="va-row"><div class="va-top"><span class="pill ${cl2}">${t}</span><a class="va-name" href="#/cliente/${r.c.id}/ficha">${esc(r.c.name)}</a>
+          <span class="va-info">${[due ? cap1(due) : '', r.k ? `avisó ${ago(r.k.created_at)}${r.k.note ? ': «' + esc(r.k.note) + '»' : ''}` : ''].filter(Boolean).join(' · ')}</span></div>
+        <div class="va-acts">${r.k ? `<button class="btn small" data-pok="${r.k.id}" title="Pago comprobado">✓ Pagado</button><button class="btn small ghost" data-pno="${r.k.id}" title="No me consta el pago">✕ No consta</button>` : ''}
         ${'access_blocked' in r.c ? `<button class="btn small ${r.c.access_blocked ? 'primary' : 'ghost'}" data-acc="${r.c.id}">${r.c.access_blocked ? 'Reactivar' : 'Quitar acceso'}</button>` : ''}
-        ${r.c.phone ? `<a class="icon-btn sm" target="_blank" rel="noopener" href="https://wa.me/${esc(String(r.c.phone).replace(/\D/g, ''))}" title="WhatsApp">${ic('wa')}</a>` : ''}</li>`; }).join('')}</ul>
+        ${r.c.phone ? `<a class="btn small ghost" target="_blank" rel="noopener" href="https://wa.me/${esc(String(r.c.phone).replace(/\D/g, ''))}" title="WhatsApp">${ic('wa')} Mensaje</a>` : ''}</div></li>`; }).join('')}</ul>
       <p class="muted small">El cliente ve un aviso diario hasta que registres el pago en tu hoja de cobros. «Quitar acceso» le deja solo una pantalla de «No tienes acceso».</p>`;
     stack.prepend(sec); clampList(sec, 4);
     const again = async () => { S.clients = null; await loadClients(); payAlerts(stack); };
