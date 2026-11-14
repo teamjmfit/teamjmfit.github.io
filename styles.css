@@ -1532,3 +1532,7 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
   .rt-ed .ex-row-top .prof { font-size: 10px; }
   .modal footer { gap: 6px; } .modal footer .btn { padding: 9px 12px; font-size: 14px; }
 }
+.eh-mgrid { display: grid; gap: 10px; margin-top: 6px; }
+@media (min-width: 900px) { .eh-mgrid { grid-template-columns: 300px minmax(0, 1fr); align-items: start; } }
+.eh-mprev .vmedia { margin: 0; border-radius: 10px; overflow: hidden; }
+.eh-mprev small { display: block; margin-top: 3px; }

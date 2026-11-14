@@ -2016,7 +2016,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <label>Progresión<select name="prog">${(PROG_RULES.some(p => p[0] === i.prog) ? PROG_RULES : [...PROG_RULES, [i.prog, i.prog]]).map(([v, l]) => `<option value="${v}" ${v === (i.prog || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Superserie<select name="ss" title="Los ejercicios con la misma letra se hacen seguidos, sin descanso entre ellos">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(v => `<option value="${v}" ${v === (i.superset || '') ? 'selected' : ''}>${v ? 'Superserie ' + v : 'No'}</option>`).join('')}</select></label>
         </div><details class="eh-d"><summary>Vídeo${histHtml(i.exercise_name) ? ', historial y progresión' : ''}${i.media_url ? ' · 🎬' : ''}</summary>
-          <label class="eh-media">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>${histHtml(i.exercise_name)}</details></div>`;
+          <div class="eh-mgrid"><div class="eh-mprev" data-emprev></div><div><label class="eh-media">Vídeo o foto (enlace, opcional)<input name="media" value="${esc(i.media_url || '')}" placeholder="https://youtube.com/…"></label>${histHtml(i.exercise_name)}</div></div></details></div>`;
     const form = modal(isNew ? 'Nueva rutina para ' + c.name : 'Editar rutina', `
       <datalist id="exlist">${exOpts}</datalist>
       <div class="form-grid">
@@ -2129,6 +2129,12 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         el.querySelector('[data-up]').onclick = () => { sync(); if (idx > 0) { [rows[idx - 1], rows[idx]] = [rows[idx], rows[idx - 1]]; draw(); } };
         el.querySelector('[data-down]').onclick = () => { sync(); if (idx < rows.length - 1) { [rows[idx + 1], rows[idx]] = [rows[idx], rows[idx + 1]]; draw(); } };
         el.querySelector('[name=ss]').onchange = () => { sync(); ssTogether(); draw(); };
+        // al desplegar se ve el vídeo (el del ejercicio o, si no tiene, el del catálogo) para saber cuál es
+        const det = el.querySelector('.eh-d'), mIn = el.querySelector('[name=media]'), pv = el.querySelector('[data-emprev]');
+        const showV = () => { const nm = el.querySelector('[name=ex]').value.trim().toLowerCase(), cat = S.exercises.find(x => x.name.toLowerCase() === nm);
+          const u = mIn.value.trim() || (cat && cat.media_url) || '';
+          pv.innerHTML = u ? mediaFacade(u) + (!mIn.value.trim() ? '<small class="muted">Vídeo del catálogo</small>' : '') : '<p class="muted small">Sin vídeo. Pega un enlace o añádelo al ejercicio en el catálogo.</p>'; bindMedia(pv); };
+        if (det) { det.addEventListener('toggle', () => { if (det.open) showV(); }); mIn.addEventListener('change', () => { if (det.open) showV(); }); }
         el.querySelector('[name=ex]').onchange = e => { const ex = S.exercises.find(x => x.name === e.target.value); const m = el.querySelector('[name=media]'); if (ex && ex.media_url && !m.value) m.value = ex.media_url; sync(); drawPrio(); };
       });
     }
