@@ -585,6 +585,20 @@
     draw();
   }
 
+  // ---------- Qué ve cada cliente en su app (029: clients.ui_prefs guarda solo lo que cambia el entrenador)
+  const UI_MODS = [
+    ['nutricion', 'Pestaña Nutrición', true, 'Su plan de comidas'],
+    ['objetivos', 'Objetivos', true, 'Su objetivo en Inicio y en Progreso'],
+    ['evolucion', 'Evolución por ejercicio', true, 'Gráfica de fuerza (1RM estimado) por ejercicio'],
+    ['marcas', 'Mejores marcas', true, 'Sus récords por ejercicio'],
+    ['bienestar', 'Fatiga, estrés y energía', true, 'Gráfica de sus check-ins'],
+    ['mejoras', 'Mis mejoras de la semana', true, 'Botón en cada check-in'],
+    ['referidos', 'Referidos', true, 'Tarjeta para invitar a amigos'],
+    ['carga', 'Carga de entrenamiento (ACWR)', false, 'Normalmente solo la ves tú'],
+    ['volumen', 'Volumen semanal por músculo', false, 'Normalmente solo lo ves tú']];
+  const canSee = (c, k) => { const p = (c && c.ui_prefs) || {}, m = UI_MODS.find(x => x[0] === k); return k in p ? !!p[k] : (m ? m[2] : true); };
+  const clientNav = () => CLIENT_NAV.filter(n => n.key !== 'nutricion' || canSee(S.client, 'nutricion'));
+
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
   const ckOn = c => 'ck_freq' in (c || {});
   const ckOff = c => !!(window.JMCk && JMCk.off(c));
@@ -882,6 +896,9 @@
           <label>Frecuencia<select name="ck_freq">${JMCk.FREQ.map(([v, l]) => `<option value="${v}" ${JMCk.freqOf(c) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label data-ckanchor ${JMCk.freqOf(c) === 'quincenal' ? '' : 'hidden'}>Empieza la semana del<input name="ck_anchor" type="date" value="${esc(JMCk.freqOf(c) === 'quincenal' && c.ck_anchor ? c.ck_anchor : JMCk.monday(today()))}"><small class="muted">Le tocará el viernes de la segunda semana, y así cada 15 días.</small></label>
           <small class="muted">El día clave es el viernes. Si no lo envía, le sale fijo arriba en Inicio hasta que lo envíe o tú lo descartes. Con «Sin check-in» no le sale nada (su historial se conserva).</small></fieldset>` : ''}
+        ${!isNew && 'ui_prefs' in c ? `<fieldset class="full rem-set ui-set"><legend>Qué ve en su app</legend>
+          ${UI_MODS.map(([k, l, def, h]) => `<label class="check"><input type="checkbox" name="ui_${k}" ${canSee(c, k) ? 'checked' : ''}> <span><b>${esc(l)}</b><small class="muted"> · ${esc(h)}${def ? '' : ' (desactivado por defecto)'}</small></span></label>`).join('')}
+          <small class="muted">Para comprobarlo: su ficha → Progreso → «Ver como el cliente». Pagos y el análisis completo de la semana siguen siendo solo tuyos.</small></fieldset>` : ''}
         ${!isNew && 'remind_checkin' in c ? `<fieldset class="full rem-set"><legend>Avisos en su app</legend>
           <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Ventana de aviso del check-in al abrir la app (el día clave y si va atrasado)</label>
           <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
@@ -896,6 +913,8 @@
       onSubmit: async (f, fd) => {
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
+        Object.keys(d).filter(k => k.startsWith('ui_') && k !== 'ui_prefs').forEach(k => delete d[k]);
+        if (!isNew && 'ui_prefs' in c) { const up = {}; UI_MODS.forEach(([k, , def]) => { const on = !!fd.get('ui_' + k); if (on !== def) up[k] = on; }); d.ui_prefs = up; }
         if (!isNew && ckOn(c) && window.JMCk) {
           const fq = d.ck_freq || 'semanal', anc = d.ck_anchor ? JMCk.monday(d.ck_anchor) : null;
           if (fq !== JMCk.freqOf(c)) d.ck_anchor = fq === 'quincenal' && anc ? anc : JMCk.monday(today());   // los periodos cuentan desde el cambio
@@ -2262,7 +2281,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       h.addEventListener('click', tog); h.addEventListener('keydown', tog);
     });
   }
-  async function tabProgress(c, box, asCoach) {
+  async function tabProgress(c, box, asCoach, preview = false) {
+    const see = k => asCoach || canSee(c, k);
+    // gráficas (analitica.js, carga.js, objetivos.js) se cargan después de app.js: si se abre Progreso al arrancar, se esperan
+    if ((!window.JMViz || !window.JMLoad) && document.readyState !== 'complete') await new Promise(r => { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
     const [checkins, sessions, logs, daily, photos, progs, pweeks] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
       clientSessions(c.id),
@@ -2283,18 +2305,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const prs = Object.entries(best).sort((a, b) => b[1].e1 - a[1].e1).slice(0, 8);
     // Carga, bienestar y sugerencia de descarga (solo entrenador)
     let LP = null, volHtml = ''; const VZ = [];
-    if (asCoach && window.JMLoad) {
+    if ((asCoach || see('carga') || see('volumen')) && window.JMLoad) {
       if (!S.exercises.length) await loadExercises().catch(() => []);
       const prog = progs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
       const ws = prog ? pweeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
       const t = today(), past = ws.filter(w => w.start_date <= t), lastDl = past.filter(w => w.kind === 'deload').pop();
-      LP = JMLoad.panel({ sessions, checkins, nStall: perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length,
+      if (asCoach) LP = JMLoad.panel({ sessions, checkins, nStall: perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length,
         sinceDl: prog && past.length ? (lastDl ? past.filter(w => w.week_no > lastDl.week_no).length : past.length) : null,
         nextWeek: ws.find(w => w.start_date > t) || null, hasProgram: !!prog, compact: !!window.JMViz });
-      volHtml = JMLoad.doneVolume(logs, S.exercises);
-      if (window.JMViz) VZ.push(JMViz.acwr({ sessions, checkins, weeks: ws }));
+      if (see('volumen')) volHtml = JMLoad.doneVolume(logs, S.exercises);
+      if (window.JMViz && see('carga')) VZ.push(JMViz.acwr({ sessions, checkins, weeks: ws }));
     }
-    const EX = window.JMViz ? JMViz.exercises({ logs, sessions, title: asCoach ? 'Evolución por ejercicio' : 'Tu evolución por ejercicio' }) : null;
+    const EX = window.JMViz && see('evolucion') ? JMViz.exercises({ logs, sessions, title: asCoach ? 'Evolución por ejercicio' : 'Tu evolución por ejercicio' }) : null;
 
     const rows = weeklyRows(checkins, daily), wrows = rows.filter(r => r.avg != null);
     const last = wrows[wrows.length - 1], first = wrows[0];
@@ -2309,7 +2331,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const hasFat = rows.some(r => r.fatigue != null || r.stress != null || r.energy != null);
 
     box.innerHTML = `
-      ${!asCoach && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
+      ${asCoach && 'ui_prefs' in c ? '<p class="pv-bar"><button type="button" class="btn small ghost" data-preview>👁 Ver como el cliente</button></p>' : ''}
+      ${preview ? `<p class="note small">👁 Así ve ${esc(c.name.split(' ')[0])} su Progreso. <button type="button" class="btn small" data-unpreview>Volver a mi vista</button></p>` : ''}
+      ${!asCoach && !preview && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
       <div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
@@ -2322,7 +2346,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${VZ.map(v => v.html).join('')}
       ${LP ? LP.html : ''}
       ${wrows.length > 1 ? `<section class="card"><h3>Peso medio por semana</h3>${multiChart(labels, [{ name: 'Media semanal', cls: 's1', vals: rows.map(r => r.avg) }], { goal, unit: 'kg', label: 'Peso medio semanal' })}</section>` : ''}
-      ${hasFat && !asCoach ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
+      ${hasFat && !asCoach && see('bienestar') ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
         { name: 'Estrés', cls: 's4', vals: rows.map(r => r.stress) },
         { name: 'Energía', cls: 's2', vals: rows.map(r => r.energy) }], { min: 1, max: 10, label: 'Fatiga, estrés y energía (1-10)' })}<p class="muted small">Escala 1-10 de cada check-in semanal.</p></section>` : ''}
@@ -2333,7 +2357,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${perfHtml()}
       ${volHtml}
       ${weeksHtml()}
-      ${prs.length && !asCoach ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
+      ${prs.length && !asCoach && see('marcas') ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       <div class="${asCoach ? '' : 'grid2'}">
         ${asCoach ? '' : `<section class="card"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>`}
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
@@ -2341,7 +2365,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     if (!asCoach) foldify(box, 'prog', ['Peso medio']);
     VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
-    goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach), mesoOf(progs, pweeks));
+    if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
+    const unp = box.querySelector('[data-unpreview]'); if (unp) unp.onclick = () => tabProgress(c, box, true);
+    const pvb = box.querySelector('[data-preview]'); if (pvb) pvb.onclick = () => tabProgress(c, box, false, true);
     if (LP) LP.wire(box, async wid => {
       const w = pweeks.find(x => x.id === wid);
       if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y pone RIR 2. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
@@ -2793,7 +2819,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
       ${texts.map(([key, l]) => `<p class="ck-txt"><small>${esc(l)}</small>${nl2br(k[key])}</p>`).join('')}
       <div class="ck-pics" data-photos hidden></div>
-      ${window.JMAnalysis ? `<button type="button" class="btn small an-btn" data-analyze>${asCoach ? '📊 Análisis de la semana' : '💪 Mis mejoras de la semana'}</button>` : ''}
+      ${window.JMAnalysis && (asCoach || canSee(who || S.client, 'mejoras')) ? `<button type="button" class="btn small an-btn" data-analyze>${asCoach ? '📊 Análisis de la semana' : '💪 Mis mejoras de la semana'}</button>` : ''}
       ${k.coach_reply ? `<p class="reply"><b>Respuesta:</b> ${nl2br(k.coach_reply)}</p>` : ''}
       ${asCoach ? `<form class="row gap" data-reply><input name="r" placeholder="${k.coach_reply ? 'Cambiar respuesta…' : 'Responder al check-in…'}"><button class="btn small">${k.coach_seen ? 'Responder' : 'Revisado'}</button></form>` : ''}`;
     const anb = el.querySelector('[data-analyze]'); if (anb) anb.onclick = () => openAnalysis(k, asCoach, who || (asCoach ? null : S.client));
@@ -3154,8 +3180,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const [r0, r1] = S.route;
     if (r0 === 'entreno') return workout(r1);
     if (!r0) return clientToday();
-    if (r0 === 'nutricion') return clientNutrition();
-    if (r0 === 'progreso') { shell(CLIENT_NAV, 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
+    if (r0 === 'nutricion') return canSee(S.client, 'nutricion') ? clientNutrition() : go('#/');
+    if (r0 === 'progreso') { shell(clientNav(), 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
     go('#/');
   }
 
@@ -3199,7 +3225,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   // Acceso desactivado por el entrenador
   function paywall() {
-    shell(CLIENT_NAV, '', `<section class="paywall card">
+    shell(clientNav(), '', `<section class="paywall card">
       <div class="pw-lock">🔒</div>
       <h2>No tienes acceso</h2>
       <p>Tu acceso a la app está desactivado ahora mismo. Habla con tu entrenador para reactivarlo.</p>
@@ -3213,7 +3239,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   async function clientToday() {
     const c = S.client;
-    shell(CLIENT_NAV, 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}`, sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })) });
+    shell(clientNav(), 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}`, sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })) });
     const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
     if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
     const [allRoutines, sessions, programs, weeks] = await Promise.all([
@@ -3223,6 +3249,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => [])
     ]);
     const t0 = today();
+    if (!window.JMGoals && document.readyState !== 'complete') await new Promise(r => { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });   // objetivos.js va después de app.js
     const goalsC = window.JMGoals ? await loadGoals(c.id) : null, pg = primaryGoal(goalsC);
     const gData = pg ? await goalData(c, pg.metric === 'e1rm' ? 'e1rm' : 'w') : null;
     const [events, ckins] = await Promise.all([loadEvents(c.id, addDays(t0, -7), addDays(t0, 13)).then(x => (x || []).filter(e => e.visible !== false)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 20 }).catch(() => [])]);
@@ -3277,7 +3304,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
         <div class="weekstrip" data-strip>${stripHtml()}</div></section>
       <div data-day></div>
-      ${pg ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
+      ${pg && canSee(c, 'objetivos') ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
       ${others.length ? `<section class="card rlist-card"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
       ${evNext.length ? `<section class="card"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
       ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}</div>`;
@@ -3329,7 +3356,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     });
     wire(box.querySelector('.c-home'));
     wireInstall(box);
-    if (window.JMRefer && 'referred_by' in c) {   // migración 027
+    if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
       const home = box.querySelector('.c-home') || box; home.insertAdjacentHTML('beforeend', JMRefer.card(c));
       const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(e => toast(e.message, 'err'));
     }
@@ -3369,7 +3396,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   async function clientNutrition() {
-    shell(CLIENT_NAV, 'nutricion', loading(), { title: 'Mi nutrición' });
+    shell(clientNav(), 'nutricion', loading(), { title: 'Mi nutrición' });
     const [p0, d] = await Promise.all([DB.get('nutrition_plans', S.client.id, 'client_id'), DB.rpc('get_my_nutrition').catch(() => null)]);
     const box = $app.querySelector('.content');
     const hasBlocks = !!(d && d.blocks && d.blocks.length && window.JMNutri);
