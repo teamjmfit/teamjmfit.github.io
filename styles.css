@@ -1333,3 +1333,8 @@ details.r-fold > summary { color: var(--text); }
 .ck-head small { display: block; margin-top: 2px; }
 .ck-skips { margin-top: 10px; }
 .ck-set select, .ck-set input[type=date] { width: 100%; }
+
+/* ---------- Qué ve cada cliente (029) */
+.ui-set .check { align-items: flex-start; }
+.ui-set .check small { font-weight: 400; }
+.pv-bar { display: flex; justify-content: flex-end; margin: 0 0 10px; }
