@@ -142,7 +142,7 @@
           <select data-unit>${'<option value="g">g</option>'}${f && f.unit_g > 0 ? `<option value="u" ${unit ? 'selected' : ''}>${esc(f.unit_name || 'unidad')} (${f1(f.unit_g)} g)</option>` : ''}</select></td>
         <td class="np-n">${esc(f ? f.name : it.food_name)}${f ? (f.active === false ? ' <span class="pill red">inactivo</span>' : '') : ' <span class="pill red">no está en la base</span>'}${unit ? `<small class="muted"> · ${r0(m.g)} g</small>` : ''}</td>
         <td data-m="kcal">${r0(m.kcal)}</td><td data-m="p">${f1(m.p)}</td><td data-m="c">${f1(m.c)}</td><td data-m="f">${f1(m.f)}</td><td data-m="fi" class="lg">${f1(m.fi)}</td>
-        <td><button type="button" class="icon-btn sm" data-delitem aria-label="Quitar">${ic('trash')}</button></td></tr>`;
+        <td class="np-act"><span class="np-mv"><button type="button" class="icon-btn sm" data-mv="-1" aria-label="Subir alimento" title="Subir">${ic('up')}</button><button type="button" class="icon-btn sm np-dn" data-mv="1" aria-label="Bajar alimento" title="Bajar">${ic('up')}</button></span><button type="button" class="icon-btn sm" data-delitem aria-label="Quitar">${ic('trash')}</button></td></tr>`;
     }
     const devTxt = dev => (dev == null ? '' : `<span class="${Math.abs(dev) > 10 ? 'bad' : 'muted'}">(${dev > 0 ? '+' : ''}${dev} % vs opción 1)</span>`);
     const devOf = bid => { const os = optsOf(bid), sel = selOf(bid), F = foodMap(); if (!os[0] || !sel || os[0].id === sel.id) return null; const ref = sumMacros(itemsOf(os[0].id), F).kcal; return ref ? Math.round((sumMacros(itemsOf(sel.id), F).kcal - ref) / ref * 100) : null; };
@@ -355,6 +355,15 @@
             persist(); draw();
           };
           tr.querySelector('[data-delitem]').onclick = () => run(async () => { await DB().remove('option_items', it.id); st.items = st.items.filter(i => i.id !== it.id); draw(); });
+          // cambiar el orden de los alimentos: se intercambia con el de al lado y se renumeran todos (0, 1, 2…)
+          tr.querySelectorAll('[data-mv]').forEach(btn => btn.onclick = () => run(async () => {
+            const list = itemsOf(it.option_id), i = list.indexOf(it), j = i + Number(btn.dataset.mv);
+            if (j < 0 || j >= list.length) return;
+            [list[i], list[j]] = [list[j], list[i]];
+            const ch = list.map((x, k) => (x.position !== k ? (x.position = k, x) : null)).filter(Boolean);
+            draw();
+            for (const x of ch) await DB().update('option_items', x.id, { position: x.position });
+          }));
         });
       });
     }
