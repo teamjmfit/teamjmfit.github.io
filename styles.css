@@ -1536,3 +1536,12 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 @media (min-width: 900px) { .eh-mgrid { grid-template-columns: 300px minmax(0, 1fr); align-items: start; } }
 .eh-mprev .vmedia { margin: 0; border-radius: 10px; overflow: hidden; }
 .eh-mprev small { display: block; margin-top: 3px; }
+
+/* Ajuste rápido del día: reparto por comidas */
+.np-rep { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; flex-wrap: wrap; }
+.np-meals { display: grid; gap: 6px; margin-bottom: 8px; }
+.np-ml { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 8px; padding: 8px 10px; border-radius: 10px; background: var(--card2); }
+.np-ml select { grid-column: 1 / -1; }
+.np-mg { display: flex; align-items: center; gap: 4px; } .np-mg input { width: 80px; text-align: center; padding: 6px; }
+.np-sw { font-size: 16px; font-weight: 700; } .np-sw.on { background: var(--accent); color: var(--accent-ink); }
+.np-mg { display: flex !important; flex-direction: row; align-items: center; gap: 4px; }

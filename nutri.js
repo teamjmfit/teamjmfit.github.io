@@ -383,17 +383,19 @@
       let it = null, f = null, bp = -1;
       if (foodId) { f = F.get(foodId); it = its.find(i => i.food_id === foodId) || null; }
       else {
-        // la fuente más «pura» del macro (más % de sus kcal), con al menos 5 g por 100 g
+        // el que más aporta de ese macro en el plato (el arroz o la pasta antes que la fruta o la verdura),
+        // entre los alimentos que son sobre todo de ese macro (≥ 35 % de sus kcal y ≥ 5 g por 100 g)
         its.forEach(i => { const ff = F.get(i.food_id); if (!ff || !(Number(ff[macro]) >= 5)) return;
           const pur = Number(ff[macro]) * kpg / Math.max(1, Number(ff.kcal) || Number(ff[macro]) * kpg);
-          if (!it || pur > bp + 1e-9 || (Math.abs(pur - bp) < 1e-9 && Number(ff[macro]) > Number(f[macro]))) { it = i; f = ff; bp = pur; } });
+          const amt = gramsOf(i, ff) * Number(ff[macro]) / 100, sc = (pur >= 0.35 ? 1e6 : 0) + amt;
+          if (!it || sc > bp) { it = i; f = ff; bp = sc; } });
       }
       const row = { o, k, it, f };
-      if (!grams) return Object.assign(row, { skip: 'esta opción no lleva ' + MAC[macro][0].toLowerCase() });
+      if (!grams) return Object.assign(row, { skip: sumMacros(its, F)[MAC[macro][2]] > 0 ? 'sin cambio en esta comida' : 'esta opción no lleva ' + MAC[macro][0].toLowerCase() });
       if (!f || !(Number(f[macro]) > 0)) return Object.assign(row, { skip: foodId ? 'ese alimento no tiene ' + MAC[macro][0].toLowerCase() : 'ningún alimento aporta ' + MAC[macro][0].toLowerCase() });
       const per = Number(f[macro]) / 100, g0 = it ? gramsOf(it, f) : 0;
       let g1 = g0 + grams / per;
-      if (!it && grams < 0) return Object.assign(row, { skip: 'no está en esta opción' });
+      if (!it) return Object.assign(row, { skip: 'ese alimento no está en esta opción' });
       if (g1 < 0.5) g1 = 0;
       const unit = it && it.units != null && Number(f.unit_g) > 0;
       const units = unit ? Math.round(g1 / Number(f.unit_g) * 2) / 2 : null;
@@ -452,13 +454,16 @@
     const P = preset || { macro: 'carbs', mode: 'kcal', v: -200 };
     const lst = blocks.map(b => ({ b, os: optsOf(b.id) })).filter(x => x.os.length);
     const m = modal('Ajuste rápido del día', `
-      <p class="muted small">Se reparte entre todas las comidas en proporción y se aplica a <b>todas sus opciones</b>. Revisa abajo cómo queda antes de aplicar.</p>
+      <p class="muted small">Se aplica a <b>todas las opciones</b> de cada comida. Por defecto se reparte en proporción y se cambia el alimento que más aporta (el arroz o la pasta antes que la fruta). Revisa abajo cómo queda antes de aplicar.</p>
       <div class="form-grid np-adj">
         <label>Qué<select name="dir"><option value="1" ${P.v > 0 ? 'selected' : ''}>Añadir</option><option value="-1" ${P.v < 0 ? 'selected' : ''}>Quitar</option></select></label>
         <label>Cantidad<input name="amt" type="number" inputmode="decimal" min="0" step="5" value="${Math.abs(P.v) || 200}" required></label>
-        <label>En<select name="mode"><option value="kcal" ${P.mode === 'kcal' ? 'selected' : ''}>kcal</option><option value="pct" ${P.mode === 'pct' ? 'selected' : ''}>% del macro</option></select></label>
+        <label>En<select name="mode"><option value="g" ${P.mode === 'g' ? 'selected' : ''}>g del macro</option><option value="kcal" ${P.mode === 'kcal' ? 'selected' : ''}>kcal</option><option value="pct" ${P.mode === 'pct' ? 'selected' : ''}>% del macro</option></select></label>
         <label>De<select name="macro">${Object.entries(MAC).map(([k, v]) => `<option value="${k}" ${P.macro === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
-      </div><div data-prev class="np-adjprev"></div>`, { submitLabel: 'Aplicar', onSubmit: async (form, fd) => {
+      </div>
+      <div class="np-rep"><span class="muted small">Reparto</span><div class="seg" role="group"><button type="button" class="on" data-rep="auto">Proporcional</button><button type="button" data-rep="manual">Lo elijo yo</button></div><input type="hidden" name="rep" value="auto"></div>
+      <div class="np-meals" data-meals></div>
+      <div data-prev class="np-adjprev"></div>`, { submitLabel: 'Aplicar', onSubmit: async (form, fd) => {
         const rows = plan(fd).flatMap(x => x.rows.map(r => Object.assign(r, { b: x.b }))).filter(r => !r.skip && r.g !== r.g0);
         if (!rows.length) { toast('No hay nada que cambiar con estos datos', 'err'); return false; }
         try {
@@ -469,16 +474,41 @@
           toast(`Día ajustado: ${rows.length} alimento${rows.length === 1 ? '' : 's'} cambiado${rows.length === 1 ? '' : 's'}`, 'ok'); after();
         } catch (e) { console.error(e); toast('Error: ' + e.message, 'err'); after(); return false; }
       } });
+    // aporte medio de cada comida (media de sus opciones) para repartir en proporción
+    const shares = macro => { const F = foodMap(), key = MAC[macro][2], mOf = o => sumMacros(itemsOf(o.id), F)[key]; const sh = lst.map(x => x.os.reduce((s, o) => s + mOf(o), 0) / x.os.length); return { sh, tot: sh.reduce((s, v) => s + v, 0), mOf }; };
+    const totalG = fd => { const amt = Math.abs(pos(fd.get('amt'))) || 0, mode = fd.get('mode'); return mode === 'g' ? amt : mode === 'kcal' ? amt / MAC[fd.get('macro')][1] : null; };
     const plan = fd => {
-      const F = foodMap(), macro = fd.get('macro'), key = MAC[macro][2], kpg = MAC[macro][1];
-      const amt = Math.abs(pos(fd.get('amt'))) || 0, sign = Number(fd.get('dir')) || 1, mode = fd.get('mode');
-      const mOf = o => sumMacros(itemsOf(o.id), F)[key];
-      // aporte medio de cada comida (media de sus opciones) para repartir las kcal
-      const share = lst.map(x => x.os.reduce((s, o) => s + mOf(o), 0) / x.os.length), tot = share.reduce((s, v) => s + v, 0);
-      return lst.map((x, i) => ({ b: x.b, rows: planAdjust(x.os, itemsOf, F, { macro, grams: mode === 'pct'
+      const F = foodMap(), macro = fd.get('macro');
+      const amt = Math.abs(pos(fd.get('amt'))) || 0, sign = Number(fd.get('dir')) || 1, mode = fd.get('mode'), manual = fd.get('rep') === 'manual' && mode !== 'pct';
+      const { sh, tot, mOf } = shares(macro), TG = totalG(fd);
+      return lst.map((x, i) => ({ b: x.b, rows: planAdjust(x.os, itemsOf, F, { macro, foodId: fd.get('mf_' + i) || undefined, grams: mode === 'pct'
         ? (o => Math.round(sign * mOf(o) * amt / 100 * 10) / 10)
-        : (tot ? sign * amt / kpg * share[i] / tot : 0) }) }));
+        : manual ? sign * (Number(String(fd.get('mg_' + i) || '').replace(',', '.')) || 0) : (tot ? sign * TG * sh[i] / tot : 0) }) }));
     };
+    // Reparto por comidas: gramos de cada una (en «Lo elijo yo») y ⇄ para elegir de qué alimento sale o entra
+    let mgDirty = false;
+    const meals = m.querySelector('[data-meals]');
+    const drawMeals = () => {
+      const fd = new FormData(m), macro = fd.get('macro'), F = foodMap(), manual = fd.get('rep') === 'manual' && fd.get('mode') !== 'pct';
+      const { sh, tot } = shares(macro), TG = totalG(fd) || 0, keep = {};
+      meals.querySelectorAll('select[data-mf]').forEach(s => { keep[s.name] = s.value; });
+      meals.innerHTML = lst.map((x, i) => {
+        const fs = new Map(); x.os.forEach(o => itemsOf(o.id).forEach(it => { const f = F.get(it.food_id); if (f && Number(f[macro]) > 0) fs.set(f.id, (fs.get(f.id) || 0) + gramsOf(it, f) * Number(f[macro]) / 100); }));
+        const opts = [...fs.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => F.get(id));
+        const auto = tot ? Math.round(TG * sh[i] / tot) : 0, cur = keep['mf_' + i] || '';
+        return `<div class="np-ml"><b>${esc(x.b.name)}</b>
+          ${manual ? `<label class="np-mg"><input type="number" inputmode="decimal" step="1" min="0" name="mg_${i}" data-mg value="${auto}" aria-label="Gramos en ${esc(x.b.name)}"><small>g</small></label>` : `<small class="muted">${fd.get('mode') === 'pct' ? 'en proporción' : '≈ ' + auto + ' g'}</small>`}
+          <button type="button" class="icon-btn sm np-sw ${cur ? 'on' : ''}" data-sw="${i}" title="Elegir de qué alimento se cambia" aria-label="Elegir alimento">⇄</button>
+          <select name="mf_${i}" data-mf ${cur ? '' : 'hidden'}><option value="">Automático: el que más aporta${opts[0] ? ' (' + esc(opts[0].name) + ')' : ''}</option>${opts.map(f => `<option value="${f.id}" ${cur === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></div>`;
+      }).join('') + (manual ? `<p class="small" data-mgsum></p>` : '');
+      meals.querySelectorAll('[data-sw]').forEach(b => b.onclick = () => { const sel = meals.querySelector(`[name=mf_${b.dataset.sw}]`); sel.hidden = !sel.hidden; b.classList.toggle('on', !sel.hidden); if (sel.hidden) { sel.value = ''; draw(); } else sel.focus(); });
+      meals.querySelectorAll('[data-mg]').forEach(inp => inp.addEventListener('input', () => { mgDirty = true; }));
+      mgSum();
+    };
+    const mgSum = () => { const el = meals.querySelector('[data-mgsum]'); if (!el) return; const fd = new FormData(m), TG = totalG(fd) || 0;
+      const sum = lst.reduce((s, x, i) => s + (Number(String(fd.get('mg_' + i) || '').replace(',', '.')) || 0), 0);
+      el.innerHTML = `Repartido: <b>${f1(sum)} g</b> de ${f1(TG)} g de ${esc(MAC[fd.get('macro')][0].toLowerCase())}${Math.abs(sum - TG) > 0.5 ? ` <span class="bad">(${sum > TG ? 'sobran' : 'faltan'} ${f1(Math.abs(sum - TG))} g)</span>` : ' ✓'}`; };
+    m.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { m.querySelectorAll('[data-rep]').forEach(x => x.classList.toggle('on', x === b)); m.querySelector('[name=rep]').value = b.dataset.rep; mgDirty = false; drawMeals(); draw(); });
     const draw = () => {
       const fd = new FormData(m), macro = fd.get('macro'), L = MAC[macro][2].toUpperCase(), res = plan(fd);
       const day = res.reduce((s, x) => s + (x.rows[0] && !x.rows[0].skip ? x.rows[0].real : 0), 0);
@@ -486,7 +516,9 @@
         : `${esc(r.f.name)}: ${r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`}${r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${L}</b>`}</li>`).join('')}</ul>`).join('')
         + `<p class="small"><b>Día (opción 1 de cada comida): ${day >= 0 ? '+' : ''}${f1(day)} g ${L} · ${day >= 0 ? '+' : ''}${r0(day * MAC[macro][1])} kcal</b></p><p class="muted small">Si un alimento va por unidades se redondea a media unidad.</p>`;
     };
-    m.addEventListener('input', draw); m.addEventListener('change', draw); draw();
+    m.addEventListener('input', e => { if (e.target.closest('[data-meals]')) mgSum(); else if (!mgDirty) drawMeals(); else mgSum(); draw(); });
+    m.addEventListener('change', e => { if (e.target.matches('[name=macro],[name=mode]')) { mgDirty = false; drawMeals(); } draw(); });
+    drawMeals(); draw();
   }
 
   // Buscador de alimentos (se queda abierto para añadir varios seguidos)
