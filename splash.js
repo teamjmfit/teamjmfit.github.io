@@ -1,5 +1,10 @@
 // TEAM JMFIT · pantalla de carga: logo + frase motivacional. Se quita sola cuando la app ya está pintada
 // (mínimo ~1,1 s para que dé tiempo a leer la frase y máximo 4 s pase lo que pase).
+// Apariencia elegida en este dispositivo (Arena claro por defecto), antes de pintar nada
+(function () { let t = 'light'; try { t = localStorage.getItem('jmfit-theme') || 'light'; } catch (e) { /* sin almacenamiento */ }
+  document.documentElement.dataset.theme = t;
+  const dark = t === 'dark' || (t === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = dark ? '#232328' : '#e9e3d6'; })();
 (function () {
   const FRASES = [
     'La disciplina gana a la motivación.',

@@ -71,7 +71,7 @@
       <p class="muted small">Carga de cada entreno = RPE al terminar × minutos. Arriba: estrés de la última semana (aguda) frente a la carga del último mes (crónica). Abajo: su cociente. Si la aguda se dispara por encima de la crónica, sube el riesgo; si está muy por debajo, se pierde forma. Toca el gráfico para ver cada día.</p>
     </section>`;
     function draw(root, days) {
-      const W = 640, H = 270, PL = 40, PR = 14, T0 = 12, T1 = 160, B0 = 182, B1 = 246;
+      const W = 600, H = 330, PL = 40, PR = 14, T0 = 12, T1 = 205, B0 = 230, B1 = 306;
       const n = days.length, x = i => PL + (W - PL - PR) * (n > 1 ? i / (n - 1) : 0.5), bw = Math.max(1.5, (W - PL - PR) / n * 0.7);
       const mx = Math.max(1, ...days.map(d => Math.max(d.v, d.a, d.c))) * 1.08, y = v => T1 - (T1 - T0) * v / mx;
       const yr = v => B1 - (B1 - B0) * Math.min(Math.max(v, 0), 2) / 2;
@@ -158,7 +158,7 @@
         ${kp('Tendencia (8 sem)', sl == null ? '–' : (sl >= 0 ? '+' : '') + r1(sl) + ' kg/sem', sl == null ? 'faltan sesiones' : sl > 0.25 ? 'progresando' : sl < -0.25 ? 'bajando' : 'estable', sl != null && sl < -0.25 ? 'warn' : '')}
         ${kp('Tonelaje última sesión', int(last.ton) + ' kg', tonAvg ? `${last.ton >= tonAvg ? '+' : ''}${r1((last.ton - tonAvg) / tonAvg * 100)} % vs sus 4 anteriores` : `${last.n} series`)}
         ${kp('Esfuerzo última sesión', last.rir != null ? 'RIR ' + r1(last.rir) : last.rpe != null ? 'RPE ' + r1(last.rpe) : '–', last.rir != null && last.rpe != null ? 'RPE ' + r1(last.rpe) : 'media de las series')}`;
-      const W = 640, H = 250, PL = 42, PR = 46, T0 = 14, T1 = 168, E0 = 188, E1 = 228;
+      const W = 600, H = 310, PL = 42, PR = 46, T0 = 14, T1 = 212, E0 = 236, E1 = 286;
       const x = i => PL + (W - PL - PR) * (n > 1 ? i / (n - 1) : 0.5), bw = Math.min(28, (W - PL - PR) / Math.max(n, 1) * 0.6);
       const kgV = rows.flatMap(r => [on.e1 ? r.e1 : null, on.top ? r.top : null]).filter(v => v != null);
       const kmin = kgV.length ? Math.min(...kgV) * 0.92 : 0, kmax = kgV.length ? Math.max(...kgV) * 1.04 : 1;

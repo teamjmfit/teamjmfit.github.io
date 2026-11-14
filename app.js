@@ -146,6 +146,7 @@
   const byId = (arr, id) => arr.find(x => x.id === id);
 
   const ICON = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
     dumbbell: '<path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/>',
@@ -387,6 +388,7 @@
     $app.innerHTML = `
       <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
         <nav>${nav}</nav>
+        <button class="side-out" data-theme-btn>${ic('sun')} Apariencia</button>
         <button class="side-out" data-logout>${ic('out')} Salir</button>
         ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
       </aside>
@@ -399,6 +401,7 @@
         <div class="content">${content}</div>
       </div>
       <nav class="tabbar">${nav}</nav>`;
+    $app.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => themeModal());
     $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; render(); } });
     $app.querySelectorAll('[data-priv]').forEach(b => b.onclick = () => privacyModal());
   }
@@ -640,7 +643,7 @@
 
   // ---------- Inicio
   async function coachHome() {
-    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
     const d8 = new Date(Date.now() - 8 * 864e5), d8i = d8.toISOString();
@@ -2232,7 +2235,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   // Gráfica de líneas con varias series (null = sin dato) y línea de objetivo opcional
   function multiChart(labels, series, { min, max, goal, unit = '', label = 'Gráfica' } = {}) {
-    const W = 600, H = 210, P = 44, n = labels.length;
+    const W = 520, H = 270, P = 50, n = labels.length;
     const all = series.flatMap(s => s.vals).filter(v => v != null).concat(goal != null ? [goal] : []);
     if (!all.length) return '';
     let lo = min != null ? min : Math.min(...all), hi = max != null ? max : Math.max(...all);
@@ -2243,17 +2246,41 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const paths = series.map(s => {
       let d = '', pen = false;
       s.vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `; pen = true; });
-      const pts = s.vals.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.5" class="pt ${s.cls}"><title>${esc(s.name)} · semana del ${fmtDate(labels[i])}: ${fmt(v)}${unit ? ' ' + unit : ''}</title></circle>`)).join('');
+      const pts = s.vals.map((v, i) => (v == null ? '' : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="5" class="pt ${s.cls}"><title>${esc(s.name)} · semana del ${fmtDate(labels[i])}: ${fmt(v)}${unit ? ' ' + unit : ''}</title></circle>`)).join('');
       return `<path d="${d}" class="line ${s.cls}"/>${pts}`;
     }).join('');
     const step = Math.max(1, Math.ceil(n / 6));
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
+    return `<div class="chart-wrap"><svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
       <line x1="${P}" x2="${W - P}" y1="${y(hi)}" y2="${y(hi)}" class="grid"/><line x1="${P}" x2="${W - P}" y1="${y(lo)}" y2="${y(lo)}" class="grid"/>
       <text x="${W - P + 4}" y="${y(hi) + 4}" class="lbl">${fmt(hi)}</text><text x="${W - P + 4}" y="${y(lo) + 4}" class="lbl">${fmt(lo)}</text>
       ${goal != null ? `<line x1="${P}" x2="${W - P}" y1="${y(goal)}" y2="${y(goal)}" class="goal"/><text x="${P + 4}" y="${y(goal) - 6}" class="lbl goal-t">Objetivo ${fmt(goal)}</text>` : ''}
       ${paths}
       ${labels.map((l, i) => (i % step === 0 || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" class="lbl" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${fmtDate(l)}</text>` : '')).join('')}
-    </svg>${series.length > 1 ? `<div class="legend">${series.map(s => `<span><i class="${s.cls}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}`;
+    </svg></div>${series.length > 1 ? `<div class="legend">${series.map(s => `<span><i class="${s.cls}"></i>${esc(s.name)}</span>`).join('')}</div>` : ''}`;
+  }
+
+  // Al tocar un punto de una gráfica se ve su valor (en el móvil el <title> no sale)
+  document.addEventListener('click', e => {
+    document.querySelectorAll('.chart-tip').forEach(t => t.remove());
+    const pt = e.target.closest && e.target.closest('.chart .pt'); if (!pt) return;
+    const wrap = pt.closest('.chart-wrap'), t = pt.querySelector('title'); if (!wrap || !t) return;
+    const a = pt.getBoundingClientRect(), b = wrap.getBoundingClientRect(), tip = document.createElement('div');
+    tip.className = 'chart-tip'; tip.textContent = t.textContent.replace(/^.*? · /, '');
+    tip.style.left = Math.min(b.width - 60, Math.max(60, a.left - b.left + a.width / 2)) + 'px'; tip.style.top = (a.top - b.top) + 'px';
+    wrap.appendChild(tip);
+  });
+  // Apariencia por dispositivo: claro (Arena, por defecto), oscuro o automático
+  const THEMES = [['light', 'Claro'], ['dark', 'Oscuro'], ['auto', 'Automático']];
+  const getTheme = () => { try { return localStorage.getItem('jmfit-theme') || 'light'; } catch (e) { return 'light'; } };
+  function setTheme(t) {
+    try { localStorage.setItem('jmfit-theme', t); } catch (e) { /* solo esta sesión */ }
+    document.documentElement.dataset.theme = t;
+    const m = document.querySelector('meta[name=theme-color]'), dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+    if (m) m.content = dark ? '#232328' : '#e9e3d6';
+  }
+  function themeModal() {
+    const f = modal('Apariencia', `<p class="muted small">Solo cambia en este dispositivo.</p><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div>`, { submitLabel: 'Listo', onSubmit: () => {} });
+    f.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); f.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
   }
 
   // Aviso compacto del check-in semanal (cliente): se resalta si toca enviarlo
@@ -3109,6 +3136,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <button type="button" class="btn block" data-exp>${ic('download')} Descargar mis datos</button>
         <button type="button" class="btn block ${req ? '' : 'ghost'}" data-del ${req ? 'disabled' : ''}>${ic('trash')} ${req ? 'Borrado solicitado' : 'Pedir que se borren mis datos'}</button>
         <button type="button" class="btn ghost block danger" data-wd>Retirar mi consentimiento</button>
+        <button type="button" class="btn ghost block" data-theme-btn>${ic('sun')} Apariencia: claro u oscuro</button>
       </div>
       <p class="muted small">Si retiras el consentimiento, no podrás usar la app hasta volver a aceptarlo. Para cualquier duda sobre tus datos, habla con tu entrenador.</p>`, {
       submitLabel: 'Guardar',
@@ -3124,6 +3152,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       if (!await confirmBox('Tu entrenador recibirá la petición y borrará tus datos y tu cuenta. ¿Quieres pedirlo?', 'Pedir borrado')) return;
       await safe(() => DB.rpc('request_data_deletion', {}), 'Petición enviada a tu entrenador'); await refreshClient(); closeModal();
     };
+    m.querySelector('[data-theme-btn]').onclick = () => { closeModal(); setTimeout(themeModal, 80); };
     m.querySelector('[data-wd]').onclick = async () => {
       if (!await confirmBox('Dejarás de poder usar la app hasta que vuelvas a aceptar. Tu entrenador lo verá. ¿Retirar el consentimiento?', 'Retirar')) return;
       await safe(() => DB.rpc('withdraw_consent', {}), 'Consentimiento retirado'); await refreshClient(); closeModal(); render();
