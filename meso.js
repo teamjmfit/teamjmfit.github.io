@@ -85,5 +85,19 @@
     return Array.from({ length: n }, (_, k) => items.reduce((a, it) => { const v = project(it, k, n, opts); return a + v.sets * (v.load_kg || 1) * ((v.reps_max || v.reps_min || 8)); }, 0));
   }
 
-  window.JMMeso = { DEF, project, ruleFor, weekLoads, roundLoad };
+  // ¿El RIR 0 de esa semana es «al fallo»? (igual que public._meso_fail, migración 030)
+  function failAt(it, k, o) {
+    const ov = ((o && o.weeks) || [])[k] || {};
+    if ('fail' in ov) return !!ov.fail;
+    if ('rir' in ov) return false;
+    if (o && (o.rir_mode === 'range' || (o.prio && o.prio.length))) return !!o.zero_fail;
+    return !!(it.progression && it.progression.fail);
+  }
+  function progressionAt(it, k, o, v) {
+    const p = Object.assign({}, it.progression || {}); delete p.fail;
+    if (v.target_rir != null && Number(v.target_rir) === 0) p.fail = failAt(it, k, o);
+    return p;
+  }
+
+  window.JMMeso = { DEF, project, ruleFor, weekLoads, roundLoad, failAt, progressionAt };
 })();
