@@ -1545,3 +1545,19 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .np-mg { display: flex; align-items: center; gap: 4px; } .np-mg input { width: 80px; text-align: center; padding: 6px; }
 .np-sw { font-size: 16px; font-weight: 700; } .np-sw.on { background: var(--accent); color: var(--accent-ink); }
 .np-mg { display: flex !important; flex-direction: row; align-items: center; gap: 4px; }
+
+/* ---------- Modo libre: rutinas del cliente */
+.free-card .row h3 { margin: 0; }
+.free-list li { align-items: center; gap: 8px; }
+.free-pill { font-size: 11px; vertical-align: 2px; background: var(--accent-soft); color: var(--accent); }
+.free-row { background: var(--card2); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
+.free-top { display: flex; align-items: center; gap: 6px; }
+.free-top input { flex: 1; min-width: 0; font-weight: 600; }
+.free-top .num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font: 700 12px var(--body); }
+.free-dn .ic { transform: rotate(180deg); }
+.free-f { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.free-f label { display: grid; gap: 3px; font-size: 11px; color: var(--muted); }
+.free-f input, .free-f select { padding: 6px; font-size: 14px; min-height: 36px; }
+.free-top { gap: 2px; } .free-top .num { margin-right: 4px; }
+.free-top .icon-btn.sm { width: 32px; height: 32px; min-height: 0; }
+.free-top input { font-size: 15px; padding: 8px 10px; }
