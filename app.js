@@ -612,7 +612,8 @@
     ['mejoras', 'Mis mejoras de la semana', true, 'Botón en cada check-in'],
     ['referidos', 'Referidos', true, 'Tarjeta para invitar a amigos'],
     ['carga', 'Carga de entrenamiento (ACWR)', false, 'Normalmente solo la ves tú'],
-    ['volumen', 'Volumen semanal por músculo', false, 'Normalmente solo lo ves tú']];
+    ['volumen', 'Volumen semanal por músculo', false, 'Normalmente solo lo ves tú'],
+    ['libre', 'Modo libre: crear sus propias rutinas', false, 'Puede crear rutinas (ejercicios, series, reps y RIR) y registrar lo que entrene. Las tuyas no las puede tocar']];
   const canSee = (c, k) => { const p = (c && c.ui_prefs) || {}, m = UI_MODS.find(x => x[0] === k); return k in p ? !!p[k] : (m ? m[2] : true); };
   const clientNav = () => CLIENT_NAV.filter(n => n.key !== 'nutricion' || canSee(S.client, 'nutricion'));
 
@@ -1183,7 +1184,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <div class="routines">${routines.map(r => {
         const its = items.filter(i => i.routine_id === r.id), names = its.map(i => i.exercise_name);
         return `<details class="card routine r-fold" data-rk="${esc(r.name)}" ${S.rOpen && S.rOpen.has(c.id + '|' + r.name) ? 'open' : ''}>
-          <summary><span class="r-chev">${ic('back')}</span><div class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios${r.prio_muscles && r.prio_muscles.length ? ` · prioridad: ${esc(r.prio_muscles.join(', '))}` : ''}</small><small class="r-names">${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` y ${names.length - 3} más` : ''}</small></div>
+          <summary><span class="r-chev">${ic('back')}</span><div class="grow"><b>${esc(r.name)}${r.by_client ? ' <span class="pill free-pill">creada por el cliente</span>' : ''}</b><small>${r.day ? DIAS[r.day] : 'Día libre'} · ${its.length} ejercicios${r.prio_muscles && r.prio_muscles.length ? ` · prioridad: ${esc(r.prio_muscles.join(', '))}` : ''}</small><small class="r-names">${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` y ${names.length - 3} más` : ''}</small></div>
             <button class="icon-btn" data-dup="${r.id}" title="Duplicar en otro cliente">${ic('copy')}</button>
             <button class="btn small" data-edit="${r.id}">${ic('edit')}<span>Editar</span></button></summary>
           ${r.notes ? `<p class="note">${nl2br(r.notes)}</p>` : ''}
@@ -3666,12 +3667,84 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     });
     wire(box.querySelector('.c-home'));
     wireInstall(box);
+    if (canSee(c, 'libre')) freeRoutines(c, box.querySelector('.c-home') || box).catch(e => console.warn('modo libre', e));
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
       const home = box.querySelector('.c-home') || box; home.insertAdjacentHTML('beforeend', JMRefer.card(c));
       const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(e => toast(e.message, 'err'));
     }
     drawDay();
     noticePopup(c, notices.filter(nt => nt.k !== 'ck' || (c.remind_checkin !== false && (nt.key || nt.late))), t0);
+  }
+
+  // ---------- Modo libre (031): el cliente crea sus rutinas (ejercicios, series, reps, RIR) y las entrena
+  async function freeRoutines(c, host) {
+    const rs = (await DB.list('routines', { eq: { client_id: c.id, by_client: true }, order: ['position', 'asc'] }).catch(() => null));
+    if (!rs) return;   // sin la migración 031
+    const its = rs.length ? await DB.list('routine_items', { in: { routine_id: rs.map(r => r.id) }, order: ['position', 'asc'] }).catch(() => []) : [];
+    let sec = host.querySelector('[data-free]');
+    if (!sec) { sec = document.createElement('section'); sec.className = 'card free-card'; sec.dataset.free = ''; host.appendChild(sec); }
+    sec.innerHTML = `<div class="row gap"><h3 class="grow">Mis rutinas</h3><button type="button" class="btn small primary" data-fnew>${ic('plus')} Crear rutina</button></div>
+      ${rs.length ? `<ul class="list free-list">${rs.map(r => { const n = its.filter(i => i.routine_id === r.id); return `<li><span class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] + ' · ' : ''}${n.length} ejercicio${n.length === 1 ? '' : 's'}${n.length ? ': ' + esc(n.slice(0, 3).map(i => i.exercise_name).join(', ')) + (n.length > 3 ? '…' : '') : ''}</small></span>
+        <button type="button" class="btn small ghost" data-fedit="${r.id}">${ic('edit')}</button>${n.length ? `<a class="btn small" href="#/entreno/${r.id}">${ic('play')} Empezar</a>` : ''}</li>`; }).join('')}</ul>`
+        : '<p class="muted small">Crea tu rutina con los ejercicios, series, repeticiones y RIR que vayas a hacer, y regístrala al entrenar.</p>'}`;
+    const again = () => freeRoutines(c, host);
+    sec.querySelector('[data-fnew]').onclick = () => freeRoutineForm(c, null, [], rs.length, again);
+    sec.querySelectorAll('[data-fedit]').forEach(b => b.onclick = () => { const r = rs.find(x => x.id === b.dataset.fedit); freeRoutineForm(c, r, its.filter(i => i.routine_id === r.id), rs.length, again); });
+  }
+  function freeRoutineForm(c, r, items, nPos, done) {
+    const isNew = !r; let rows = items.map(i => Object.assign({}, i));
+    if (!rows.length) rows = [{ exercise_name: '', sets: 3, reps: '8-10', rir: '2', rest_sec: 90 }];
+    rows.forEach(x => { if (x.rir == null) x.rir = x.target_rir == null ? '' : (Number(x.target_rir) === 0 && x.progression && x.progression.fail ? 'F' : String(x.target_rir)); });
+    const RIRS = ['', 'F', '0', '1', '2', '3', '4', '5'];
+    const f = modal(isNew ? 'Crear rutina' : 'Editar rutina', `
+      <div class="form-grid"><label>Nombre<input name="name" required maxlength="60" value="${esc((r && r.name) || '')}" placeholder="Ej: Pierna, Torso, Full body…"></label>
+        <label>Día <small class="muted">(opcional)</small><select name="day"><option value="">Cualquier día</option>${[1, 2, 3, 4, 5, 6, 7].map(d => `<option value="${d}" ${r && r.day === d ? 'selected' : ''}>${DIAS[d]}</option>`).join('')}</select></label></div>
+      <datalist id="free-ex">${S.exercises.map(e => `<option value="${esc(e.name)}">`).join('')}</datalist>
+      <div class="free-rows" data-rows></div>
+      <button type="button" class="btn ghost block" data-addrow>${ic('plus')} Añadir ejercicio</button>
+      <p class="muted small">RIR: repeticiones que te quedan en reserva al acabar la serie (F = al fallo).</p>`, {
+      submitLabel: 'Guardar rutina', wide: true,
+      danger: isNew ? null : { label: 'Eliminar', run: async () => { if (await confirmBox(`Se eliminará «${r.name}». Lo que ya entrenaste con ella se queda en tu historial.`)) { await safe(() => DB.remove('routines', r.id), 'Rutina eliminada'); done(); } } },
+      onSubmit: async (form, fd) => {
+        sync(); const ok = rows.filter(x => String(x.exercise_name || '').trim());
+        if (!ok.length) { toast('Añade al menos un ejercicio', 'err'); return false; }
+        try {
+          let rid = r && r.id;
+          const head = { name: String(fd.get('name')).trim(), day: fd.get('day') ? Number(fd.get('day')) : null };
+          if (isNew) { const [nr] = await DB.insert('routines', Object.assign({ client_id: c.id, position: nPos, notes: '', by_client: true }, head)); rid = nr.id; }
+          else await DB.update('routines', rid, head);
+          const keep = new Set();
+          for (const [k, x] of ok.entries()) {
+            const ex = S.exercises.find(e => e.name.toLowerCase() === String(x.exercise_name).trim().toLowerCase());
+            const d = Object.assign({ exercise_name: ex ? ex.name : String(x.exercise_name).trim(), exercise_id: ex ? ex.id : null, media_url: (ex && ex.media_url) || x.media_url || '',
+              sets: Math.max(1, Number(x.sets) || 1), reps: String(x.reps || '').trim() || '10', rest_sec: Number(x.rest_sec) || 90, position: k,
+              target_rir: x.rir === '' ? null : x.rir === 'F' ? 0 : Number(x.rir), progression: Object.assign({ type: 'none' }, x.rir === 'F' ? { fail: true } : {}) }, repsRange(String(x.reps || '').trim() || '10'));
+            if (x.id) { await DB.update('routine_items', x.id, d); keep.add(x.id); }
+            else { const [ni] = await DB.insert('routine_items', Object.assign({ routine_id: rid, client_id: c.id, notes: '' }, d)); keep.add(ni.id); }
+          }
+          for (const x of items) if (!keep.has(x.id)) await DB.remove('routine_items', x.id);
+          toast('Rutina guardada', 'ok'); done();
+        } catch (e) { toast('No se pudo guardar: ' + e.message, 'err'); return false; }
+      } });
+    const box = f.querySelector('[data-rows]');
+    const sync = () => box.querySelectorAll('.free-row').forEach(el => { const x = rows[+el.dataset.i]; ['exercise_name', 'sets', 'reps', 'rir', 'rest_sec'].forEach(k => { x[k] = el.querySelector(`[name=${k}]`).value; }); });
+    const draw = () => {
+      box.innerHTML = rows.map((x, i) => `<div class="free-row" data-i="${i}">
+        <div class="free-top"><span class="num">${i + 1}</span><input name="exercise_name" list="free-ex" value="${esc(x.exercise_name || '')}" placeholder="Ejercicio (elige o escribe)" aria-label="Ejercicio">
+          <button type="button" class="icon-btn sm" data-mv="-1" aria-label="Subir" ${i ? '' : 'disabled'}>${ic('up')}</button><button type="button" class="icon-btn sm free-dn" data-mv="1" aria-label="Bajar" ${i < rows.length - 1 ? '' : 'disabled'}>${ic('up')}</button><button type="button" class="icon-btn sm danger" data-rm aria-label="Quitar">${ic('trash')}</button></div>
+        <div class="free-f"><label>Series<input name="sets" type="number" min="1" max="20" inputmode="numeric" value="${esc(x.sets ?? 3)}"></label>
+          <label>Reps<input name="reps" value="${esc(x.reps ?? '8-10')}" placeholder="8-10"></label>
+          <label>RIR<select name="rir">${RIRS.map(v => `<option value="${v}" ${String(x.rir ?? '') === v ? 'selected' : ''}>${v === '' ? '—' : v === 'F' ? 'Fallo' : v}</option>`).join('')}</select></label>
+          <label>Descanso (s)<input name="rest_sec" type="number" min="0" step="15" inputmode="numeric" value="${esc(x.rest_sec ?? 90)}"></label></div></div>`).join('');
+      box.querySelectorAll('.free-row').forEach(el => {
+        const i = +el.dataset.i;
+        el.querySelector('[data-rm]').onclick = () => { sync(); rows.splice(i, 1); if (!rows.length) rows.push({ exercise_name: '', sets: 3, reps: '8-10', rir: '2', rest_sec: 90 }); draw(); };
+        el.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { sync(); const j = i + Number(b.dataset.mv); [rows[i], rows[j]] = [rows[j], rows[i]]; draw(); });
+      });
+    };
+    f.querySelector('[data-addrow]').onclick = () => { sync(); const last = rows[rows.length - 1] || {}; rows.push({ exercise_name: '', sets: last.sets || 3, reps: last.reps || '8-10', rir: last.rir ?? '2', rest_sec: last.rest_sec || 90 }); draw(); const ins = box.querySelectorAll('[name=exercise_name]'); ins[ins.length - 1].focus(); };
+    if (!S.exercises.length) loadExercises().then(() => { const dl = f.querySelector('#free-ex'); if (dl) dl.innerHTML = S.exercises.map(e => `<option value="${esc(e.name)}">`).join(''); }).catch(() => {});
+    draw();
   }
 
   // ---------- Avisos al cliente: check-in pendiente (desde el viernes) y renovación del plan (2 días antes, 1 día antes y el día)
