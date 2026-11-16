@@ -673,6 +673,7 @@
     modal('Ajustes', `
       <h4>Tu cuenta</h4><div class="push-box" data-pushset></div>
       <button type="button" class="btn ghost block" data-ob-prev>${ic('play')} Ver la bienvenida de los clientes</button>
+      <details class="po-box"><summary>Orden del Progreso de tus clientes</summary><p class="muted small">Sube o baja los apartados. Es el orden en que lo ven todos tus clientes en su pestaña Progreso (lo que no tengan activado no les sale).</p><div data-po-ed></div></details>
       <h4>Tus clientes</h4>
       <p class="muted small">Se aplica a tus <b>${cs.length} clientes activos</b>. Lo que dejes en «Igual» no se toca. Después puedes cambiar a cualquiera en su ficha.</p>
       ${hasUi ? `<h4>Qué ven en su app</h4><div class="all-list">${UI_MODS.map(([k, l, , h]) => { const v = n(k); return `<div class="all-row"><span class="grow"><b>${esc(l)}</b><small class="muted">${v === cs.length ? 'Lo ven todos' : v ? `Lo ven ${v} de ${cs.length}` : 'No lo ve nadie'} · ${esc(h)}</small></span>${seg('ui_' + k, 'Sí', 'No')}</div>`; }).join('')}</div>` : '<p class="muted small">Falta la migración 029 para elegir qué ve cada cliente.</p>'}
@@ -703,7 +704,8 @@
         toast(done ? `Cambiado en ${done} cliente${done === 1 ? '' : 's'}` : 'Ya estaban todos así', 'ok'); render();
       } });
     { const m = document.querySelector('.modal'); pushSettings(m.querySelector('[data-pushset]'));
-      m.querySelector('[data-ob-prev]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); }; }
+      m.querySelector('[data-ob-prev]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
+      progOrderEditor(m.querySelector('[data-po-ed]')); }
   }
 
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
@@ -2510,7 +2512,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   const FOLD_KEY = 'jmfit-folds';
   function foldify(root, scope, openByDefault = []) {
     let st = {}; try { st = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { st = {}; }
-    root.querySelectorAll(':scope > section.card, :scope > div > section.card').forEach(sec => {
+    root.querySelectorAll(':scope > section.card, :scope > div > section.card, :scope > [data-po] > div > section.card').forEach(sec => {
       const h = [...sec.children].find(x => x.matches('h3, header')), t = h && (h.matches('h3') ? h : h.querySelector('h3'));
       if (!t || sec.classList.contains('fold')) return;
       const name = (t.childNodes[0] && t.childNodes[0].textContent || '').trim(), key = scope + ':' + name;
@@ -2585,34 +2587,35 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${asCoach && 'ui_prefs' in c ? '<p class="pv-bar"><button type="button" class="btn small ghost" data-preview>👁 Ver como el cliente</button></p>' : ''}
       ${preview ? `<p class="note small">👁 Así ve ${esc(c.name.split(' ')[0])} su Progreso. <button type="button" class="btn small" data-unpreview>Volver a mi vista</button></p>` : ''}
       ${!asCoach && !preview && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
-      ${asCoach ? '' : `<section class="card ck-top"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3>${checkins.some(k => k.coach_reply) ? '<p class="ck-legend">💬 = tienes un mensaje de tu entrenador. Toca el check-in para leerlo.</p>' : ''}<div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>`}
-      <div class="kpis small">
+      ${asCoach ? '' : `<div data-po="cks"><section class="card ck-top"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3>${checkins.some(k => k.coach_reply) ? '<p class="ck-legend">💬 = tienes un mensaje de tu entrenador. Toca el check-in para leerlo.</p>' : ''}<div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section></div>`}
+      <div data-po="kpis"><div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
           return `<div class="kpi exp"><small>Cambio esperado</small><b>${sgn(target)} kg</b><span>por semana${bd ? ' (' + esc(bd.l.toLowerCase()) + ')' : ''}${exp != null ? ` · ≈ ${fmtKg(exp)} kg esta semana` : ''}</span></div>`; })() : ''}
         <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null && last && last.delta != null ? `${sgn(Math.round((last.delta - target) * 100) / 100)} kg vs lo esperado` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
-      </div>
-      <div data-goals></div>
-      ${VZ.map(v => v.html).join('')}
-      ${LP ? LP.html : ''}
-      ${wpts.length > 1 ? `<section class="card" data-wchart><h3>Peso diario</h3><div class="np-plans wc-rng">${WR.map(([k, l]) => `<button type="button" class="chip ${k === wr ? 'on' : ''}" data-wr="${k}">${l}</button>`).join('')}</div><div data-wc></div><p class="muted small">Cada punto es un día que se pesó (o su check-in). La media de cada semana está en «Semana a semana».</p></section>` : ''}
-      ${hasFat && !asCoach && see('bienestar') ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
+      </div></div>
+      <div data-po="goals"><div data-goals></div></div>
+      <div data-po="carga">${VZ.map(v => v.html).join('')}${LP ? LP.html : ''}</div>
+      <div data-po="peso">${wpts.length > 1 ? `<section class="card" data-wchart><h3>Peso diario</h3><div class="np-plans wc-rng">${WR.map(([k, l]) => `<button type="button" class="chip ${k === wr ? 'on' : ''}" data-wr="${k}">${l}</button>`).join('')}</div><div data-wc></div><p class="muted small">Cada punto es un día que se pesó (o su check-in). La media de cada semana está en «Semana a semana».</p></section>` : ''}
+      </div><div data-po="bienestar">${hasFat && !asCoach && see('bienestar') ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
         { name: 'Estrés', cls: 's4', vals: rows.map(r => r.stress) },
         { name: 'Energía', cls: 's2', vals: rows.map(r => r.energy) }], { min: 1, max: 10, label: 'Fatiga, estrés y energía (1-10)' })}<p class="muted small">Escala 1-10 de cada check-in semanal.</p></section>` : ''}
-      ${wrows.length ? `<section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t"><thead><tr><th>Semana</th><th>Media</th><th>Cambio</th>${target != null ? '<th>vs objetivo</th>' : ''}<th>Fatiga</th><th>Energía</th><th>Nutrición</th><th>Pasos</th></tr></thead><tbody>
+      </div><div data-po="semanas">${wrows.length ? `<section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t"><thead><tr><th>Semana</th><th>Media</th><th>Cambio</th>${target != null ? '<th>vs objetivo</th>' : ''}<th>Fatiga</th><th>Energía</th><th>Nutrición</th><th>Pasos</th></tr></thead><tbody>
         ${rows.slice().reverse().slice(0, 16).map(r => `<tr><td>${fmtDate(r.wk)}</td><td><b>${r.avg != null ? fmtKg(r.avg) : '–'}</b>${r.n > 1 ? `<small class="muted"> (${r.n})</small>` : ''}</td><td class="${r.delta == null ? '' : r.delta < 0 ? 'dn' : 'up'}">${sgn(r.delta)}</td>${target != null ? `<td><span class="pill ${vsT(r.delta) === 'ok' ? 'green' : vsT(r.delta) ? 'amber' : ''}">${r.delta == null ? '–' : sgn(r.delta - target)}</span></td>` : ''}<td>${r.fatigue != null ? fmtKg(r.fatigue) : '–'}</td><td>${r.energy != null ? fmtKg(r.energy) : '–'}</td><td>${r.diet != null ? fmtKg(r.diet) : '–'}</td><td>${r.steps != null ? Math.round(r.steps).toLocaleString('es-ES') : '–'}</td></tr>`).join('')}
       </tbody></table></div>${target != null ? '<p class="muted small pad">«vs objetivo»: diferencia entre lo que ha cambiado y lo que se buscaba esa semana (verde = dentro de ±0,2 kg).</p>' : ''}</section>` : ''}
-      ${EX ? EX.html : ''}
-      ${perfHtml()}
-      ${volHtml}
-      ${weeksHtml()}
-      ${prs.length && !asCoach && see('marcas') ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
-      <div>
+      </div>
+      <div data-po="evolucion">${EX ? EX.html : ''}${perfHtml()}</div>
+      <div data-po="volumen">${volHtml}</div>
+      <div data-po="programa">${weeksHtml()}</div>
+      <div data-po="marcas">${prs.length && !asCoach && see('marcas') ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
+      </div>
+      <div data-po="entrenos">
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
+    if (!asCoach || preview) applyProgOrder(box, await progOrder());
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     const wcBox = box.querySelector('[data-wchart]');
     const drawW = () => {
@@ -3500,6 +3503,35 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // ---------- Privacidad (migración 019): consentimiento, mis datos, borrado
   const CONSENT_V = '2026-11-v1';   // cambiar si cambia el texto: se vuelve a pedir la aceptación
   async function refreshClient() { try { const c = await DB.myClient(); if (c) { S.client = c; localStorage.setItem(BOOT_KEY, JSON.stringify({ profile: S.profile, client: c })); } } catch (e) { /* se queda lo que había */ } }
+  // ---------- Orden de los apartados del Progreso que ven los clientes (lo elige el entrenador; public_texts.prog_order)
+  const PROG_PARTS = [['cks', 'Mis check-ins'], ['kpis', 'Resumen (peso medio, cambio semanal…)'], ['goals', 'Mis objetivos'], ['peso', 'Peso diario'],
+    ['carga', 'Carga y estado'], ['bienestar', 'Fatiga, estrés y energía'], ['semanas', 'Semana a semana'], ['evolucion', 'Evolución por ejercicio'],
+    ['volumen', 'Series por músculo'], ['programa', 'Semanas del programa'], ['marcas', 'Mejores marcas'], ['entrenos', 'Entrenos']];
+  const fullOrder = o => { const ks = PROG_PARTS.map(x => x[0]), a = (Array.isArray(o) ? o : []).filter(k => ks.includes(k)); return a.concat(ks.filter(k => !a.includes(k))); };
+  async function progOrder() {
+    if (S.progOrder && Date.now() - S.progOrder.t < 300e3) return S.progOrder.v;
+    let v = null; try { const r = await DB.get('public_texts', 'prog_order', 'key'); v = r && r.value ? JSON.parse(r.value) : null; } catch (e) { v = null; }
+    S.progOrder = { t: Date.now(), v: fullOrder(v) }; return S.progOrder.v;
+  }
+  function applyProgOrder(box, order) { order.forEach(k => { const el = box.querySelector(`:scope > [data-po="${k}"]`); if (el) box.appendChild(el); }); }
+  async function progOrderEditor(host) {
+    if (!host) return;
+    let ord = (await progOrder()).slice();
+    const draw = () => {
+      host.innerHTML = `<ol class="po-list">${ord.map((k, i) => `<li><span class="po-n">${i + 1}</span><span class="grow">${esc((PROG_PARTS.find(x => x[0] === k) || [k, k])[1])}</span>
+        <button type="button" class="icon-btn" data-po-up="${i}" ${i ? '' : 'disabled'} aria-label="Subir">▲</button><button type="button" class="icon-btn" data-po-dn="${i}" ${i < ord.length - 1 ? '' : 'disabled'} aria-label="Bajar">▼</button></li>`).join('')}</ol>
+        <div class="row gap"><button type="button" class="btn small primary" data-po-save>Guardar orden</button><button type="button" class="btn small ghost" data-po-reset>Orden por defecto</button></div>`;
+      host.querySelectorAll('[data-po-up]').forEach(b => b.onclick = () => { const i = +b.dataset.poUp; [ord[i - 1], ord[i]] = [ord[i], ord[i - 1]]; draw(); });
+      host.querySelectorAll('[data-po-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.poDn; [ord[i + 1], ord[i]] = [ord[i], ord[i + 1]]; draw(); });
+      host.querySelector('[data-po-reset]').onclick = () => { ord = fullOrder([]); draw(); };
+      host.querySelector('[data-po-save]').onclick = async () => {
+        await safe(() => DB.upsert('public_texts', { key: 'prog_order', value: JSON.stringify(ord), updated_at: new Date().toISOString() }, 'key'), 'Orden guardado: así lo verán tus clientes');
+        S.progOrder = { t: Date.now(), v: ord.slice() };
+      };
+    };
+    draw();
+  }
+
   // ---------- Bienvenida para clientes nuevos (carrusel a pantalla completa, se desliza con el dedo)
   const OB_SLIDES = [
     { ic: 'dumbbell', k: 'Entrenamiento', t: '100% inteligente y adaptado', p: 'No hay rutinas genéricas. Tu entrenamiento está diseñado a medida de tu biomecánica, nivel y objetivos, maximizando la hipertrofia, el rendimiento o pérdida de grasa sin perder el tiempo.' },
