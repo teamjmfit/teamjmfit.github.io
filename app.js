@@ -617,6 +617,45 @@
   const canSee = (c, k) => { const p = (c && c.ui_prefs) || {}, m = UI_MODS.find(x => x[0] === k); return k in p ? !!p[k] : (m ? m[2] : true); };
   const clientNav = () => CLIENT_NAV.filter(n => n.key !== 'nutricion' || canSee(S.client, 'nutricion'));
 
+  // ---------- Ajustes para todos los clientes a la vez (qué ven en su app y su check-in)
+  async function allClientsSettings() {
+    S.clients = null;
+    const cs = (await loadClients()).filter(c => !c.is_template && c.active !== false);
+    if (!cs.length) return toast('No hay clientes activos', 'err');
+    const hasUi = cs.some(c => 'ui_prefs' in c), hasCk = cs.some(c => ckOn(c)) && window.JMCk;
+    const n = k => cs.filter(c => canSee(c, k)).length;
+    const seg = (name, a, b) => `<div class="all-seg" role="group"><label><input type="radio" name="${name}" value="" checked><span>Igual</span></label><label><input type="radio" name="${name}" value="1"><span>${a}</span></label><label><input type="radio" name="${name}" value="0"><span>${b}</span></label></div>`;
+    modal('Ajustes para todos', `
+      <p class="muted small">Se aplica a tus <b>${cs.length} clientes activos</b>. Lo que dejes en «Igual» no se toca. Después puedes cambiar a cualquiera en su ficha.</p>
+      ${hasUi ? `<h4>Qué ven en su app</h4><div class="all-list">${UI_MODS.map(([k, l, , h]) => { const v = n(k); return `<div class="all-row"><span class="grow"><b>${esc(l)}</b><small class="muted">${v === cs.length ? 'Lo ven todos' : v ? `Lo ven ${v} de ${cs.length}` : 'No lo ve nadie'} · ${esc(h)}</small></span>${seg('ui_' + k, 'Sí', 'No')}</div>`; }).join('')}</div>` : '<p class="muted small">Falta la migración 029 para elegir qué ve cada cliente.</p>'}
+      ${hasCk ? `<h4>Check-in</h4><div class="all-list">
+        <div class="all-row"><span class="grow"><b>Frecuencia</b><small class="muted">${JMCk.FREQ.map(([v, l]) => `${l}: ${cs.filter(c => JMCk.freqOf(c) === v).length}`).join(' · ')}</small></span>
+          <select name="ck_freq"><option value="">Igual</option>${JMCk.FREQ.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="all-row"><span class="grow"><b>Ventana de aviso del check-in</b><small class="muted">Activada en ${cs.filter(c => c.remind_checkin !== false).length} de ${cs.length}</small></span>${seg('remind_checkin', 'Sí', 'No')}</div></div>` : ''}`, {
+      submitLabel: 'Aplicar a todos', wide: true,
+      onSubmit: async (f, fd) => {
+        const ui = UI_MODS.map(([k, , def]) => [k, fd.get('ui_' + k), def]).filter(x => x[1] !== '' && x[1] != null);
+        const fq = fd.get('ck_freq') || '', rc = fd.get('remind_checkin') || '';
+        if (!ui.length && !fq && !rc) { toast('No has cambiado nada', 'err'); return false; }
+        let done = 0;
+        try {
+          for (const c of cs) {
+            const d = {};
+            if (ui.length && 'ui_prefs' in c) {
+              const up = Object.assign({}, c.ui_prefs || {});
+              ui.forEach(([k, v, def]) => { const on = v === '1'; if (on === def) delete up[k]; else up[k] = on; });
+              if (JSON.stringify(up) !== JSON.stringify(c.ui_prefs || {})) d.ui_prefs = up;
+            }
+            if (fq && ckOn(c) && JMCk.freqOf(c) !== fq) { d.ck_freq = fq; d.ck_anchor = JMCk.monday(today()); }
+            if (rc && 'remind_checkin' in c && (c.remind_checkin !== false) !== (rc === '1')) d.remind_checkin = rc === '1';
+            if (Object.keys(d).length) { await DB.update('clients', c.id, d); done++; }
+          }
+        } catch (e) { toast('Se pararon los cambios: ' + e.message, 'err'); S.clients = null; return false; }
+        S.clients = null; S.ckLate = null;
+        toast(done ? `Cambiado en ${done} cliente${done === 1 ? '' : 's'}` : 'Ya estaban todos así', 'ok'); render();
+      } });
+  }
+
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
   const ckOn = c => 'ck_freq' in (c || {});
   const ckOff = c => !!(window.JMCk && JMCk.off(c));
@@ -658,8 +697,9 @@
 
   // ---------- Inicio
   async function coachHome() {
-    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><button class="btn ghost small" data-allset title="Ajustes para todos los clientes a la vez">${ic('cog')}<span>Para todos</span></button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
+    $app.querySelector('[data-allset]').onclick = () => allClientsSettings();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
     const d8 = new Date(Date.now() - 8 * 864e5), d8i = d8.toISOString();
     const [clients, sessions, checkins, metrics, forms] = await Promise.all([
