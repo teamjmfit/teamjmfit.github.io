@@ -1665,3 +1665,19 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .nsw-st { margin: .4rem .2rem .5rem; }
 .push-box label.nsw { flex-direction: row; align-items: center; text-align: left; color: var(--text); font-size: 1rem; font-weight: 400; margin: 0; }
 .push-box label.nsw .grow { flex: 1; min-width: 0; }
+
+/* Bienvenida: foto del entrenador */
+.ob-coach { position: relative; margin: 0 0 1.4rem; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 3.4; background: #111;
+  box-shadow: 0 20px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(217,169,79,.35); }
+.ob-coach img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 6%; display: block; }
+.ob-coach::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 38%, rgba(11,11,13,.82) 68%, rgba(11,11,13,.97) 100%); }
+.ob-coach figcaption { position: absolute; left: 16px; right: 16px; bottom: 14px; z-index: 1; display: flex; flex-direction: column; gap: .15rem; }
+.ob-coach figcaption b { font-size: 1.15rem; letter-spacing: -.01em; }
+.ob-coach figcaption span { font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ob-gold); font-weight: 700; }
+.ob-hero h1 { font-size: clamp(2.3rem, 10vw, 3.6rem); }
+.ob-sig { display: flex; align-items: center; gap: .75rem; margin-top: 1.4rem; }
+.ob-sig img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px var(--ob-gold); }
+.ob-sig span { display: flex; flex-direction: column; font-size: .8rem; color: rgba(244,241,234,.6); }
+.ob-sig b { font-size: .98rem; color: #f4f1ea; }
+@media (max-height: 700px) { .ob-coach { aspect-ratio: 16 / 10; } }
+.ob-coach figcaption small { font-size: .8rem; color: rgba(244,241,234,.7); }

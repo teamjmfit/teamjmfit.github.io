@@ -3499,8 +3499,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   ];
   function onboarding(again = false) {
     const first = esc(String(S.client.name || '').split(' ')[0]);
-    const slides = [`<section class="ob-slide ob-hero"><div class="ob-in"><img class="ob-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><p class="ob-k">${first ? first + ', ya' : 'Ya'} eres del TEAM</p><h1>Empieza tu <em>cambio</em>.</h1><p class="ob-p">Esto no es una app de rutinas más. Es tu plan, hecho para ti, y alguien pendiente de que funcione.</p><p class="ob-hint">Desliza ${ic('next')}</p></div></section>`]
-      .concat(OB_SLIDES.map((x, i) => `<section class="ob-slide"><div class="ob-in"><span class="ob-n">0${i + 1}</span><span class="ob-ic">${ic(x.ic)}</span><p class="ob-k">${x.k}</p><h2>${x.t}</h2><p class="ob-p">${x.p}</p>${i === OB_SLIDES.length - 1 ? '<button type="button" class="ob-cta" data-ob-go>Empezar mi cambio ' + ic('next') + '</button>' : ''}</div></section>`));
+    const coach = `<figure class="ob-coach"><img src="coach.webp" alt="Jorge Martínez Suárez, tu entrenador" width="720" height="720"><figcaption><b>Jorge Martínez Suárez</b><span>Entrenador personal</span><small>Fundador de TEAM JMFIT</small></figcaption></figure>`;
+    const slides = [`<section class="ob-slide ob-hero"><div class="ob-in">${coach}<p class="ob-k">${first ? first + ', ya' : 'Ya'} eres del TEAM</p><h1>Empieza tu <em>cambio</em>.</h1><p class="ob-p">Esto no es una app de rutinas más. Es tu plan, hecho para ti, y alguien pendiente de que funcione.</p><p class="ob-hint">Desliza ${ic('next')}</p></div></section>`]
+      .concat(OB_SLIDES.map((x, i) => `<section class="ob-slide"><div class="ob-in"><span class="ob-n">0${i + 1}</span><span class="ob-ic">${ic(x.ic)}</span><p class="ob-k">${x.k}</p><h2>${x.t}</h2><p class="ob-p">${x.p}</p>${i === OB_SLIDES.length - 1 ? '<div class="ob-sig"><img src="coach-cara.webp" alt="" width="160" height="160"><span><b>Jorge Martínez Suárez</b>Tu entrenador</span></div><button type="button" class="ob-cta" data-ob-go>Empezar mi cambio ' + ic('next') + '</button>' : ''}</div></section>`));
     const n = slides.length;
     $app.innerHTML = `<main class="ob" role="region" aria-label="Bienvenida a TEAM JMFIT"><div class="ob-glow"></div>
       <button type="button" class="ob-skip" data-ob-skip>Saltar</button>
