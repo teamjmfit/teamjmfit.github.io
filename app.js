@@ -601,7 +601,8 @@
     draw();
   }
 
-  const nutriOnly = c => /^nutri/i.test(String((c && c.service) || '').trim());
+  // Solo nutrición: «Nutrición», «Solo nutrición», «Mensual Nutrición»… pero no «Mixto» ni «Entreno y nutrición»
+  const nutriOnly = c => { const v = String((c && c.service) || '').toLowerCase(); return /nutri/.test(v) && !/mixt|entren|complet|ambos/.test(v); };
   // ---------- Qué ve cada cliente en su app (029: clients.ui_prefs guarda solo lo que cambia el entrenador)
   const UI_MODS = [
     ['nutricion', 'Pestaña Nutrición', true, 'Su plan de comidas'],
@@ -824,7 +825,7 @@
     const tv = c => (tri && tri[c.id]) || null;
     const row = (c, why) => { const t = tv(c); return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
-        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${late[c.id] ? '<span class="pill amber">check-in atrasado</span>' : ''}${privPill(c)}</span></a></li>`; };
+        <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : nutriOnly(c) ? 'Solo nutrición' : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${late[c.id] ? '<span class="pill amber">check-in atrasado</span>' : ''}${privPill(c)}</span></a></li>`; };
     const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
     const inApp = act.filter(c => c.user_id), pend = act.filter(c => !c.user_id);
     const LV = [['red', '🔴 Atender ya', 'Más de 3 días sin datos, molestias o caída de rendimiento'], ['amber', '🟡 Vigilar', 'Entreno fallado, peso raro o estancado'], ['green', '🟢 Bien', 'Cumpliendo y progresando']];
@@ -886,11 +887,16 @@
       // 1) días sin registrar nada
       const lastAt = [ss[0] && ss[0].finished_at, dm[0] && dm[0].date + 'T12:00:00', ck[0] && ck[0].created_at].filter(Boolean).sort().pop();
       const idle = lastAt ? Math.floor((Date.now() - new Date(lastAt)) / 864e5) : null;
-      if (idle == null) add('red', 'sin datos'); else if (idle >= 3) add('red', `${idle} días sin registrar`);
+      if (nOnly) {
+        // solo nutrición: no se le pide registrar entrenos; rojo solo si la revisión es mala
+        const lk = ck[0], dk = lk ? Math.floor((Date.now() - new Date(lk.created_at)) / 864e5) : null;
+        if (dk == null) add('amber', 'sin revisiones en 3 semanas'); else if (dk >= 9) add('amber', `${dk} días sin revisión`);
+        if (lk && dk != null && dk < 9 && lk.diet_adh != null) { const a = Number(lk.diet_adh); if (a <= 5) add('red', `revisión: dieta ${a}/10`); else if (a <= 6) add('amber', `revisión: dieta ${a}/10`); }
+      } else if (idle == null) add('red', 'sin datos'); else if (idle >= 3) add('red', `${idle} días sin registrar`);
       // 2) molestias
       const pain = /molest|dolor|lesi|pinch|tir[oó]n|me duele|sobrecarg|articul/i;
       const fbc = fb.filter(x => x.client_id === c.id && x.kind === 'comment' && x.created_at >= new Date(Date.now() - 7 * 864e5).toISOString());
-      if (fbc.some(x => pain.test(x.body || ''))) add('red', 'molestias en un ejercicio');
+      if (!nOnly && fbc.some(x => pain.test(x.body || ''))) add('red', 'molestias en un ejercicio');
       const ck7 = ck.find(k => k.created_at >= new Date(Date.now() - 8 * 864e5).toISOString());
       if (ck7 && painTxt(ck7)) add('red', 'molestias en el check-in');
       // 3) caída de rendimiento: el último entreno de una rutina con ≥ 20 % menos volumen que la media de los 3 anteriores
@@ -911,7 +917,8 @@
       const st = (stag || []).filter(x => x.client_id === c.id);
       if (!nOnly && st.length) add('amber', `estancado en ${st[0].exercise_name}${st.length > 1 ? ` y ${st.length - 1} más` : ''}`);
       const lv = why.some(w => w[0] === 'red') ? 'red' : why.length ? 'amber' : 'green';
-      if (lv === 'green' && ss.length) why.push(['green', doneW ? `${doneW} entreno${doneW > 1 ? 's' : ''} esta semana` : 'al día']);
+      if (lv === 'green' && nOnly) why.push(['green', ck[0] ? `revisión ${ck[0].diet_adh != null ? 'dieta ' + ck[0].diet_adh + '/10' : 'al día'}` : 'al día']);
+      else if (lv === 'green' && ss.length) why.push(['green', doneW ? `${doneW} entreno${doneW > 1 ? 's' : ''} esta semana` : 'al día']);
       out[c.id] = { lv, why, score: why.filter(w => w[0] === 'red').length * 10 + why.filter(w => w[0] === 'amber').length };
     });
     S.triCache = { t: Date.now(), n: cs.length + ':' + sessions.length, v: out };
