@@ -3,6 +3,7 @@
 //  · daily   — lo lanza pg_cron cada hora; desde las 08:00 (hora canaria) manda a cada cliente, una vez al día y
 //              solo si hoy le toca entrenar o enviar la revisión, sus tareas de hoy y una frase de motivación.
 //  · checkin — lo lanza la base de datos al guardar una revisión en fin de semana: aviso al entrenador.
+//  · reviewed — lo lanza la base de datos cuando el entrenador marca un check-in como revisado o le responde: aviso al cliente.
 //  · key     — devuelve la clave pública para dar de alta un móvil.
 //  · test    — con la sesión del usuario (Authorization: Bearer …): le manda a él un aviso de prueba.
 // Todos son seguros aunque alguien los llame a mano: solo se manda lo que toca y nunca dos veces (push_log).
@@ -179,6 +180,25 @@ async function checkin(db: any, id: string) {
   return { ok: true, sent };
 }
 
+// Revisión hecha por el entrenador → aviso al cliente (una vez al marcarla y otra por cada respuesta nueva)
+const hash = (t: string) => { let h = 0; for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) | 0; return (h >>> 0).toString(36); };
+// deno-lint-ignore no-explicit-any
+async function reviewed(db: any, id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return { ok: false };
+  const { data: k } = await db.from("checkins").select("id, client_id, coach_seen, coach_reply").eq("id", id).maybeSingle();
+  if (!k || (!k.coach_seen && !k.coach_reply)) return { ok: false };
+  const { data: c } = await db.from("clients").select("id, user_id, name, ui_prefs, active").eq("id", k.client_id).maybeSingle();
+  if (!c || !c.user_id || c.active === false || (c.ui_prefs && c.ui_prefs.avisos === false)) return { ok: false };
+  const reply = String(k.coach_reply || "").trim();
+  if (!(await once(db, `rv:${k.id}:${reply ? hash(reply) : "visto"}`))) return { ok: false };
+  if (reply) await once(db, `rv:${k.id}:visto`);   // si después solo se marca «Revisado», no se repite
+  const first = String(c.name || "").trim().split(/\s+/)[0];
+  const msg = reply
+    ? { title: "💬 Tu entrenador ha revisado tu check-in", body: reply.length > 160 ? reply.slice(0, 157) + "…" : reply, url: APP + "#/", tag: "rv-" + k.id }
+    : { title: "✅ Revisión hecha", body: `${first ? first + ", y" : "Y"}a he revisado tu check-in. Entra en la app para ver tus ajustes.`, url: APP + "#/", tag: "rv-" + k.id };
+  return { ok: true, sent: await sendTo(db, [c.user_id], msg) };
+}
+
 // deno-lint-ignore no-explicit-any
 async function test(db: any, req: Request) {
   const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -202,6 +222,7 @@ if (import.meta.main !== false) Deno.serve(async req => {
     if (body.job === "key") return out({ key });
     if (body.job === "daily") return out(await daily(db));
     if (body.job === "checkin") return out(await checkin(db, body.id));
+    if (body.job === "reviewed") return out(await reviewed(db, body.id));
     if (body.job === "test") return out(await test(db, req));
     return out({ error: "trabajo desconocido" }, 400);
   } catch (e) { return out({ error: String((e as Error).message || e) }, 500); }
