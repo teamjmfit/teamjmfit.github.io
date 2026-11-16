@@ -2471,10 +2471,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function pushSettings(box) {
     if (!box || !window.JMPush) { if (box) box.innerHTML = ''; return; }
     const st = await JMPush.state().catch(() => 'unsupported'), on = st === 'on', can = st === 'on' || st === 'off';
+    if (st === 'off' && JMPush.prepare) JMPush.prepare().catch(() => {});   // clave lista antes del toque (Safari)
     const coach = S.profile && S.profile.role === 'coach';
     box.innerHTML = `<label class="nsw ${on ? 'is-on' : ''} ${can ? '' : 'is-dis'}"><span class="grow"><b>${ic('bell')} Notificaciones</b><small>${coach ? 'Solo cuando un cliente envía su revisión en fin de semana.' : 'Solo avisos de tus entrenos y revisiones.'}</small></span>
       <input type="checkbox" role="switch" data-push-sw ${on ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Notificaciones"><span class="nsw-t" aria-hidden="true"></span></label>
-      <p class="small nsw-st ${on ? 'push-on' : 'muted'}">${on ? '✓ Activadas en este móvil' : can ? 'Desactivadas en este móvil' : esc(JMPush.TXT[st] || '')}</p>
+      <p class="small nsw-st ${on ? 'push-on' : 'muted'}">${on ? '✓ Activadas en este dispositivo' : can ? 'Desactivadas en este dispositivo' : esc(JMPush.TXT[st] || '')}</p>
       ${on ? '<button type="button" class="btn small ghost" data-push-test>Enviarme una de prueba</button>' : ''}`;
     const sw = box.querySelector('[data-push-sw]'), tst = box.querySelector('[data-push-test]');
     sw.onchange = async () => {
@@ -2491,6 +2492,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     let hid = false; try { hid = localStorage.getItem('jmfit-push-off') === '1'; } catch (e) { /* sin almacenamiento */ }
     if (hid || (!coach && S.client && !canSee(S.client, 'avisos'))) return;
     if (await JMPush.state().catch(() => '') !== 'off' || !document.body.contains(slot)) return;
+    if (JMPush.prepare) JMPush.prepare().catch(() => {});
     slot.innerHTML = `<section class="notice n-push"><span class="n-ic">${ic('bell')}</span><span class="grow"><b>Activa los avisos</b><small>${coach ? 'Te aviso al momento cuando alguien envía su revisión en fin de semana.' : 'Te aviso por la mañana cuando te toque entrenar o enviar tu revisión.'}</small></span><button type="button" class="btn small primary" data-push-go>Activar</button><button type="button" class="icon-btn" data-push-x aria-label="Ocultar este aviso">✕</button></section>`;
     slot.querySelector('[data-push-x]').onclick = () => { try { localStorage.setItem('jmfit-push-off', '1'); } catch (e) { /* solo esta vez */ } slot.innerHTML = ''; };
     slot.querySelector('[data-push-go]').onclick = async e => { e.target.disabled = true; try { await JMPush.enable(); toast('Avisos activados'); slot.innerHTML = ''; } catch (er) { toast(er.message, 'err'); e.target.disabled = false; } };
