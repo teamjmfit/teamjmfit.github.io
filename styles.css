@@ -1681,3 +1681,4 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .ob-sig b { font-size: .98rem; color: #f4f1ea; }
 @media (max-height: 700px) { .ob-coach { aspect-ratio: 16 / 10; } }
 .ob-coach figcaption small { font-size: .8rem; color: rgba(244,241,234,.7); }
+.ob-coach figcaption span { text-transform: none; letter-spacing: .01em; font-size: .86rem; }
