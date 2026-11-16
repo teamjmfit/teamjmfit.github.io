@@ -2760,11 +2760,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const nSt = perf.filter(p => p.st.st === 'stall' || p.st.st === 'down').length;
       let tip = '';
       if (w4 != null && mch != null) {
-        if (w4 < -0.3 && mch >= -1) tip = `👍 Ha bajado ${fmtKg(Math.abs(w4))} kg en 4 semanas manteniendo o subiendo la fuerza (${mch >= 0 ? '+' : ''}${fmtKg(mch)} %).`;
-        else if (w4 < -0.3) tip = `⚠️ Baja peso (${sgn(w4)} kg) y también rendimiento (${fmtKg(mch)} %): revisa calorías, sueño o mete una descarga.`;
-        else if (w4 > 0.3 && mch > 1) tip = `👍 Sube peso (${sgn(w4)} kg) y fuerza (+${fmtKg(mch)} %).`;
-        else if (w4 > 0.3) tip = `⚠️ Sube peso (${sgn(w4)} kg) sin mejorar la fuerza (${fmtKg(mch)} %).`;
-        else tip = `Peso estable (${sgn(w4)} kg) · fuerza ${mch >= 0 ? '+' : ''}${fmtKg(mch)} % en 4 semanas.`;
+        // «peso» = peso corporal (báscula); «fuerza» = mediana del cambio del 1RM estimado de sus ejercicios en 4 semanas
+        const you = !asCoach || preview, kg = fmtKg(Math.abs(w4)), fz = `${mch >= 0 ? '+' : ''}${fmtKg(mch)} %`;
+        const fTxt = mch >= 0.5 ? (you ? `tu fuerza ha subido un ${fmtKg(mch)} %` : `la fuerza sube un ${fmtKg(mch)} %`) : (you ? `mantienes la fuerza (${fz})` : `mantiene la fuerza (${fz})`);
+        if (w4 < -0.3 && mch >= -1) tip = you ? `👍 Tu peso corporal ha bajado ${kg} kg en 4 semanas y ${fTxt}: estás perdiendo grasa sin perder fuerza.` : `👍 Peso corporal −${kg} kg en 4 semanas y ${fTxt}: pierde grasa sin perder fuerza.`;
+        else if (w4 < -0.3) tip = you ? `⚠️ Tu peso corporal ha bajado ${kg} kg y tu fuerza también (${fz}). Coméntalo en tu check-in (descanso, sueño, comida).` : `⚠️ Peso corporal −${kg} kg y la fuerza también baja (${fz}): revisa calorías, sueño o mete una descarga.`;
+        else if (w4 > 0.3 && mch > 1) tip = you ? `👍 Tu peso corporal ha subido ${kg} kg y tu fuerza un ${fmtKg(mch)} %.` : `👍 Peso corporal +${kg} kg y fuerza +${fmtKg(mch)} %.`;
+        else if (w4 > 0.3) tip = you ? `Tu peso corporal ha subido ${kg} kg y la fuerza sigue igual (${fz}).` : `⚠️ Peso corporal +${kg} kg sin mejorar la fuerza (${fz}).`;
+        else tip = `Peso corporal estable (${sgn(w4)} kg) · fuerza ${fz} en 4 semanas.`;
       }
       return `<section class="card flush"><h3 class="pad">Rendimiento por ejercicio</h3>
         ${tip || nSt ? `<p class="small pad">${tip}${nSt ? `${tip ? '<br>' : ''}${nSt >= 2 ? '⚠️ ' : ''}${nSt} ejercicio${nSt > 1 ? 's' : ''} sin mejorar en 3+ sesiones${nSt >= 2 ? ': valora una descarga o cambiar el estímulo' : ''}.` : ''}</p>` : ''}
