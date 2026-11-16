@@ -145,7 +145,7 @@
     const data = exerciseData(logs, sessions), id = 'vz' + (++uid);
     if (!data.length) return { html: '', wire() {} };
     const html = `<section class="card vz" id="${id}"><header class="row gap wrap"><h3 class="grow">${esc(title)}</h3>
-        <label class="vz-sel"><span class="sr-only">Ejercicio</span><select data-ex>${data.map((g, i) => `<option value="${i}">${esc(g.name)} (${g.rows.length})</option>`).join('')}</select></label></header>
+        <div class="vz-find"><input type="search" data-exq placeholder="🔍 Buscar ejercicio…" autocomplete="off" enterkeyhint="search" aria-label="Buscar ejercicio"><ul class="vz-res" data-exr hidden></ul></div></header>
       <div class="seg wrap" role="group" aria-label="Métricas">${[['e1', '1RM estimado'], ['top', 'Carga máx.'], ['ton', 'Tonelaje'], ['eff', 'RIR / RPE']].map(([k, l]) => `<button type="button" data-m="${k}" class="on" aria-pressed="true"><i class="vz-k-${k}"></i>${l}</button>`).join('')}</div>
       <div data-kp class="kpis small"></div><div class="vz-wrap" data-chart></div><div data-list></div></section>`;
     function draw(sec, g, on) {
@@ -185,10 +185,23 @@
       wire(root) {
         const sec = root.querySelector('#' + id); if (!sec) return;
         const on = { e1: true, top: true, ton: true, eff: true };
-        let cur = 0; const sel = sec.querySelector('[data-ex]');
-        try { const k = localStorage.getItem('jm-vz-ex'); const i = data.findIndex(g => g.key === k); if (i >= 0) { cur = i; sel.value = String(i); } } catch (e) { /* sin almacenamiento */ }
-        const go = () => draw(sec, data[cur], on);
-        sel.onchange = () => { cur = +sel.value; try { localStorage.setItem('jm-vz-ex', data[cur].key); } catch (e) { /* nada */ } go(); };
+        let cur = 0; const q = sec.querySelector('[data-exq]'), res = sec.querySelector('[data-exr]');
+        try { const k = localStorage.getItem('jm-vz-ex'); const i = data.findIndex(g => g.key === k); if (i >= 0) cur = i; } catch (e) { /* sin almacenamiento */ }
+        const go = () => { q.value = data[cur].name; draw(sec, data[cur], on); };
+        // Buscador: escribe parte del nombre (sin importar tildes ni mayúsculas) y toca el ejercicio
+        const norm = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const pick = i => { cur = i; res.hidden = true; try { localStorage.setItem('jm-vz-ex', data[cur].key); } catch (e) { /* nada */ } go(); q.blur(); };
+        const list = () => {
+          const words = norm(q.value === data[cur].name ? '' : q.value).split(/\s+/).filter(Boolean);
+          const hits = data.map((g, i) => ({ g, i })).filter(x => words.every(w => norm(x.g.name).includes(w)));
+          res.innerHTML = hits.length ? hits.slice(0, 40).map(x => `<li><button type="button" data-exi="${x.i}" class="${x.i === cur ? 'on' : ''}">${esc(x.g.name)}<small>${x.g.rows.length} ses.</small></button></li>`).join('') : '<li class="vz-none">Ningún ejercicio con ese nombre</li>';
+          res.hidden = false;
+          res.querySelectorAll('[data-exi]').forEach(b => b.onpointerdown = e => { e.preventDefault(); pick(+b.dataset.exi); });
+        };
+        q.onfocus = () => { q.select(); list(); };
+        q.oninput = list;
+        q.onkeydown = e => { if (e.key === 'Enter') { const b = res.querySelector('[data-exi]'); if (b) pick(+b.dataset.exi); } if (e.key === 'Escape') { res.hidden = true; q.value = data[cur].name; q.blur(); } };
+        q.onblur = () => setTimeout(() => { res.hidden = true; if (q.value !== data[cur].name) q.value = data[cur].name; }, 150);
         sec.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { const k = b.dataset.m; if (Object.values(on).filter(Boolean).length === 1 && on[k]) return; on[k] = !on[k]; b.classList.toggle('on', on[k]); b.setAttribute('aria-pressed', on[k]); go(); });
         go();
       }
