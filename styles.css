@@ -1578,3 +1578,55 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .push-h { display: flex; align-items: center; gap: .4rem; margin: 1.2rem 0 .2rem; font-size: 1rem; }
 .push-h svg { width: 18px; height: 18px; }
 .push-on { color: var(--green, #2e9e5b); font-weight: 600; }
+
+/* ---------- Bienvenida (clientes nuevos): siempre en oscuro, como un vestuario de noche */
+.ob { position: fixed; inset: 0; z-index: 60; background: #0b0b0d; color: #f4f1ea; overflow: hidden; display: flex; flex-direction: column;
+  --ob-gold: #d9a94f; --ob-p: 0; font-family: inherit; animation: obIn .5s ease both; }
+.ob.out { animation: obOut .38s ease both; }
+@keyframes obIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes obOut { to { opacity: 0; transform: scale(1.03); } }
+.ob-glow { position: absolute; inset: -30%; pointer-events: none; transition: transform .8s cubic-bezier(.2,.7,.2,1);
+  background: radial-gradient(40% 35% at 30% 30%, rgba(217,169,79,.28), transparent 70%), radial-gradient(35% 30% at 75% 70%, rgba(217,169,79,.12), transparent 70%),
+    repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0 2px, transparent 2px 14px);
+  transform: translateX(calc(var(--ob-p) * -18%)) rotate(calc(var(--ob-p) * 8deg)); }
+.ob-skip { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 16px; z-index: 2; background: rgba(255,255,255,.08); color: #f4f1ea; border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px; padding: .45rem .95rem; font: inherit; font-size: .85rem; cursor: pointer; transition: opacity .3s; }
+.ob-skip.hide, .ob-next.hide { opacity: 0; pointer-events: none; }
+.ob-track { position: relative; flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; outline: none; overscroll-behavior-x: contain; }
+.ob-track::-webkit-scrollbar { display: none; }
+.ob-slide { flex: 0 0 100%; scroll-snap-align: center; display: flex; align-items: center; justify-content: center; padding: 72px 28px 24px; box-sizing: border-box; }
+.ob-in { max-width: 460px; width: 100%; opacity: 0; transform: translateY(26px); transition: opacity .6s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
+.ob-slide.on .ob-in { opacity: 1; transform: none; }
+.ob-slide.on .ob-in > * { animation: obUp .7s cubic-bezier(.2,.7,.2,1) both; }
+.ob-slide.on .ob-in > :nth-child(2) { animation-delay: .06s; } .ob-slide.on .ob-in > :nth-child(3) { animation-delay: .12s; }
+.ob-slide.on .ob-in > :nth-child(4) { animation-delay: .18s; } .ob-slide.on .ob-in > :nth-child(5) { animation-delay: .24s; } .ob-slide.on .ob-in > :nth-child(6) { animation-delay: .32s; }
+@keyframes obUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.ob-logo { width: min(260px, 70%); height: auto; display: block; margin-bottom: 1.6rem; filter: drop-shadow(0 8px 30px rgba(217,169,79,.25)); }
+.ob h1 { font-size: clamp(2.6rem, 11vw, 4rem); line-height: .98; letter-spacing: -.03em; margin: .3rem 0 1rem; font-weight: 800; }
+.ob h1 em { font-style: normal; color: var(--ob-gold); }
+.ob h2 { font-size: clamp(2.1rem, 9vw, 3.1rem); line-height: 1; letter-spacing: -.025em; margin: .2rem 0 1rem; font-weight: 800; }
+.ob-k { text-transform: uppercase; letter-spacing: .18em; font-size: .78rem; font-weight: 700; color: var(--ob-gold); margin: 0; }
+.ob-p { font-size: 1.08rem; line-height: 1.55; color: rgba(244,241,234,.78); margin: 0; }
+.ob-hint { margin-top: 2rem; display: inline-flex; align-items: center; gap: .3rem; color: rgba(244,241,234,.55); font-size: .9rem; animation: obNudge 1.8s ease-in-out infinite !important; }
+.ob-hint .ic { width: 16px; height: 16px; }
+@keyframes obNudge { 0%,100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
+.ob-n { display: block; font-size: 5.5rem; font-weight: 800; line-height: .8; letter-spacing: -.05em; color: transparent; -webkit-text-stroke: 1px rgba(217,169,79,.45); margin-bottom: -.6rem; }
+.ob-ic { display: grid; place-items: center; width: 68px; height: 68px; border-radius: 22px; margin: 0 0 1.2rem auto; background: linear-gradient(145deg, rgba(217,169,79,.28), rgba(217,169,79,.06));
+  border: 1px solid rgba(217,169,79,.4); box-shadow: 0 10px 40px rgba(217,169,79,.18), inset 0 1px 0 rgba(255,255,255,.12); }
+.ob-ic .ic { width: 32px; height: 32px; stroke: var(--ob-gold); }
+.ob-cta { margin-top: 2.2rem; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border: 0; border-radius: 18px; padding: 1.15rem 1.4rem;
+  font: inherit; font-size: 1.15rem; font-weight: 800; letter-spacing: .01em; color: #19130a; cursor: pointer;
+  background: linear-gradient(135deg, #f0c56f, #d9a94f 55%, #b8862f); box-shadow: 0 14px 40px rgba(217,169,79,.35), inset 0 1px 0 rgba(255,255,255,.4);
+  position: relative; overflow: hidden; transition: transform .15s; }
+.ob-cta:active { transform: scale(.98); }
+.ob-cta .ic { width: 20px; height: 20px; stroke: #19130a; }
+.ob-cta::after { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent); animation: obShine 2.6s ease-in-out 1s infinite; }
+@keyframes obShine { 0% { left: -60%; } 45%, 100% { left: 130%; } }
+.ob-foot { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 14px 24px max(20px, env(safe-area-inset-bottom)); }
+.ob-dots { display: flex; gap: 8px; }
+.ob-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: rgba(255,255,255,.22); cursor: pointer; transition: width .35s cubic-bezier(.2,.7,.2,1), background .35s; }
+.ob-dots button.on { width: 28px; background: var(--ob-gold); }
+.ob-next { display: inline-flex; align-items: center; gap: .35rem; background: none; border: 1px solid rgba(255,255,255,.18); color: #f4f1ea; border-radius: 999px; padding: .6rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer; transition: opacity .3s; }
+.ob-next .ic { width: 16px; height: 16px; }
+@media (prefers-reduced-motion: reduce) { .ob *, .ob { animation: none !important; transition: none !important; } .ob-in { opacity: 1; transform: none; } }
+@media (min-width: 900px) { .ob-slide { padding-top: 40px; } }

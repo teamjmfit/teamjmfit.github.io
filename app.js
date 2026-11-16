@@ -3444,6 +3444,39 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // ---------- Privacidad (migración 019): consentimiento, mis datos, borrado
   const CONSENT_V = '2026-11-v1';   // cambiar si cambia el texto: se vuelve a pedir la aceptación
   async function refreshClient() { try { const c = await DB.myClient(); if (c) { S.client = c; localStorage.setItem(BOOT_KEY, JSON.stringify({ profile: S.profile, client: c })); } } catch (e) { /* se queda lo que había */ } }
+  // ---------- Bienvenida para clientes nuevos (carrusel a pantalla completa, se desliza con el dedo)
+  const OB_SLIDES = [
+    { ic: 'dumbbell', k: 'Entrenamiento', t: '100% inteligente y adaptado', p: 'No hay rutinas genéricas. Tu entrenamiento está diseñado a medida de tu biomecánica, nivel y objetivos, maximizando la hipertrofia, el rendimiento o pérdida de grasa sin perder el tiempo.' },
+    { ic: 'apple', k: 'Nutrición', t: 'Realista y flexible', p: 'Come lo que te gusta. Tu plan nutricional se adapta a tu día a día con opciones intercambiables. No prohibimos alimentos, te enseñamos a cuadrarlos en tus macros.' },
+    { ic: 'chart', k: 'Seguimiento', t: 'Al milímetro', p: 'Revisiones semanales o quincenales donde analizamos tu peso, medidas, fotos y rendimiento en el gimnasio para asegurar que siempre haya progreso.' },
+    { ic: 'chat', k: 'Contacto y soporte', t: '24/7', p: 'No estás solo. Tienes mi número directo para resolver dudas técnicas y consultar cualquier imprevisto en tiempo real.' }
+  ];
+  function onboarding(again = false) {
+    const first = esc(String(S.client.name || '').split(' ')[0]);
+    const slides = [`<section class="ob-slide ob-hero"><div class="ob-in"><img class="ob-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><p class="ob-k">${first ? first + ', ya' : 'Ya'} eres del TEAM</p><h1>Empieza tu <em>cambio</em>.</h1><p class="ob-p">Esto no es una app de rutinas más. Es tu plan, hecho para ti, y alguien pendiente de que funcione.</p><p class="ob-hint">Desliza ${ic('next')}</p></div></section>`]
+      .concat(OB_SLIDES.map((x, i) => `<section class="ob-slide"><div class="ob-in"><span class="ob-n">0${i + 1}</span><span class="ob-ic">${ic(x.ic)}</span><p class="ob-k">${x.k}</p><h2>${x.t}</h2><p class="ob-p">${x.p}</p>${i === OB_SLIDES.length - 1 ? '<button type="button" class="ob-cta" data-ob-go>Empezar mi cambio ' + ic('next') + '</button>' : ''}</div></section>`));
+    const n = slides.length;
+    $app.innerHTML = `<main class="ob" role="region" aria-label="Bienvenida a TEAM JMFIT"><div class="ob-glow"></div>
+      <button type="button" class="ob-skip" data-ob-skip>Saltar</button>
+      <div class="ob-track" tabindex="0">${slides.join('')}</div>
+      <footer class="ob-foot"><div class="ob-dots">${slides.map((_, i) => `<button type="button" aria-label="Pantalla ${i + 1}" data-ob-dot="${i}"></button>`).join('')}</div><button type="button" class="ob-next" data-ob-next>Siguiente ${ic('next')}</button></footer></main>`;
+    const root = $app.querySelector('.ob'), track = root.querySelector('.ob-track'), secs = [...track.children], dots = [...root.querySelectorAll('[data-ob-dot]')], next = root.querySelector('[data-ob-next]');
+    let cur = -1;
+    const show = i => { if (i === cur) return; cur = i; secs.forEach((x, k) => x.classList.toggle('on', k === i)); dots.forEach((d, k) => d.classList.toggle('on', k === i)); root.style.setProperty('--ob-p', String(i / (n - 1))); next.classList.toggle('hide', i === n - 1); root.querySelector('[data-ob-skip]').classList.toggle('hide', i === n - 1); };
+    const go = i => track.scrollTo({ left: Math.max(0, Math.min(n - 1, i)) * track.clientWidth, behavior: 'smooth' });
+    track.addEventListener('scroll', () => show(Math.round(track.scrollLeft / Math.max(1, track.clientWidth))), { passive: true });
+    track.addEventListener('keydown', e => { if (e.key === 'ArrowRight') go(cur + 1); if (e.key === 'ArrowLeft') go(cur - 1); });
+    dots.forEach((d, i) => d.onclick = () => go(i));
+    next.onclick = () => go(cur + 1);
+    root.querySelector('[data-ob-skip]').onclick = () => go(n - 1);
+    requestAnimationFrame(() => show(0));
+    root.querySelector('[data-ob-go]').onclick = async e => {
+      e.currentTarget.disabled = true;
+      if (!again) { try { await DB.rpc('mark_onboarded', {}); } catch (er) { console.warn(er); } S.client.onboarded_at = new Date().toISOString(); }
+      root.classList.add('out'); setTimeout(() => { if (again) location.hash = '#/'; render(); }, 380);
+    };
+  }
+
   function consentScreen() {
     const c = S.client, age = ageOf(c.birth_date), minor = age != null && age < 18, under14 = age != null && age < 14;
     $app.innerHTML = `<main class="login consent"><div class="login-card wide">
@@ -3493,6 +3526,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <button type="button" class="btn block ${req ? '' : 'ghost'}" data-del ${req ? 'disabled' : ''}>${ic('trash')} ${req ? 'Borrado solicitado' : 'Pedir que se borren mis datos'}</button>
         <button type="button" class="btn ghost block danger" data-wd>Retirar mi consentimiento</button>
         <button type="button" class="btn ghost block" data-theme-btn>${ic('sun')} Apariencia y avisos</button>
+        <button type="button" class="btn ghost block" data-ob-again>${ic('play')} Ver la bienvenida otra vez</button>
       </div>
       <p class="muted small">Si retiras el consentimiento, no podrás usar la app hasta volver a aceptarlo. Para cualquier duda sobre tus datos, habla con tu entrenador.</p>`, {
       submitLabel: 'Guardar',
@@ -3509,6 +3543,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       await safe(() => DB.rpc('request_data_deletion', {}), 'Petición enviada a tu entrenador'); await refreshClient(); closeModal();
     };
     m.querySelector('[data-theme-btn]').onclick = () => { closeModal(); setTimeout(themeModal, 80); };
+    m.querySelector('[data-ob-again]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
     m.querySelector('[data-wd]').onclick = async () => {
       if (!await confirmBox('Dejarás de poder usar la app hasta que vuelvas a aceptar. Tu entrenador lo verá. ¿Retirar el consentimiento?', 'Retirar')) return;
       await safe(() => DB.rpc('withdraw_consent', {}), 'Consentimiento retirado'); await refreshClient(); closeModal(); render();
@@ -3556,6 +3591,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       $app.querySelector('[data-out]').onclick = () => DB.signOut();
       return;
     }
+    // Bienvenida: solo la primera vez que entra un cliente nuevo (clients.onboarded_at vacío, migración 033)
+    if ('onboarded_at' in S.client && !S.client.onboarded_at) return onboarding();
     // RGPD: antes de usar la app, el cliente acepta el uso de sus datos (y de los de salud, de forma explícita)
     if ('consent_version' in S.client && S.client.consent_version !== CONSENT_V) return consentScreen();
     // Vencimientos: aviso diario desde el vencimiento; si el entrenador le corta el acceso, solo la pantalla «No tienes acceso»
