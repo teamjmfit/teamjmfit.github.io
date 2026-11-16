@@ -667,7 +667,10 @@
     const hasUi = cs.some(c => 'ui_prefs' in c), hasCk = cs.some(c => ckOn(c)) && window.JMCk;
     const n = k => cs.filter(c => canSee(c, k)).length;
     const seg = (name, a, b) => `<div class="all-seg" role="group"><label><input type="radio" name="${name}" value="" checked><span>Igual</span></label><label><input type="radio" name="${name}" value="1"><span>${a}</span></label><label><input type="radio" name="${name}" value="0"><span>${b}</span></label></div>`;
-    modal('Ajustes para todos', `
+    modal('Ajustes', `
+      <h4>Tu cuenta</h4><div class="push-box" data-pushset></div>
+      <button type="button" class="btn ghost block" data-ob-prev>${ic('play')} Ver la bienvenida de los clientes</button>
+      <h4>Tus clientes</h4>
       <p class="muted small">Se aplica a tus <b>${cs.length} clientes activos</b>. Lo que dejes en «Igual» no se toca. Después puedes cambiar a cualquiera en su ficha.</p>
       ${hasUi ? `<h4>Qué ven en su app</h4><div class="all-list">${UI_MODS.map(([k, l, , h]) => { const v = n(k); return `<div class="all-row"><span class="grow"><b>${esc(l)}</b><small class="muted">${v === cs.length ? 'Lo ven todos' : v ? `Lo ven ${v} de ${cs.length}` : 'No lo ve nadie'} · ${esc(h)}</small></span>${seg('ui_' + k, 'Sí', 'No')}</div>`; }).join('')}</div>` : '<p class="muted small">Falta la migración 029 para elegir qué ve cada cliente.</p>'}
       ${hasCk ? `<h4>Check-in</h4><div class="all-list">
@@ -696,6 +699,8 @@
         S.clients = null; S.ckLate = null;
         toast(done ? `Cambiado en ${done} cliente${done === 1 ? '' : 's'}` : 'Ya estaban todos así', 'ok'); render();
       } });
+    { const m = document.querySelector('.modal'); pushSettings(m.querySelector('[data-pushset]'));
+      m.querySelector('[data-ob-prev]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); }; }
   }
 
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
@@ -3498,7 +3503,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     { ic: 'chat', k: 'Contacto y soporte', t: '24/7', p: 'No estás solo. Tienes mi número directo para resolver dudas técnicas y consultar cualquier imprevisto en tiempo real.' }
   ];
   function onboarding(again = false) {
-    const first = esc(String(S.client.name || '').split(' ')[0]);
+    const first = S.client ? esc(String(S.client.name || '').split(' ')[0]) : '';
     const coach = `<figure class="ob-coach"><img src="coach.webp" alt="Jorge Martínez Suárez, tu entrenador" width="720" height="720"><figcaption><b>Jorge Martínez Suárez</b><span>Ciencias de la Actividad Física y el Deporte</span><small>Técnico Superior en Dietética</small></figcaption></figure>`;
     const slides = [`<section class="ob-slide ob-hero"><div class="ob-in">${coach}<p class="ob-k">${first ? first + ', ya' : 'Ya'} eres del TEAM</p><h1>Empieza tu <em>cambio</em>.</h1><p class="ob-p">Esto no es una app de rutinas más. Es tu plan, hecho para ti, y alguien pendiente de que funcione.</p><p class="ob-hint">Desliza ${ic('next')}</p></div></section>`]
       .concat(OB_SLIDES.map((x, i) => `<section class="ob-slide"><div class="ob-in"><span class="ob-n">0${i + 1}</span><span class="ob-ic">${ic(x.ic)}</span><p class="ob-k">${x.k}</p><h2>${x.t}</h2><p class="ob-p">${x.p}</p>${i === OB_SLIDES.length - 1 ? '<div class="ob-sig"><img src="coach-cara.webp" alt="" width="160" height="160"><span><b>Jorge Martínez Suárez</b>Tu entrenador</span></div><button type="button" class="ob-cta" data-ob-go>Empezar mi cambio ' + ic('next') + '</button>' : ''}</div></section>`));
