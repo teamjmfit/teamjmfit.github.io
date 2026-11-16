@@ -1,7 +1,7 @@
 // TEAM JMFIT · service worker: abre la app al instante desde el móvil y la actualiza en segundo plano.
-const CACHE = 'jmfit-v78';
+const CACHE = 'jmfit-v79';
 const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'exercises.js', 'data.js', 'app.js',
-  'fix.js', 'invite.js', 'features.js', 'nutri.js', 'backup.js', 'forms.js', 'carga.js', 'cambios.js', 'referidos.js', 'checkins.js', 'analisis.js', 'postentreno.js', 'meso.js', 'analitica.js', 'objetivos.js', 'splash.js', 'manifest.json', 'icon-192.png', 'logo.webp'];
+  'fix.js', 'invite.js', 'features.js', 'nutri.js', 'backup.js', 'forms.js', 'carga.js', 'cambios.js', 'referidos.js', 'checkins.js', 'avisos.js', 'analisis.js', 'postentreno.js', 'meso.js', 'analitica.js', 'objetivos.js', 'splash.js', 'manifest.json', 'icon-192.png', 'logo.webp'];
 // Archivos de fuera que no cambian nunca (versión fija): se guardan una vez
 const IMMUTABLE = /^https:\/\/(cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@[\d.]+\/|fonts\.gstatic\.com\/)/;
 const FONTS_CSS = /^https:\/\/fonts\.googleapis\.com\//;
@@ -26,5 +26,20 @@ self.addEventListener('fetch', e => {
     const net = fetch(req.mode === 'navigate' ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : new Request(req, { cache: 'no-cache' })).then(r => { if (r.ok) c.put(req, r.clone()); return r; });
     if (hit) { e.waitUntil(net.catch(() => {})); return hit; }
     return net.catch(() => c.match('./'));
+  }));
+});
+
+// Avisos (migración 032): se muestran aunque la app esté cerrada; al tocarlos se abre la app en su pantalla
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (er) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'TEAM JMFIT', { body: d.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: d.tag || undefined, data: { url: d.url || './' } }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
+    const w = ws.find(x => x.url.startsWith(self.registration.scope));
+    if (w) return w.focus().then(() => w.navigate ? w.navigate(url).catch(() => {}) : null);
+    return self.clients.openWindow(url);
   }));
 });

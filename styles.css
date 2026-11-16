@@ -1573,3 +1573,8 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .all-seg span { display: block; padding: 7px 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .all-seg input:checked + span { background: var(--accent); color: var(--accent-ink); }
 .all-seg label + label span { border-left: 1px solid var(--line); }
+
+/* Avisos en el móvil */
+.push-h { display: flex; align-items: center; gap: .4rem; margin: 1.2rem 0 .2rem; font-size: 1rem; }
+.push-h svg { width: 18px; height: 18px; }
+.push-on { color: var(--green, #2e9e5b); font-weight: 600; }
