@@ -29,14 +29,28 @@
     if (Notification.permission === 'denied') return 'denied';
     return (Notification.permission === 'granted' && await sub().catch(() => null)) ? 'on' : 'off';
   }
-  // Llamar desde un toque del usuario (el permiso se pide en ese momento)
+  // Safari (Mac e iPhone) solo deja suscribirse justo en el toque del usuario, sin esperas de red antes:
+  // por eso la clave y el service worker se dejan preparados al abrir los ajustes (prepare) y en el toque
+  // se llama a subscribe() directamente, que es quien pide el permiso.
+  let ready = null;
+  function prepare() {
+    if (!ready && supported() && live()) ready = Promise.all([call('key'), navigator.serviceWorker.ready]).then(([k, reg]) => { ready.v = { key: b64(k.key), reg }; return ready.v; }).catch(e => { ready = null; throw e; });
+    return ready || Promise.resolve(null);
+  }
+  // Llamar desde un toque del usuario
   async function enable() {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') throw new Error(perm === 'denied' ? 'Has bloqueado los avisos. Actívalos en los ajustes del móvil para esta app.' : 'No se activaron los avisos');
-    const { key } = await call('key');
-    const reg = await navigator.serviceWorker.ready;
-    let s = await reg.pushManager.getSubscription();
-    if (!s) s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+    const pre = ready && ready.v;
+    let s;
+    if (pre) {
+      // primero, sin ningún await antes: así cuenta como gesto del usuario
+      const p = pre.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pre.key });
+      try { s = await p; } catch (e) { s = await pre.reg.pushManager.getSubscription(); if (!s) throw permErr(e); }
+    } else {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') throw permErr();
+      const v = await prepare(); if (!v) throw new Error("No se pudo preparar el aviso en este navegador");
+      s = await v.reg.pushManager.getSubscription() || await v.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: v.key });
+    }
     const j = s.toJSON();
     await DB.rpc('push_subscribe', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
     return true;
@@ -48,14 +62,18 @@
     await s.unsubscribe().catch(() => {});
   }
   const test = () => call('test');
+  function permErr(e) {
+    if ('Notification' in window && Notification.permission === 'denied') return new Error('Las notificaciones están bloqueadas para esta web. Actívalas en los ajustes del navegador (o del sistema) y vuelve aquí.');
+    return new Error('No se activaron las notificaciones' + (e && e.message ? ' (' + e.message + ')' : ''));
+  }
 
   const TXT = {
     'ios-home': 'En iPhone los avisos solo funcionan con la app en la pantalla de inicio: en Safari toca Compartir → «Añadir a pantalla de inicio» y ábrela desde ahí.',
     unsupported: 'Este navegador no admite avisos. Prueba desde Chrome (Android) o con la app añadida a la pantalla de inicio (iPhone).',
     demo: 'En el modo demo no se envían avisos.',
-    denied: 'Los avisos están bloqueados para esta app. Actívalos en los ajustes del móvil (Notificaciones) y vuelve aquí.',
+    denied: 'Las notificaciones están bloqueadas. Actívalas en los ajustes del navegador o del móvil (Notificaciones) y vuelve aquí.',
     on: 'Activados en este móvil.',
     off: 'Desactivados en este móvil.'
   };
-  window.JMPush = { state, enable, disable, test, TXT, supported };
+  window.JMPush = { state, enable, disable, test, prepare, TXT, supported };
 })();
