@@ -2585,6 +2585,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${asCoach && 'ui_prefs' in c ? '<p class="pv-bar"><button type="button" class="btn small ghost" data-preview>👁 Ver como el cliente</button></p>' : ''}
       ${preview ? `<p class="note small">👁 Así ve ${esc(c.name.split(' ')[0])} su Progreso. <button type="button" class="btn small" data-unpreview>Volver a mi vista</button></p>` : ''}
       ${!asCoach && !preview && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
+      ${asCoach ? '' : `<section class="card ck-top"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3>${checkins.some(k => k.coach_reply) ? '<p class="ck-legend">💬 = tienes un mensaje de tu entrenador. Toca el check-in para leerlo.</p>' : ''}<div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>`}
       <div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
@@ -2609,8 +2610,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${volHtml}
       ${weeksHtml()}
       ${prs.length && !asCoach && see('marcas') ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
-      <div class="${asCoach ? '' : 'grid2'}">
-        ${asCoach ? '' : `<section class="card"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3><div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section>`}
+      <div>
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
@@ -2621,7 +2621,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       wcBox.querySelectorAll('[data-wr]').forEach(b => b.classList.toggle('on', b.dataset.wr === wr));
     };
     if (wcBox) { drawW(); wcBox.querySelectorAll('[data-wr]').forEach(b => b.onclick = () => { wr = b.dataset.wr; try { localStorage.setItem('jmfit-wrange', wr); } catch (e) { /* solo esta vez */ } drawW(); }); }
-    foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso']);
+    foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso', 'Mis check-ins']);
     VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
     if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
     const unp = box.querySelector('[data-unpreview]'); if (unp) unp.onclick = () => tabProgress(c, box, true);
@@ -2643,7 +2643,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             <span class="ck-d">${fmtDate(k.date, { day: 'numeric', month: 'short' })}</span>
             <b>${k.weight ? fmtKg(k.weight) + ' kg' : '–'}</b>${dw != null ? `<small class="${dw < 0 ? 'dn' : 'up'}">${dw > 0 ? '+' : ''}${fmtKg(dw)}</small>` : '<small></small>'}
             <span class="ck-m">${k.fatigue != null ? `Fat ${k.fatigue}` : ''}${k.energy10 != null ? ` · En ${k.energy10}` : ''}${k.diet_adh != null ? ` · Nut ${k.diet_adh}` : ''}</span>
-            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${painTxt(k) ? ' ⚠️' : ''}${k.coach_reply ? ' 💬' : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
+            <span class="ck-i">${np ? '📷' + (np > 1 ? np : '') : ''}${painTxt(k) ? ' ⚠️' : ''}${k.coach_reply ? (asCoach ? ' 💬' : ' <span class="ck-msg" title="Mensaje de tu entrenador">💬</span>') : ''}</span>${ic('down')}</button><div class="ck-open" hidden></div></div>`;
       }).join('') + (checkins.length > ckShown ? `<button type="button" class="btn small ghost block" data-ckmore>Ver más (${checkins.length - ckShown})</button>` : '');
       ckBox.querySelectorAll('.ck-item').forEach(el => {
         el.querySelector('.ck-row').onclick = () => {

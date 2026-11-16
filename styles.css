@@ -1687,3 +1687,7 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 html, body { overflow-x: hidden; overflow-x: clip; overscroll-behavior-x: none; max-width: 100%; }
 body { touch-action: pan-x pan-y; -webkit-tap-highlight-color: transparent; }
 @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
+
+/* Mis check-ins (cliente): arriba del todo y el 💬 bien visible cuando hay mensaje del entrenador */
+.ck-legend { font-size: .82rem; color: var(--muted); margin: -.2rem 0 .4rem; }
+.ck-msg { display: inline-grid; place-items: center; min-width: 24px; height: 22px; padding: 0 4px; border-radius: 11px; background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); font-size: .85rem; }
