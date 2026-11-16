@@ -398,8 +398,9 @@
       if (!it) return Object.assign(row, { skip: 'ese alimento no está en esta opción' });
       if (g1 < 0.5) g1 = 0;
       const unit = it && it.units != null && Number(f.unit_g) > 0;
-      const units = unit ? Math.round(g1 / Number(f.unit_g) * 2) / 2 : null;
-      const g = unit ? units * Number(f.unit_g) : Math.round(g1);
+      // redondeo: gramos a múltiplos de 5 (0 o 5) y unidades enteras (nada de «4 rodajas y media»)
+      const units = unit ? Math.max(0, Math.round(g1 / Number(f.unit_g))) : null;
+      const g = unit ? units * Number(f.unit_g) : Math.max(0, Math.round(g1 / 5) * 5);
       return Object.assign(row, { g0, g, units, unit, real: (g - g0) * per });
     });
   }
@@ -440,7 +441,7 @@
       const fd = new FormData(m), macro = fd.get('macro'), rows = plan(fd);
       m.querySelector('[data-prev]').innerHTML = `<ul class="list">${rows.map(r => `<li><span class="grow">Opción ${r.k + 1}<small>${r.skip ? `<span class="bad">No se cambia: ${esc(r.skip)}</span>`
         : `${esc(r.f.name)}: ${r.it ? (r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`) : `se añaden ${r0(r.g)} g`}${r.it && r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${MAC[macro][2].toUpperCase()} · ${r.real >= 0 ? '+' : ''}${r0(r.real * MAC[macro][1])} kcal</b>`}</li>`).join('')}</ul>
-        <p class="muted small">Las kcal son las del macro; el alimento también aporta algo de los otros. Redondeado a 1 g (o a media unidad).</p>`;
+        <p class="muted small">Las kcal son las del macro; el alimento también aporta algo de los otros. Redondeado a 5 g (o a unidades enteras).</p>`;
     };
     m.addEventListener('input', draw); m.addEventListener('change', draw); draw();
   }
@@ -514,7 +515,7 @@
       const day = res.reduce((s, x) => s + (x.rows[0] && !x.rows[0].skip ? x.rows[0].real : 0), 0);
       m.querySelector('[data-prev]').innerHTML = res.map(x => `<h4>${esc(x.b.name)}</h4><ul class="list">${x.rows.map(r => `<li><span class="grow">Opción ${r.k + 1}<small>${r.skip ? `<span class="bad">No se cambia: ${esc(r.skip)}</span>`
         : `${esc(r.f.name)}: ${r.unit ? `${f1(r.it.units)} → ${f1(r.units)} ${esc(r.f.unit_name || 'ud.')}` : `${r0(r.g0)} → ${r0(r.g)} g`}${r.g <= 0 ? ' (se quita)' : ''}`}</small></span>${r.skip ? '' : `<b>${r.real >= 0 ? '+' : ''}${f1(r.real)} g ${L}</b>`}</li>`).join('')}</ul>`).join('')
-        + `<p class="small"><b>Día (opción 1 de cada comida): ${day >= 0 ? '+' : ''}${f1(day)} g ${L} · ${day >= 0 ? '+' : ''}${r0(day * MAC[macro][1])} kcal</b></p><p class="muted small">Si un alimento va por unidades se redondea a media unidad.</p>`;
+        + `<p class="small"><b>Día (opción 1 de cada comida): ${day >= 0 ? '+' : ''}${f1(day)} g ${L} · ${day >= 0 ? '+' : ''}${r0(day * MAC[macro][1])} kcal</b></p><p class="muted small">Los gramos se redondean a 0 o 5 y lo que va por unidades (huevos, rodajas…) a unidades enteras.</p>`;
     };
     m.addEventListener('input', e => { if (e.target.closest('[data-meals]')) mgSum(); else if (!mgDirty) drawMeals(); else mgSum(); draw(); });
     m.addEventListener('change', e => { if (e.target.matches('[name=macro],[name=mode]')) { mgDirty = false; drawMeals(); } draw(); });
