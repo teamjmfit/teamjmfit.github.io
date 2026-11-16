@@ -337,6 +337,7 @@
           } else Object.assign(me, { data_request: 'delete', data_request_at: ts });
           save(); return fn === 'accept_consent' ? ts : null;
         }
+        if (fn === 'mark_onboarded') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me && !me.onboarded_at) { me.onboarded_at = now(); save(); } return null; }
         if (fn === 'clear_data_request') { const c = T('clients').find(x => x.id === a.p_client); if (c) Object.assign(c, { data_request: null, data_request_at: null }); save(); return null; }
         if (fn === 'delete_mesocycle') {
           const prog = T('programs').find(p => p.id === a.p_program); if (!prog) throw new Error('Mesociclo no encontrado');
