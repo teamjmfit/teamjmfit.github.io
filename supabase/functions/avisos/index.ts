@@ -102,7 +102,9 @@ export function dailyMessage(c: Row, k: ReturnType<typeof dayTasks>, t: string) 
 }
 
 // ---------- envío
-const sb = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+// Clave de servidor que Supabase pone sola en el entorno de la función (la antigua o la nueva «secret»)
+const serverKey = () => { const k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"); if (k) return k; try { const m = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}"); return m.default || Object.values(m)[0]; } catch (_) { return ""; } };
+const sb = () => createClient(Deno.env.get("SUPABASE_URL")!, serverKey() as string, { auth: { persistSession: false, autoRefreshToken: false } });
 // deno-lint-ignore no-explicit-any
 async function vapid(db: any) {
   let { data } = await db.from("push_vapid").select("public_key, private_key").eq("id", 1).maybeSingle();
@@ -183,7 +185,7 @@ async function test(db: any, req: Request) {
   return { ok: true, sent: await sendTo(db, [u.id], msg) };
 }
 
-if (import.meta.main) Deno.serve(async req => {
+if (import.meta.main !== false) Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const out = (o: Row, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
   try {
