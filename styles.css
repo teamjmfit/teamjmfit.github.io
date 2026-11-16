@@ -1630,3 +1630,20 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 .ob-next .ic { width: 16px; height: 16px; }
 @media (prefers-reduced-motion: reduce) { .ob *, .ob { animation: none !important; transition: none !important; } .ob-in { opacity: 1; transform: none; } }
 @media (min-width: 900px) { .ob-slide { padding-top: 40px; } }
+
+/* Antes de iniciar sesión: instalar la app */
+.ig .login-card { text-align: left; }
+.ig-k { text-transform: uppercase; letter-spacing: .16em; font-size: .75rem; font-weight: 700; color: var(--accent); margin: .4rem 0 0; }
+.ig h2 { margin: .2rem 0 .5rem; font-size: 1.6rem; line-height: 1.1; }
+.ig-steps { list-style: none; padding: 0; margin: 1.1rem 0; display: grid; gap: .7rem; }
+.ig-steps li { display: flex; gap: .75rem; align-items: flex-start; background: var(--card2); border: 1px solid var(--line); border-radius: 14px; padding: .75rem .85rem; line-height: 1.4; }
+.ig-n { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: .85rem; background: var(--accent); color: var(--accent-ink); }
+.ig-chip { display: inline-grid; place-items: center; width: 26px; height: 26px; vertical-align: middle; border-radius: 7px; background: rgba(10,132,255,.14); }
+.ig-chip .ic { width: 17px; height: 17px; stroke: #0a84ff; }
+.btn.big { padding: .95rem 1rem; font-size: 1.05rem; }
+.ig-web { display: block; margin: 1rem auto 0; font-size: .85rem; opacity: .75; }
+.ig-arrow { display: none; text-align: center; font-weight: 700; color: var(--accent); margin: .4rem 0 0; }
+.ig-arrow.on { display: block; animation: igBob 1.4s ease-in-out infinite; }
+@keyframes igBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .ig-arrow.on { animation: none; } }
+.ig .brand-logo { width: min(170px, 50%); height: auto; }

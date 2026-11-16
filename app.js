@@ -275,7 +275,46 @@
   const stopIntervals = () => { intervals.forEach(clearInterval); intervals = []; };
 
   // ------------------------------------------------------------ login
+  // Antes de iniciar sesión en el móvil: instalar la app en la pantalla de inicio (si no, se entra siempre por la web).
+  // En iPhone la app instalada no comparte sesión con Safari: por eso se instala primero y se entra ya desde el icono.
+  // No sale en ordenador, ya instalada, con enlace de invitación (la cuenta se crea primero) o si eligió seguir en la web.
+  const webOk = () => { try { return sessionStorage.getItem('jmfit-web-ok') === '1'; } catch (e) { return false; } };
+  const hasInvite = () => { try { return !!sessionStorage.getItem('jmfit-invite') || /[?&]invite=/.test(location.search); } catch (e) { return false; } };
+  const needInstall = () => !isStandalone() && !webOk() && !hasInvite() && window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  function installGate() {
+    document.body.dataset.role = 'guest';
+    const ua = navigator.userAgent, ios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const inApp = /FBAN|FBAV|Instagram|TikTok|musical_ly|Line\//i.test(ua), iosOther = ios && /CriOS|FxiOS|EdgiOS/i.test(ua);
+    const share = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+    const step = (n, html) => `<li><span class="ig-n">${n}</span><span>${html}</span></li>`;
+    const steps = inApp
+      ? [step(1, 'Estás dentro de otra app (Instagram, TikTok…). Toca el menú <b>⋯</b> y elige <b>«Abrir en el navegador»</b>.'), step(2, 'Ya en ' + (ios ? 'Safari' : 'Chrome') + ', vuelve a esta pantalla y sigue los pasos.')]
+      : ios ? [step(1, `Toca <b>Compartir</b> <span class="ig-chip">${share}</span> ${iosOther ? 'junto a la barra de direcciones' : 'en la barra de Safari'}. Si no lo ves, toca primero <b>⋯</b>.`),
+          step(2, 'Desliza hacia abajo y toca <b>«Añadir a pantalla de inicio»</b>.'), step(3, 'Toca <b>Añadir</b> arriba a la derecha.'), step(4, 'Cierra esto y abre <b>TEAM JMFIT</b> desde el icono de tu pantalla de inicio. Ahí inicias sesión.')]
+      : deferredInstall ? [step(1, 'Toca <b>Instalar la app</b> aquí abajo y confirma.'), step(2, 'Abre <b>TEAM JMFIT</b> desde el icono de tu pantalla de inicio e inicia sesión ahí.')]
+      : [step(1, 'Abre el menú <b>⋮</b> de Chrome (arriba a la derecha).'), step(2, 'Toca <b>«Instalar aplicación»</b> o <b>«Añadir a pantalla de inicio»</b>.'), step(3, 'Abre <b>TEAM JMFIT</b> desde el icono de tu pantalla de inicio e inicia sesión ahí.')];
+    $app.innerHTML = `<main class="login ig"><div class="login-card">
+      <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"></div>
+      <p class="ig-k">Antes de empezar</p><h2>Instala la app en tu móvil</h2>
+      <p class="muted">Tendrás TEAM JMFIT como una app más: un toque desde la pantalla de inicio, a pantalla completa y con los avisos de tus entrenos. Sin volver a buscar la web.</p>
+      <ol class="ig-steps">${steps.join('')}</ol>
+      ${!ios && !inApp && deferredInstall ? `<button type="button" class="btn primary block big" data-ig-go>${ic('download')} Instalar la app</button>` : ''}
+      ${ios && !inApp ? '<p class="ig-arrow" aria-hidden="true">↓ La barra de Safari está aquí abajo</p>' : ''}
+      <button type="button" class="link ig-web" data-ig-web>Seguir en la web de todas formas</button>
+    </div></main>`;
+    const go = $app.querySelector('[data-ig-go]');
+    if (go) go.onclick = async () => { const ev = deferredInstall; if (!ev) return; deferredInstall = null; ev.prompt(); try { const r = await ev.userChoice; if (r && r.outcome === 'accepted') installedMsg(); else installGate(); } catch (e) { installGate(); } };
+    $app.querySelector('[data-ig-web]').onclick = () => { try { sessionStorage.setItem('jmfit-web-ok', '1'); } catch (e) { /* solo esta vez */ } renderLogin(); };
+    if (ios && !iosOther && !inApp) $app.querySelector('.ig-arrow').classList.add('on');
+  }
+  function installedMsg() {
+    $app.innerHTML = `<main class="login ig"><div class="login-card"><div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"></div>
+      <h2>¡Instalada! 🎉</h2><p class="muted">Ya tienes <b>TEAM JMFIT</b> en tu pantalla de inicio. Ábrela desde el icono e inicia sesión ahí.</p>
+      <button type="button" class="link ig-web" data-ig-web>Seguir en la web de todas formas</button></div></main>`;
+    $app.querySelector('[data-ig-web]').onclick = () => { try { sessionStorage.setItem('jmfit-web-ok', '1'); } catch (e) { /* solo esta vez */ } renderLogin(); };
+  }
   function renderLogin(mode = 'in') {
+    if (needInstall()) return installGate();
     document.body.dataset.role = 'guest';
     const demo = DB.mode === 'demo';
     $app.innerHTML = `<main class="login">
@@ -3562,7 +3601,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // ---------- Instalar la app en el móvil (PWA): aviso en el inicio del cliente hasta que la instale o lo oculte
   let deferredInstall = null;
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; if ($app && $app.querySelector('.ig')) installGate(); });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; if ($app && $app.querySelector('.ig')) installedMsg(); });
   const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   function installCardHtml() {
     let off = false; try { off = localStorage.getItem('jmfit-install-off') === '1'; } catch (e) { /* sin almacenamiento */ }
