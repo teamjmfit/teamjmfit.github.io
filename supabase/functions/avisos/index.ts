@@ -1,7 +1,7 @@
 // TEAM JMFIT · función «avisos» (Supabase Edge Function). Migración 032.
 // Trabajos (POST JSON {job}):
-//  · daily   — lo lanza pg_cron cada hora; desde las 08:00 (hora canaria) manda a cada cliente, una vez al día,
-//              sus tareas de hoy (entreno, revisión, descanso…) y una frase de motivación.
+//  · daily   — lo lanza pg_cron cada hora; desde las 08:00 (hora canaria) manda a cada cliente, una vez al día y
+//              solo si hoy le toca entrenar o enviar la revisión, sus tareas de hoy y una frase de motivación.
 //  · checkin — lo lanza la base de datos al guardar una revisión en fin de semana: aviso al entrenador.
 //  · key     — devuelve la clave pública para dar de alta un móvil.
 //  · test    — con la sesión del usuario (Authorization: Bearer …): le manda a él un aviso de prueba.
@@ -64,7 +64,8 @@ export function dayTasks(c: Row, d: { routines: Row[]; programs: Row[]; weeks: R
     else if (e.kind === "photos") extra.push("fotos de progreso");
     else if (e.kind === "note" && e.title) extra.push(e.title);
   }
-  return { train, extra, ck, trains: rs.some(r => r.day) || d.routines.some(r => r.by_client), nutri: nutriOnly(c) };
+  const active = ev.some(e => ["cardio", "mobility", "photos"].includes(e.kind));
+  return { train, extra, ck, active, trains: rs.some(r => r.day) || d.routines.some(r => r.by_client), nutri: nutriOnly(c) };
 }
 
 // ---------- frases (propias)
@@ -141,6 +142,7 @@ async function loadDay(db: any, c: Row, t: string) {
   return dayTasks(c, { routines, programs, weeks, events, checkins, skips }, t);
 }
 
+export const worth = (k: ReturnType<typeof dayTasks>) => !!(k.train.length || k.ck || k.active);
 // deno-lint-ignore no-explicit-any
 async function daily(db: any, force = false) {
   const { date: t, hour } = local();
@@ -152,8 +154,12 @@ async function daily(db: any, force = false) {
   let sent = 0;
   for (const c of clients || []) {
     if (c.ui_prefs && c.ui_prefs.avisos === false) continue;
-    if (!(await once(db, `dia:${c.id}:${t}`))) continue;
-    try { sent += await sendTo(db, [c.user_id], dailyMessage(c, await loadDay(db, c, t), t)); } catch (_) { /* sigue con el resto */ }
+    try {
+      const k = await loadDay(db, c, t);
+      if (!worth(k)) continue;   // solo avisos de entrenos o revisiones: los días de descanso no se manda nada
+      if (!(await once(db, `dia:${c.id}:${t}`))) continue;
+      sent += await sendTo(db, [c.user_id], dailyMessage(c, k, t));
+    } catch (_) { /* sigue con el resto */ }
   }
   return { sent };
 }
@@ -180,6 +186,7 @@ async function test(db: any, req: Request) {
   const u = data && data.user;
   if (!u) return { ok: false, error: "sin sesión" };
   const { data: c } = await db.from("clients").select("*").eq("user_id", u.id).eq("active", true).maybeSingle();
+  if (c) { const k0 = await loadDay(db, c, local().date); if (!worth(k0)) return { ok: true, sent: 0, none: true }; }
   const msg = c ? dailyMessage(c, await loadDay(db, c, local().date), local().date)
     : { title: "📥 Así te llegará cada revisión del finde", body: "Cuando un cliente envíe su revisión en sábado o domingo te aviso al momento.", url: APP + "#/", tag: "prueba" };
   return { ok: true, sent: await sendTo(db, [u.id], msg) };

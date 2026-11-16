@@ -1647,3 +1647,21 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 @keyframes igBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .ig-arrow.on { animation: none; } }
 .ig .brand-logo { width: min(170px, 50%); height: auto; }
+
+/* Interruptor de notificaciones */
+.push-box { margin: .2rem 0 1rem; }
+.nsw { display: flex; align-items: center; gap: .8rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--card2); cursor: pointer; position: relative; }
+.nsw.is-on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--accent-soft); }
+.nsw.is-dis { opacity: .6; cursor: default; }
+.nsw b { display: flex; align-items: center; gap: .4rem; }
+.nsw b .ic { width: 18px; height: 18px; }
+.nsw small { display: block; color: var(--muted); margin-top: .15rem; }
+.nsw input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.nsw-t { flex: none; width: 50px; height: 30px; border-radius: 99px; background: var(--line); position: relative; transition: background .2s; }
+.nsw-t::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+.nsw input:checked + .nsw-t { background: var(--accent); }
+.nsw input:checked + .nsw-t::after { transform: translateX(20px); }
+.nsw input:focus-visible + .nsw-t { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nsw-st { margin: .4rem .2rem .5rem; }
+.push-box label.nsw { flex-direction: row; align-items: center; text-align: left; color: var(--text); font-size: 1rem; font-weight: 400; margin: 0; }
+.push-box label.nsw .grow { flex: 1; min-width: 0; }

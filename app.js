@@ -654,7 +654,7 @@
     ['referidos', 'Referidos', true, 'Tarjeta para invitar a amigos'],
     ['carga', 'Carga de entrenamiento (ACWR)', false, 'Normalmente solo la ves tú'],
     ['volumen', 'Volumen semanal por músculo', false, 'Normalmente solo lo ves tú'],
-    ['avisos', 'Aviso diario en el móvil', true, 'Cada mañana a las 8: sus tareas del día y una frase de motivación (si activa los avisos en su móvil)'],
+    ['avisos', 'Avisos de entrenos y revisiones', true, 'A las 8 de la mañana, solo los días que le toca entrenar o enviar la revisión (si activa las notificaciones en su móvil)'],
     ['libre', 'Modo libre: crear sus propias rutinas', false, 'Puede crear rutinas (ejercicios, series, reps y RIR) y registrar lo que entrene. Las tuyas no las puede tocar']];
   const canSee = (c, k) => { const p = (c && c.ui_prefs) || {}, m = UI_MODS.find(x => x[0] === k); return k in p ? !!p[k] : (m ? m[2] : true); };
   const clientNav = () => CLIENT_NAV.filter(n => n.key !== 'nutricion' || canSee(S.client, 'nutricion'));
@@ -2457,21 +2457,28 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   function themeModal() {
     const f = modal('Apariencia y avisos', `<p class="muted small">Solo cambia en este dispositivo.</p><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div>
-      <h4 class="push-h">${ic('bell')} Avisos en el móvil</h4><p class="small muted">${S.profile && S.profile.role === 'coach' ? 'Te aviso cuando un cliente envía su revisión en fin de semana.' : 'Cada mañana: lo que te toca hoy (entreno, revisión o descanso) y una frase para empezar con ganas.'}</p><div data-pushset>${loading()}</div>`, { submitLabel: 'Listo', onSubmit: () => {} });
+      <div class="push-box" data-pushset>${loading()}</div>`, { submitLabel: 'Listo', onSubmit: () => {} });
     f.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); f.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     pushSettings(f.querySelector('[data-pushset]'));
   }
   // ---------- Avisos push (avisos.js + función «avisos», migración 032)
+  // Interruptor «Notificaciones» (se ve encendido o apagado según este móvil) + aviso de prueba
   async function pushSettings(box) {
     if (!box || !window.JMPush) { if (box) box.innerHTML = ''; return; }
-    const st = await JMPush.state().catch(() => 'unsupported');
-    box.innerHTML = `<p class="small ${st === 'on' ? 'push-on' : ''}">${st === 'on' ? '✓ ' : ''}${esc(JMPush.TXT[st] || '')}</p>
-      <div class="row gap wrap">${st === 'off' ? `<button type="button" class="btn small primary" data-push-on>${ic('bell')} Activar avisos</button>` : ''}
-      ${st === 'on' ? `<button type="button" class="btn small" data-push-test>Enviarme uno de prueba</button><button type="button" class="btn small ghost" data-push-off>Desactivar</button>` : ''}</div>`;
-    const on = box.querySelector('[data-push-on]'), off = box.querySelector('[data-push-off]'), tst = box.querySelector('[data-push-test]');
-    if (on) on.onclick = async () => { on.disabled = true; try { await JMPush.enable(); toast('Avisos activados'); } catch (e) { toast(e.message, 'err'); } pushSettings(box); };
-    if (off) off.onclick = async () => { off.disabled = true; await JMPush.disable(); toast('Avisos desactivados'); pushSettings(box); };
-    if (tst) tst.onclick = async () => { tst.disabled = true; try { const r = await JMPush.test(); toast(r.sent ? 'Enviado: te llegará en unos segundos' : 'No se pudo enviar a este móvil', r.sent ? '' : 'err'); } catch (e) { toast(e.message, 'err'); } tst.disabled = false; };
+    const st = await JMPush.state().catch(() => 'unsupported'), on = st === 'on', can = st === 'on' || st === 'off';
+    const coach = S.profile && S.profile.role === 'coach';
+    box.innerHTML = `<label class="nsw ${on ? 'is-on' : ''} ${can ? '' : 'is-dis'}"><span class="grow"><b>${ic('bell')} Notificaciones</b><small>${coach ? 'Solo cuando un cliente envía su revisión en fin de semana.' : 'Solo avisos de tus entrenos y revisiones.'}</small></span>
+      <input type="checkbox" role="switch" data-push-sw ${on ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Notificaciones"><span class="nsw-t" aria-hidden="true"></span></label>
+      <p class="small nsw-st ${on ? 'push-on' : 'muted'}">${on ? '✓ Activadas en este móvil' : can ? 'Desactivadas en este móvil' : esc(JMPush.TXT[st] || '')}</p>
+      ${on ? '<button type="button" class="btn small ghost" data-push-test>Enviarme una de prueba</button>' : ''}`;
+    const sw = box.querySelector('[data-push-sw]'), tst = box.querySelector('[data-push-test]');
+    sw.onchange = async () => {
+      sw.disabled = true;
+      try { if (sw.checked) { await JMPush.enable(); toast('Notificaciones activadas'); } else { await JMPush.disable(); toast('Notificaciones desactivadas'); } }
+      catch (e) { toast(e.message, 'err'); }
+      pushSettings(box);
+    };
+    if (tst) tst.onclick = async () => { tst.disabled = true; try { const r = await JMPush.test(); toast(r.sent ? 'Enviada: te llegará en unos segundos' : (r.none ? 'Hoy no tienes entreno ni revisión: no hay nada que avisar' : 'No se pudo enviar a este móvil'), r.sent ? '' : 'err'); } catch (e) { toast(e.message, 'err'); } tst.disabled = false; };
   }
   // Tarjeta en Inicio para activarlos (se puede ocultar). En iPhone sin instalar ya sale la tarjeta de instalar.
   async function wirePushCard(root, coach) {
@@ -2479,7 +2486,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     let hid = false; try { hid = localStorage.getItem('jmfit-push-off') === '1'; } catch (e) { /* sin almacenamiento */ }
     if (hid || (!coach && S.client && !canSee(S.client, 'avisos'))) return;
     if (await JMPush.state().catch(() => '') !== 'off' || !document.body.contains(slot)) return;
-    slot.innerHTML = `<section class="notice n-push"><span class="n-ic">${ic('bell')}</span><span class="grow"><b>Activa los avisos</b><small>${coach ? 'Te aviso al momento cuando alguien envía su revisión en fin de semana.' : 'Cada mañana te digo lo que te toca hoy, con una frase para arrancar.'}</small></span><button type="button" class="btn small primary" data-push-go>Activar</button><button type="button" class="icon-btn" data-push-x aria-label="Ocultar este aviso">✕</button></section>`;
+    slot.innerHTML = `<section class="notice n-push"><span class="n-ic">${ic('bell')}</span><span class="grow"><b>Activa los avisos</b><small>${coach ? 'Te aviso al momento cuando alguien envía su revisión en fin de semana.' : 'Te aviso por la mañana cuando te toque entrenar o enviar tu revisión.'}</small></span><button type="button" class="btn small primary" data-push-go>Activar</button><button type="button" class="icon-btn" data-push-x aria-label="Ocultar este aviso">✕</button></section>`;
     slot.querySelector('[data-push-x]').onclick = () => { try { localStorage.setItem('jmfit-push-off', '1'); } catch (e) { /* solo esta vez */ } slot.innerHTML = ''; };
     slot.querySelector('[data-push-go]').onclick = async e => { e.target.disabled = true; try { await JMPush.enable(); toast('Avisos activados'); slot.innerHTML = ''; } catch (er) { toast(er.message, 'err'); e.target.disabled = false; } };
   }
@@ -3557,14 +3564,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function privacyModal() {
     const c = S.client; if (!c) return;
     const req = c.data_request === 'delete';
-    modal('Ajustes', `
+    modal('Ajustes', `<div class="push-box" data-pushset></div>
       <p>${c.consent_at ? `Aceptaste el uso de tus datos el <b>${fmtDate(c.consent_at.slice(0, 10), { day: 'numeric', month: 'long', year: 'numeric' })}</b>.` : 'Uso de datos aceptado.'} <a href="privacidad.html" target="_blank" rel="noopener">Ver la política de privacidad</a></p>
       <label class="check"><input type="checkbox" name="photos" ${c.consent_photos !== false ? 'checked' : ''}> Permitir fotos de progreso en los check-ins</label>
       <div class="priv-acts">
         <button type="button" class="btn block" data-exp>${ic('download')} Descargar mis datos</button>
         <button type="button" class="btn block ${req ? '' : 'ghost'}" data-del ${req ? 'disabled' : ''}>${ic('trash')} ${req ? 'Borrado solicitado' : 'Pedir que se borren mis datos'}</button>
         <button type="button" class="btn ghost block danger" data-wd>Retirar mi consentimiento</button>
-        <button type="button" class="btn ghost block" data-theme-btn>${ic('sun')} Apariencia y avisos</button>
+        <button type="button" class="btn ghost block" data-theme-btn>${ic('sun')} Apariencia</button>
         <button type="button" class="btn ghost block" data-ob-again>${ic('play')} Ver la bienvenida otra vez</button>
       </div>
       <p class="muted small">Si retiras el consentimiento, no podrás usar la app hasta volver a aceptarlo. Para cualquier duda sobre tus datos, habla con tu entrenador.</p>`, {
@@ -3582,6 +3589,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       await safe(() => DB.rpc('request_data_deletion', {}), 'Petición enviada a tu entrenador'); await refreshClient(); closeModal();
     };
     m.querySelector('[data-theme-btn]').onclick = () => { closeModal(); setTimeout(themeModal, 80); };
+    pushSettings(m.querySelector('[data-pushset]'));
     m.querySelector('[data-ob-again]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
     m.querySelector('[data-wd]').onclick = async () => {
       if (!await confirmBox('Dejarás de poder usar la app hasta que vuelvas a aceptar. Tu entrenador lo verá. ¿Retirar el consentimiento?', 'Retirar')) return;
