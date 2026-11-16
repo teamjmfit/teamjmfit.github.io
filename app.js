@@ -3,6 +3,9 @@
   'use strict';
   const BRAND = (window.JMFIT_CONFIG && window.JMFIT_CONFIG.BRAND) || 'TEAM JMFIT';
   const $app = document.getElementById('app');
+  // Que se sienta como una app: sin zoom con dos dedos ni doble toque (iPhone ignora user-scalable=no)
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
   const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   const DIAS_C = ['', 'L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const S = { profile: null, client: null, route: [], clients: [], exercises: [], sheet: null };

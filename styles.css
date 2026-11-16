@@ -1682,3 +1682,8 @@ input, select, textarea { font-size: 16px; }   /* también evita el zoom automá
 @media (max-height: 700px) { .ob-coach { aspect-ratio: 16 / 10; } }
 .ob-coach figcaption small { font-size: .8rem; color: rgba(244,241,234,.7); }
 .ob-coach figcaption span { text-transform: none; letter-spacing: .01em; font-size: .86rem; }
+
+/* Como una app: sin desplazarse hacia los lados, sin rebote lateral ni zoom (inputs a 16 px: iPhone no amplía al escribir) */
+html, body { overflow-x: hidden; overflow-x: clip; overscroll-behavior-x: none; max-width: 100%; }
+body { touch-action: pan-x pan-y; -webkit-tap-highlight-color: transparent; }
+@media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
