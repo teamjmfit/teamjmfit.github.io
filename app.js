@@ -151,6 +151,9 @@
   const ICON = {
     next: '<path d="M9 6l6 6-6 6"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+    insta: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
@@ -439,9 +442,8 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
-          <img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
-          ${S.profile.role === 'client' && S.client ? `<button class="icon-btn" data-priv aria-label="Ajustes" title="Ajustes: apariencia, privacidad y mis datos">${ic('cog')}</button>` : ''}
-          <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button></header>
+          ${S.profile.role === 'client' && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
+          <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
         <div class="content">${content}</div>
       </div>
       <nav class="tabbar">${nav}</nav>`;
@@ -673,6 +675,7 @@
     modal('Ajustes', `
       <h4>Tu cuenta</h4><div class="push-box" data-pushset></div>
       <button type="button" class="btn ghost block" data-ob-prev>${ic('play')} Ver la bienvenida de los clientes</button>
+      <details class="po-box"><summary>Tus redes (salen en el Inicio de tus clientes)</summary><div data-links-ed></div></details>
       <details class="po-box"><summary>Orden del Progreso de tus clientes</summary><p class="muted small">Sube o baja los apartados. Es el orden en que lo ven todos tus clientes en su pestaña Progreso (lo que no tengan activado no les sale).</p><div data-po-ed></div></details>
       <h4>Tus clientes</h4>
       <p class="muted small">Se aplica a tus <b>${cs.length} clientes activos</b>. Lo que dejes en «Igual» no se toca. Después puedes cambiar a cualquiera en su ficha.</p>
@@ -705,7 +708,7 @@
       } });
     { const m = document.querySelector('.modal'); pushSettings(m.querySelector('[data-pushset]'));
       m.querySelector('[data-ob-prev]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
-      progOrderEditor(m.querySelector('[data-po-ed]')); }
+      progOrderEditor(m.querySelector('[data-po-ed]')); linksEditor(m.querySelector('[data-links-ed]')); }
   }
 
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
@@ -3498,9 +3501,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // ================================================================ CLIENTE
   const CLIENT_NAV = [
-    { key: 'hoy', href: '', icon: 'dumbbell', label: 'Entreno' },
-    { key: 'nutricion', href: 'nutricion', icon: 'apple', label: 'Nutrición' },
-    { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' }
+    { key: 'inicio', href: '', icon: 'home', label: 'Inicio' },
+    { key: 'rutina', href: 'rutina', icon: 'dumbbell', label: 'Rutina' },
+    { key: 'nutricion', href: 'nutricion', icon: 'apple', label: 'Dieta' },
+    { key: 'progreso', href: 'progreso', icon: 'chart', label: 'Progreso' },
+    { key: 'perfil', href: 'perfil', icon: 'user', label: 'Perfil' }
   ];
 
   // ---------- Privacidad (migración 019): consentimiento, mis datos, borrado
@@ -3533,6 +3538,19 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       };
     };
     draw();
+  }
+
+  async function linksEditor(host) {
+    if (!host) return;
+    const v = await coachLinks();
+    host.innerHTML = `<p class="muted small">Solo lo que rellenes sale en la tarjeta «Tu entrenador» del Inicio de tus clientes.</p>
+      ${LINKS.map(([k, l]) => `<label>${l}<input data-lk="${k}" value="${esc(v[k] || '')}" maxlength="200" placeholder="${k === 'whatsapp' ? '+34 600 000 000' : '@usuario o enlace'}"></label>`).join('')}
+      <button type="button" class="btn small primary" data-lk-save>Guardar redes</button>`;
+    host.querySelector('[data-lk-save]').onclick = async () => {
+      const o = {}; host.querySelectorAll('[data-lk]').forEach(i => { const x = i.value.trim(); if (x) o[i.dataset.lk] = x; });
+      await safe(() => DB.upsert('public_texts', { key: 'coach_links', value: JSON.stringify(o), updated_at: new Date().toISOString() }, 'key'), 'Redes guardadas ✓');
+      S.cLinks = { t: Date.now(), v: o };
+    };
   }
 
   // ---------- Bienvenida para clientes nuevos (carrusel a pantalla completa, se desliza con el dedo)
@@ -3695,7 +3713,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (bill && bill.days_over != null && bill.days_over >= 0) billingPopup(bill);
     const [r0, r1] = S.route;
     if (r0 === 'entreno') return workout(r1);
-    if (!r0) return clientToday();
+    if (!r0) return clientHome();
+    if (r0 === 'rutina') return clientToday();
+    if (r0 === 'perfil') return clientProfile();
     if (r0 === 'nutricion') return canSee(S.client, 'nutricion') ? clientNutrition() : go('#/');
     if (r0 === 'progreso') { shell(clientNav(), 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
     go('#/');
@@ -3753,9 +3773,192 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       try { await claimPaid(e.target.note.value); toast('Se lo he dicho a tu entrenador; te reactivará en cuanto lo compruebe', 'ok'); } catch (er) { btn.disabled = false; } };
   }
 
+  // ================================================================ CLIENTE · INICIO (saludo, entrenador, calendario del mes, hoy, registro y dieta)
+  const HOME_FR = ['¡Ahora es el momento, hazte caso!', 'La constancia gana a la motivación.', 'Un día más, una repetición más.', 'Lo que haces hoy lo notas en 3 meses.',
+    'Pequeños pasos, todos los días.', 'Hoy también cuenta.', 'Disciplina hoy, resultados mañana.', 'No lo dejes para el lunes.'];
+  // Foto de perfil del cliente (migración 035: clients.avatar_path en el almacenamiento de fotos, enlace firmado 1 h)
+  async function avatarUrl(c) {
+    if (!c || !c.avatar_path) return null;
+    if (S.ava && S.ava.p === c.avatar_path && Date.now() - S.ava.t < 50 * 6e4) return S.ava.u;
+    try { const u = await DB.photoUrl(c.avatar_path); S.ava = { p: c.avatar_path, u, t: Date.now() }; return u; } catch (e) { return null; }
+  }
+  function avatarBtn() { const c = S.client; return c ? `<a class="h-ava" href="#/perfil" aria-label="Mi perfil" data-ava><span>${esc(initials(c.name))}</span></a>` : ''; }
+  async function fillAvatars(root) {
+    const u = await avatarUrl(S.client); if (!u) return;
+    (root || document).querySelectorAll('[data-ava]').forEach(a => { a.innerHTML = `<img src="${esc(u)}" alt="">`; });
+  }
+  // Redes del entrenador (public_texts.coach_links; las edita el entrenador en Ajustes)
+  const LINKS = [['whatsapp', 'WhatsApp', 'wa', v => 'https://wa.me/' + String(v).replace(/\D/g, '')], ['instagram', 'Instagram', 'insta', v => /^https?:/.test(v) ? v : 'https://instagram.com/' + String(v).replace(/^@/, '')],
+    ['tiktok', 'TikTok', 'music', v => /^https?:/.test(v) ? v : 'https://www.tiktok.com/@' + String(v).replace(/^@/, '')], ['youtube', 'YouTube', 'video', v => /^https?:/.test(v) ? v : 'https://youtube.com/@' + String(v).replace(/^@/, '')]];
+  async function coachLinks() {
+    if (S.cLinks && Date.now() - S.cLinks.t < 300e3) return S.cLinks.v;
+    let v = {}; try { const r = await DB.get('public_texts', 'coach_links', 'key'); v = r && r.value ? JSON.parse(r.value) : {}; } catch (e) { v = {}; }
+    S.cLinks = { t: Date.now(), v }; return v;
+  }
+  function coachCard(links) {
+    const ls = LINKS.filter(([k]) => links && String(links[k] || '').trim());
+    return `<section class="card coach-card"><img class="cc-ph" src="coach-cara.webp" alt="" width="160" height="160"><div class="grow"><small>Tu entrenador</small><b>Jorge Martínez Suárez</b>
+      ${ls.length ? `<div class="cc-links">${ls.map(([k, l, i, f]) => `<a class="cc-l cc-${k}" href="${esc(f(String(links[k]).trim()))}" target="_blank" rel="noopener" aria-label="${l}" title="${l}">${ic(i)}</a>`).join('')}</div>` : '<span class="muted small">Escríbeme cuando lo necesites</span>'}</div></section>`;
+  }
+
+  async function clientHome() {
+    const c = S.client, first = c.name.split(' ')[0];
+    const t0 = today(), fr = HOME_FR[(+t0.slice(8) + c.name.length) % HOME_FR.length];
+    shell(clientNav(), 'inicio', loading(), { title: `Bienvenido/a, ${first}`, sub: fr, actions: avatarBtn() });
+    fillAvatars($app);
+    const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
+    if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
+    const nut = canSee(c, 'nutricion');
+    const [allRoutines, sessions, programs, weeks, ckins, links, p0, nd] = await Promise.all([
+      DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
+      DB.list('sessions', { eq: { client_id: c.id }, order: ['started_at', 'desc'], limit: 150 }),
+      DB.list('programs', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('program_weeks', { eq: { client_id: c.id, published: true } }).catch(() => []),
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 30 }).catch(() => []),
+      coachLinks(),
+      nut ? DB.get('nutrition_plans', c.id, 'client_id').catch(() => null) : null,
+      nut ? DB.rpc('get_my_nutrition').catch(() => null) : null
+    ]);
+    if (!window.JMGoals && document.readyState !== 'complete') await new Promise(r => { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
+    const goalsC = window.JMGoals ? await loadGoals(c.id) : null, pg = primaryGoal(goalsC);
+    const gData = pg ? await goalData(c, pg.metric === 'e1rm' ? 'e1rm' : 'w') : null;
+    const ckSt = window.JMCk ? JMCk.status(c, ckins, ckOn(c) ? await loadSkips(c.id) : [], t0) : null;
+    const cw = currentWeek(weeks, programs);
+    const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
+    const d = isoDay(), wkS = addDays(t0, 1 - d), wkE = addDays(wkS, 6);
+    const notices = clientNotices(c, ckins, wkS, d, t0, ckSt);
+    const pending = getActiveWorkout();
+    const done = sessions.filter(s => s.finished_at), doneOn = ds => done.filter(s => String(s.started_at).slice(0, 10) === ds);
+    let dm = await DB.list('daily_metrics', { eq: { client_id: c.id, date: t0 } }).catch(() => null);
+    const m = (dm || [])[0] || {};
+
+    // ---- dieta: objetivo del día (o la suma del plan)
+    let diet = '';
+    if (nut && (p0 || (nd && nd.blocks && nd.blocks.length))) {
+      const groups = nd && nd.blocks && nd.blocks.length && window.JMNutri && JMNutri.planGroups ? JMNutri.planGroups(nd) : [];
+      const g = groups[0], sum = g && g.sum && g.sum.kcal ? { kcal: Math.round(g.sum.kcal), protein: Math.round(g.sum.protein), carbs: Math.round(g.sum.carbs), fat: Math.round(g.sum.fat) } : null;
+      const t = g && g.targets ? g.targets : p0 && p0.kcal ? p0 : sum, show = !(nd && nd.show_macros === false);
+      if (t && t.kcal && show) {
+        const P = (t.protein || 0) * 4, C = (t.carbs || 0) * 4, F = (t.fat || 0) * 9, T = P + C + F || 1, Rr = 38, L = 2 * Math.PI * Rr;
+        let off = 0; const seg = (v, cls) => { const len = v / T * L, el = `<circle class="dn-${cls}" r="${Rr}" cx="50" cy="50" stroke-dasharray="${len.toFixed(1)} ${(L - len).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`; off += len; return el; };
+        diet = `<a class="card diet-card" href="#/nutricion"><header><span class="dc-ic">${ic('apple')}</span><div class="grow"><b>Dieta</b><small>Tu plan de hoy${groups.length > 1 && g && g.name ? ' · ' + esc(g.name) : ''}</small></div><span class="small link-a">Ver ›</span></header>
+          <div class="dc-body"><div class="dc-k"><b>${Math.round(t.kcal)}</b><small>kcal</small></div>
+          <svg class="donut" viewBox="0 0 100 100" aria-hidden="true"><circle class="dn-bg" r="${Rr}" cx="50" cy="50"/>${seg(P, 'p')}${seg(F, 'f')}${seg(C, 'c')}</svg>
+          <ul class="dc-m"><li class="p"><b>${t.protein ?? '–'}</b> g Proteína</li><li class="f"><b>${t.fat ?? '–'}</b> g Grasas</li><li class="c"><b>${t.carbs ?? '–'}</b> g Carbos</li></ul></div></a>`;
+      } else diet = `<a class="card diet-card" href="#/nutricion"><header><span class="dc-ic">${ic('apple')}</span><div class="grow"><b>Dieta</b><small>Tu plan de comidas</small></div><span class="small link-a">Ver ›</span></header></a>`;
+    }
+
+    // ---- calendario del mes
+    let mon = S.calMon || t0.slice(0, 7), sel = S.calSel || t0;
+    let evs = [];
+    const monthDays = ym => { const f = ym + '-01', start = addDays(f, 1 - (((new Date(f + 'T12:00:00').getDay()) + 6) % 7 + 1)); const out = []; for (let i = 0; i < 42; i++) out.push(addDays(start, i)); return out.slice(0, out[35].slice(0, 7) === ym ? 42 : 35); };
+    const plannedOn = ds => (ds >= wkS && ds <= wkE ? routines.filter(r => r.day === ((new Date(ds + 'T12:00:00').getDay() + 6) % 7) + 1) : []);
+    const calHtml = () => {
+      const days = monthDays(mon), lab = cap1(new Date(mon + '-15T12:00:00').toLocaleDateString('es-ES', { month: 'long' })) + ' ' + mon.slice(0, 4);
+      return `<header class="cal-h"><span class="cal-ic">${ic('dumbbell')}</span><div class="grow"><b>Rutina</b><small>Resumen del mes</small></div>
+          <div class="cal-nav"><button type="button" class="icon-btn" data-cm="-1" aria-label="Mes anterior">‹</button><span class="cal-m">${esc(lab)}</span><button type="button" class="icon-btn" data-cm="1" aria-label="Mes siguiente">›</button></div></header>
+        <div class="cal-g" role="grid">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<span class="cal-w">${x}</span>`).join('')}
+        ${days.map(ds => { const dn = doneOn(ds).length, pl = plannedOn(ds).filter(r => !doneOn(ds).some(s => s.routine_id === r.id)).length && ds >= t0, ev = evs.some(e => e.date === ds && e.kind !== 'note');
+          return `<button type="button" data-cd="${ds}" class="${ds.slice(0, 7) !== mon ? 'out' : ''} ${ds === t0 ? 'today' : ''} ${ds === sel ? 'sel' : ''}" aria-pressed="${ds === sel}" aria-label="${esc(fmtDate(ds, { weekday: 'long', day: 'numeric', month: 'long' }))}">${+ds.slice(8)}<i>${dn ? '<em class="d-done"></em>' : ''}${pl ? '<em class="d-plan"></em>' : ''}${ev ? '<em class="d-ev"></em>' : ''}</i></button>`; }).join('')}</div>
+        <p class="cal-key"><span><em class="d-done"></em>Entreno hecho</span><span><em class="d-plan"></em>Te toca</span><span><em class="d-ev"></em>En tu calendario</span></p>`;
+    };
+    const dayHtml = () => {
+      const ds = sel, dn = doneOn(ds), pl = plannedOn(ds).filter(r => !dn.some(s => s.routine_id === r.id)), ev = evs.filter(e => e.date === ds);
+      const lab = ds === t0 ? 'Hoy' : cap1(fmtDate(ds, { weekday: 'long', day: 'numeric', month: 'long' }));
+      const rows = [
+        ...dn.map(s => { const r = byId(allRoutines, s.routine_id); return `<li class="dd-ok">${ic('check')}<span class="grow"><b>${esc(r ? r.name : 'Entreno')}</b><small>Hecho${s.started_at ? ' · ' + esc(String(s.started_at).slice(11, 16)) : ''}</small></span></li>`; }),
+        ...pl.map(r => `<li>${ic('dumbbell')}<span class="grow"><b>${esc(r.name)}</b><small>${ds === t0 ? 'Te toca hoy' : 'Te toca ese día'}</small></span>${ds === t0 ? `<a class="btn small primary" href="#/entreno/${r.id}">${ic('play')} Empezar</a>` : ''}</li>`),
+        ...ev.map(e => `<li>${ic(EV_KINDS[e.kind] ? EV_KINDS[e.kind][1] : 'clock')}<span class="grow"><b>${esc(evTitle(e))}</b><small>${evDone(e, sessions, ckins) ? 'Hecho ✓' : esc(EV_KINDS[e.kind] ? EV_KINDS[e.kind][0] : '')}</small></span>${e.kind === 'checkin' && !evDone(e, sessions, ckins) && ds <= t0 ? '<button type="button" class="btn small primary" data-evck>Hacer revisión</button>' : ''}</li>`)];
+      return `<h4>${esc(lab)}</h4>${rows.length ? `<ul class="dd-list">${rows.join('')}</ul>` : `<p class="muted small">${ds < t0 ? 'Ese día no apuntaste ningún entreno.' : ds > wkE ? 'Tu entrenador publicará esa semana más adelante.' : 'Día de descanso 😌'}</p>`}
+        ${ds >= wkS && ds <= wkE ? '<a class="small link-a" href="#/rutina">Ver mi semana ›</a>' : ''}`;
+    };
+    const ck = notices.filter(nt => nt.k === 'ck');
+    $app.querySelector('.content').innerHTML = `<div class="c-home h2">
+      ${ck.map(nt => `<section class="notice n-ck ck-pin ${nt.late ? 'late' : ''}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span><button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button></section>`).join('')}
+      ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
+      ${coachCard(links)}
+      <section class="card cal-card"><div data-cal>${calHtml()}</div><div class="cal-day" data-cday>${loading()}</div></section>
+      ${installCardHtml()}<div data-pushcard></div>
+      ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></section>`).join('')}
+      <section class="card dm-card"><h3>Registro de hoy${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
+        <form class="dm-form" data-dm><label>Peso<span class="u-in"><input name="weight" type="number" step="0.05" min="20" max="350" inputmode="decimal" value="${m.weight ?? ''}" placeholder="–"><i>kg</i></span></label>
+          <label>Pasos<input name="steps" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${m.steps ?? ''}" placeholder="–"></label>
+          <label>Sueño<span class="u-in"><input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" value="${m.sleep_h ?? ''}" placeholder="–"><i>h</i></span></label>
+          <button class="btn small primary">${m.date ? 'Actualizar' : 'Guardar'}</button></form>
+        <p class="muted small">Pésate en ayunas, nada más levantarte: lo que cuenta es la media semanal.</p></section>
+      ${diet}
+      ${pg && canSee(c, 'objetivos') ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
+    </div>`;
+    const box = $app.querySelector('.content'), home = box.querySelector('.c-home');
+    const wireCk = root => root.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
+    wireCk(home);
+    const loadMonth = async () => { const days = monthDays(mon); evs = ((await loadEvents(c.id, days[0], days[days.length - 1]).catch(() => [])) || []).filter(e => e.visible !== false); };
+    const drawCal = () => { box.querySelector('[data-cal]').innerHTML = calHtml(); box.querySelector('[data-cday]').innerHTML = dayHtml(); wireCk(box.querySelector('[data-cday]')); };
+    box.querySelector('[data-cal]').addEventListener('click', async e => {
+      const b = e.target.closest('[data-cd]'), mv = e.target.closest('[data-cm]');
+      if (b) { sel = S.calSel = b.dataset.cd; if (sel.slice(0, 7) !== mon) { mon = S.calMon = sel.slice(0, 7); await loadMonth(); } drawCal(); }
+      if (mv) { const dt = new Date(mon + '-15T12:00:00'); dt.setMonth(dt.getMonth() + +mv.dataset.cm); mon = S.calMon = ymd(dt).slice(0, 7); await loadMonth(); drawCal(); }
+    });
+    const fm = box.querySelector('[data-dm]');
+    fm.onsubmit = async e => {
+      e.preventDefault();
+      const v = k => { const x = String(fm[k].value).replace(',', '.').trim(); return x === '' ? null : Number(x); };
+      const row = { client_id: c.id, date: t0, weight: v('weight'), steps: v('steps') == null ? null : Math.round(v('steps')), sleep_h: v('sleep_h') };
+      if (row.weight == null && row.steps == null && row.sleep_h == null) { toast('Apunta al menos un dato', 'err'); return; }
+      const btn = fm.querySelector('button'); btn.disabled = true;
+      try { await safe(() => DB.upsert('daily_metrics', row, 'client_id,date'), 'Guardado ✓'); } catch (er) { /* aviso ya mostrado */ }
+      btn.disabled = false; btn.textContent = 'Actualizar';
+    };
+    wireInstall(box); wirePushCard(box, false);
+    if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
+      home.insertAdjacentHTML('beforeend', JMRefer.card(c));
+      const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(er => toast(er.message, 'err'));
+    }
+    await loadMonth(); drawCal();
+  }
+
+  // ================================================================ CLIENTE · PERFIL (foto, datos, notificaciones, apariencia, privacidad)
+  async function clientProfile() {
+    const c = S.client;
+    shell(clientNav(), 'perfil', loading(), { title: 'Mi perfil' });
+    const links = await coachLinks(), hasAva = 'avatar_path' in c;
+    const box = $app.querySelector('.content');
+    box.innerHTML = `<div class="cprof">
+      <section class="card prof-top"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
+        <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.profile.email || '')}</small></div>
+        ${hasAva ? `<label class="btn small prof-ph">${ic('camera')} ${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</section>
+      ${coachCard(links)}
+      <section class="card"><div class="push-box" data-pushset></div></section>
+      <section class="card"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
+      ${installCardHtml()}
+      <section class="card prof-acts">
+        <button type="button" class="btn ghost block" data-priv>${ic('shield')} Privacidad y mis datos</button>
+        <button type="button" class="btn ghost block" data-ob>${ic('play')} Ver la bienvenida otra vez</button>
+        <button type="button" class="btn ghost block danger" data-logout2>${ic('out')} Cerrar sesión</button></section></div>`;
+    fillAvatars(box); fillAvatars($app);
+    pushSettings(box.querySelector('[data-pushset]'));
+    wireInstall(box);
+    box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
+    box.querySelector('[data-priv]').onclick = () => privacyModal();
+    box.querySelector('[data-ob]').onclick = () => onboarding(true);
+    box.querySelector('[data-logout2]').onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; location.reload(); } };
+    const inp = box.querySelector('[data-avin]');
+    if (inp) inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      if (!/^image\//.test(f.type)) return toast('Elige una foto', 'err');
+      const lab = inp.closest('label'); lab.classList.add('busy');
+      try {
+        const path = await DB.uploadPhoto(c.id, await shrink(f, 512));
+        await DB.rpc('set_my_avatar', { p_path: path });
+        await refreshClient(); S.ava = null; toast('Foto actualizada ✓', 'ok'); clientProfile();
+      } catch (e) { toast('No se pudo subir la foto: ' + (e.message || e), 'err'); lab.classList.remove('busy'); }
+    };
+  }
+
   async function clientToday() {
     const c = S.client;
-    shell(clientNav(), 'hoy', loading(), { title: `Hola, ${c.name.split(' ')[0]}`, sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })) });
+    shell(clientNav(), 'rutina', loading(), { title: 'Mi rutina', sub: cap1(fmtDate(today(), { weekday: 'long', day: 'numeric', month: 'long' })), actions: avatarBtn() });
+    fillAvatars($app);
     const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
     if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
     const [allRoutines, sessions, programs, weeks] = await Promise.all([
@@ -3820,7 +4023,6 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
         <div class="weekstrip" data-strip>${stripHtml()}</div></section>
       <div data-day></div>
-      ${pg && canSee(c, 'objetivos') ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
       ${others.length ? `<section class="card rlist-card"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
       ${evNext.length ? `<section class="card"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
       ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}</div>`;
@@ -3873,10 +4075,6 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     wire(box.querySelector('.c-home'));
     wireInstall(box); wirePushCard(box, false);
     if (canSee(c, 'libre')) freeRoutines(c, box.querySelector('.c-home') || box).catch(e => console.warn('modo libre', e));
-    if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
-      const home = box.querySelector('.c-home') || box; home.insertAdjacentHTML('beforeend', JMRefer.card(c));
-      const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(e => toast(e.message, 'err'));
-    }
     drawDay();
     noticePopup(c, notices.filter(nt => nt.k !== 'ck' || (c.remind_checkin !== false && (nt.key || nt.late))), t0);
   }
