@@ -147,8 +147,8 @@
       const ex = window.JMFIT_EXERCISES.map(([name, muscle, equipment]) => ({ id: uuid(), name, muscle, equipment, media_url: '', notes: '' }));
       store.tables.exercises = ex;
       const find = n => ex.find(e => e.name === n);
-      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, ck_freq: 'semanal', ck_day: 5, ck_anchor: null, ui_prefs: {}, created_at: now() };
-      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, ck_freq: 'semanal', ck_day: 5, ck_anchor: null, ui_prefs: {}, created_at: now() };
+      const c1 = { id: uuid(), user_id: 'demo-client', name: 'Laura Martín', email: 'laura@ejemplo.com', phone: '34600000000', goal: 'Ganar fuerza y masa muscular', service: 'Mixto', sheet_name: 'Laura Martín', notes: 'Rodilla derecha sensible en sentadilla profunda', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, ck_freq: 'semanal', ck_day: 5, ck_anchor: null, ui_prefs: {}, avatar_path: null, created_at: now() };
+      const c2 = { id: uuid(), user_id: null, name: 'Carlos Ruiz', email: 'carlos@ejemplo.com', phone: '', goal: 'Perder grasa', service: 'Entreno', sheet_name: '', notes: '', active: true, remind_checkin: true, remind_payment: true, pay_due: null, pay_plan: null, pay_amount: null, consent_version: null, consent_at: null, consent_photos: true, data_request: null, data_request_at: null, ck_freq: 'semanal', ck_day: 5, ck_anchor: null, ui_prefs: {}, avatar_path: null, created_at: now() };
       store.tables.clients = [c1, c2];
       const mkRoutine = (client, name, day, items) => {
         const r = { id: uuid(), client_id: client.id, name, day, position: day || 0, notes: '', created_at: now() };
@@ -337,6 +337,7 @@
           } else Object.assign(me, { data_request: 'delete', data_request_at: ts });
           save(); return fn === 'accept_consent' ? ts : null;
         }
+        if (fn === 'set_my_avatar') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me) { me.avatar_path = a.p_path; save(); } return null; }
         if (fn === 'mark_onboarded') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me && !me.onboarded_at) { me.onboarded_at = now(); save(); } return null; }
         if (fn === 'clear_data_request') { const c = T('clients').find(x => x.id === a.p_client); if (c) Object.assign(c, { data_request: null, data_request_at: null }); save(); return null; }
         if (fn === 'delete_mesocycle') {
