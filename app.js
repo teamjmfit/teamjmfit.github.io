@@ -3833,12 +3833,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // ---------- «Vista como cliente»: el entrenador ve la app de un cliente tal cual (solo lectura) y edita la maqueta
   const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage)$/;
-  function enterViewAs(c) {
-    S.viewAs = c; S.lyEdit = true;
+  function enterViewAs(c, general = false) {
+    S.viewAs = c; S.vaGeneral = general; S.lyEdit = true;
     if (!S.dbReal) {
       S.dbReal = { insert: DB.insert, update: DB.update, upsert: DB.upsert, remove: DB.remove, rpc: DB.rpc, uploadPhoto: DB.uploadPhoto };
       const no = async () => { toast('Vista como cliente: aquí no se guarda nada', 'err'); throw new Error('Vista como cliente (solo lectura)'); };
-      DB.insert = no; DB.update = no; DB.remove = no; DB.uploadPhoto = no;
+      DB.insert = no; DB.remove = no; DB.uploadPhoto = no;
+      DB.update = (t, ...a) => (t === 'clients' ? S.dbReal.update.call(DB, t, ...a) : no());   // solo «Qué ven» (ajustes para todos, desde ☰ Menú)
       DB.upsert = (t, row, key, mine) => (mine === true && t === 'public_texts' ? S.dbReal.upsert.call(DB, t, row, key) : no());
       DB.rpc = (fn, args) => {
         if (fn === 'get_my_nutrition') return S.dbReal.rpc.call(DB, 'get_client_nutrition', { p_client: S.viewAs.id }).catch(() => null);
@@ -3849,12 +3850,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   function exitViewAs() {
     if (S.dbReal) { Object.assign(DB, S.dbReal); S.dbReal = null; }
-    S.viewAs = null; S.lyEdit = false; S.client = null; S.ava = null;
+    S.viewAs = null; S.vaGeneral = false; S.lyEdit = false; S.client = null; S.ava = null;
     const vb = document.querySelector('.va-bar'); if (vb) vb.remove();
     location.hash = '#/'; render();
   }
   async function renderViewAs() {
     document.body.dataset.role = 'client';
+    try { const fresh = await DB.get('clients', S.viewAs.id); if (fresh) S.viewAs = fresh; } catch (e) { /* sigue con el que había */ }
     S.client = S.viewAs;
     const [r0, r1] = S.route;
     if (r0 === 'entreno') await workout(r1);
@@ -3868,12 +3870,15 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   function vaBar() {
     let bar = document.querySelector('.va-bar'); if (bar) bar.remove();
     bar = document.createElement('div'); bar.className = 'va-bar';
-    bar.innerHTML = `<span class="grow">👁 <b>Vista como ${esc(S.viewAs.name.split(' ')[0])}</b><small>${S.lyEdit ? 'Sube, baja u oculta cada apartado: cambia para todos tus clientes.' : 'Así lo ve. Aquí no se guarda nada.'}</small></span>
+    const who = esc(S.viewAs.name.split(' ')[0]);
+    bar.innerHTML = `<span class="grow">${S.vaGeneral ? `🌐 <b>Ajuste general</b><small>Para todos tus clientes · de ejemplo, los datos de ${who}.${S.lyEdit ? ' Sube, baja u oculta cada apartado.' : ''}</small>` : `👁 <b>Vista como ${who}</b><small>${S.lyEdit ? 'Sube, baja u oculta cada apartado: cambia para todos tus clientes.' : 'Así lo ve. Aquí no se guarda nada.'}</small>`}</span>
       <button type="button" class="btn small ${S.lyEdit ? 'primary' : ''}" data-va-edit>${S.lyEdit ? '✓ Editando' : '✏️ Editar'}</button>
+      ${S.vaGeneral ? '<button type="button" class="btn small ghost" data-va-mods title="Qué ve cada apartado del menú (Dieta, Progreso…) para todos">☰ Menú</button>' : ''}
       <button type="button" class="btn small ghost" data-va-reset title="Volver al orden por defecto de esta página">↺</button>
       <button type="button" class="btn small" data-va-out>Salir</button>`;
     document.body.appendChild(bar);
     bar.querySelector('[data-va-edit]').onclick = () => { S.lyEdit = !S.lyEdit; render(); };
+    const mods = bar.querySelector('[data-va-mods]'); if (mods) mods.onclick = () => allClientsSettings();
     bar.querySelector('[data-va-out]').onclick = exitViewAs;
     bar.querySelector('[data-va-reset]').onclick = async () => {
       const pg = { '': 'inicio', rutina: 'rutina', nutricion: 'dieta', progreso: 'progreso', perfil: 'perfil' }[S.route[0] || ''];
@@ -3885,8 +3890,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function viewAsPicker() {
     const cs = (await DB.list('clients', { order: ['name', 'asc'] })).filter(c => c.active !== false && c.user_id);
     if (!cs.length) return toast('Necesitas al menos un cliente con cuenta activa', 'err');
-    const f = modal('Vista como cliente', `<p class="muted small">Ves su app tal cual (solo lectura). Con «Editar» cambias el orden y lo que se ve: se aplica a <b>todos</b> tus clientes.</p>
-      <label>Cliente<select name="c">${cs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>`, { submitLabel: 'Entrar', onSubmit: (form, fd) => { const c = cs.find(x => x.id === fd.get('c')); if (c) setTimeout(() => enterViewAs(c), 60); } });
+    const f = modal('Vista como cliente', `<p class="muted small">Ves la app del cliente tal cual (solo lectura). Con «Editar» cambias el orden y lo que se ve de cada apartado.</p>
+      <label>¿Qué quieres ver?<select name="c"><option value="*">🌐 Ajuste general · todos los clientes a la vez</option>${cs.map(c => `<option value="${c.id}">👁 Ver como ${esc(c.name)}</option>`).join('')}</select></label>
+      <p class="muted small">El ajuste general usa de ejemplo los datos de ${esc(cs[0].name)}. Lo que cambies en cualquiera de las dos vistas se aplica a todos tus clientes.</p>`, { submitLabel: 'Entrar', onSubmit: (form, fd) => { const v = fd.get('c'), c = v === '*' ? cs[0] : cs.find(x => x.id === v); if (c) setTimeout(() => enterViewAs(c, v === '*'), 60); } });
     return f;
   }
 
