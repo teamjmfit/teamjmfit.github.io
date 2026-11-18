@@ -532,8 +532,8 @@
           });
           save(); return n;
         }
-        if (fn === 'get_my_nutrition') {
-          const c = T('clients').find(x => x.user_id === 'demo-client'); if (!c) return null;
+        if (fn === 'get_my_nutrition' || fn === 'get_client_nutrition') {
+          const c = fn === 'get_client_nutrition' ? T('clients').find(x => x.id === (a && a.p_client)) : T('clients').find(x => x.user_id === 'demo-client'); if (!c) return null;
           const p = T('nutrition_plans').find(x => x.client_id === c.id) || {}; const show = p.show_macros !== false; const F = fmap();
           const r1 = x => Math.round(x * 10) / 10;
           return {
