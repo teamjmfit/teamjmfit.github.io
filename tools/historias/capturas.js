@@ -1,0 +1,24 @@
+const { chromium, devices } = require('playwright');
+(async () => { const b = await chromium.launch(); const errs = []; try {
+  const ctx = await b.newContext({ ...devices['iPhone 13'] });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem('jmfit-web-ok', '1'); localStorage.setItem('jmfit-theme', 'dark'); localStorage.setItem('jmfit-install-off', '1'); localStorage.setItem('jmfit-push-off', '1'); } catch (e) {} });
+  await ctx.route(/jsdelivr|gstatic|docs\.google/, r => r.abort());
+  const p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message));
+  await p.goto('http://localhost:8765/'); await p.waitForTimeout(3000); await p.getByText(/Reiniciar datos/).click(); await p.waitForTimeout(300);
+  await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('jmfit-demo-v1')); s.who = 'coach'; localStorage.setItem('jmfit-demo-v1', JSON.stringify(s)); });
+  await p.reload(); await p.waitForTimeout(2500); await p.click('[data-allset]'); await p.waitForTimeout(1000);
+  await p.locator('.po-box summary').first().click(); await p.fill('[data-lk="whatsapp"]', '+34 600 000 000'); await p.fill('[data-lk="instagram"]', '@teamjmfit'); await p.click('[data-lk-save]'); await p.waitForTimeout(500);
+  await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('jmfit-demo-v1')); s.who = 'client'; s.tables.clients.forEach(c => { c.consent_version = '2026-11-v1'; c.onboarded_at = '2026-11-01'; });
+    const me = s.tables.clients.find(c => c.user_id === 'demo-client'); s.tables.checkins.filter(k => k.client_id === me.id).slice(0, 1).forEach(k => k.coach_reply = '¡Muy buena semana! Subimos 100 kcal en días de entreno 💪'); localStorage.setItem('jmfit-demo-v1', JSON.stringify(s)); });
+  const shot = async (hash, name, prep) => { await p.goto('http://localhost:8765/' + hash); await p.reload(); await p.waitForTimeout(3500); if (prep) await prep(); await p.waitForTimeout(500); await p.screenshot({ path: require('path').join(__dirname, name + '.png') }); };
+  await p.addStyleTag({ content: '.install-card,.n-install,[data-pushcard]{display:none!important}' }).catch(() => {});
+  await shot('#/', 'inicio', async () => { await p.addStyleTag({ content: '.inst-card,.install,.n-push,[data-pushcard]{display:none!important}' }); });
+  await shot('#/rutina', 'rutina', async () => { await p.addStyleTag({ content: '.inst-card,.install,.n-push,[data-pushcard]{display:none!important}' }); const d = p.locator('.dm-card'); if (await d.count()) await d.evaluate(e => e.remove()); await p.locator('.hx-list summary').first().click().catch(() => {}); });
+  const rid = await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('jmfit-demo-v1')); return s.tables.routines.find(r => r.day)?.id; });
+  await shot('#/entreno/' + rid, 'entreno');
+  await shot('#/nutricion', 'dieta');
+  await shot('#/progreso', 'progreso', async () => { await p.evaluate(() => { const h = [...document.querySelectorAll('h3')].find(x => /Peso diario/.test(x.textContent)); if (h) h.closest('section').scrollIntoView(); scrollBy(0, -70); }); });
+  await shot('#/progreso', 'checkins', async () => { await p.locator('.ck-msg').first().click({ trial: false }).catch(() => {}); await p.locator('.ck-row, .ck-head, [data-ckopen]').first().click().catch(() => {}); });
+  await shot('#/progreso', 'evolucion', async () => { const h = p.locator('.vz .fold-h').first(); if (await h.count()) { await h.click(); await p.waitForTimeout(400); await p.evaluate(() => document.querySelector('.vz')?.scrollIntoView()); } });
+  await shot('#/perfil', 'perfil', async () => { await p.evaluate(() => scrollTo(0, 0)); });
+} catch (e) { console.log('FAIL', e.message.slice(0, 300)); } console.log('errs', errs); await b.close(); })();
