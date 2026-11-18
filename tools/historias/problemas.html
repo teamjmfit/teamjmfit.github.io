@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Historias · problema y solución</title>
+<style>
+  :root { --gold: #d9a94f; --gold2: #f0c56f; --ink: #0b0b0d; --text: #f4f1ea; --muted: rgba(244,241,234,.66); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #000; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: var(--text); }
+  .st { width: 1080px; height: 1920px; position: relative; overflow: hidden; background: var(--ink); }
+  .bg { position: absolute; inset: 0; background:
+      radial-gradient(60% 40% at 85% 8%, rgba(217,169,79,.30), transparent 70%),
+      radial-gradient(50% 35% at 0% 100%, rgba(217,169,79,.20), transparent 70%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,.022) 0 2px, transparent 2px 18px); }
+  .in { position: relative; height: 100%; padding: 120px 84px 0; display: flex; flex-direction: column; }
+  .logo { width: 250px; height: auto; filter: drop-shadow(0 10px 30px rgba(217,169,79,.25)); }
+  .k { margin-top: 44px; font-weight: 800; font-size: 30px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); }
+  h1 { font-family: 'Inter Display', 'Inter', sans-serif; font-weight: 900; font-size: 118px; line-height: .98; letter-spacing: -.035em; margin-top: 18px; }
+  h1 em { font-style: normal; color: var(--gold); display: block; }
+  .sub { margin-top: 30px; font-size: 40px; line-height: 1.35; color: var(--muted); max-width: 900px; }
+  .sub b { color: var(--text); }
+  /* móvil */
+  .phone { position: absolute; left: 50%; bottom: -330px; width: 700px; transform: translateX(-50%) rotate(var(--rot, 0deg)); border-radius: 86px; padding: 18px; background: linear-gradient(145deg, #2a2a30, #0f0f12);
+    box-shadow: 0 50px 120px rgba(0,0,0,.7), 0 0 0 2px rgba(217,169,79,.35), inset 0 0 0 2px rgba(255,255,255,.06); }
+  .phone .scr { border-radius: 70px; overflow: hidden; background: #0e0e10; padding-top: 96px; }
+  .phone img { display: block; width: 100%; }
+  .phone::before { content: ''; position: absolute; top: 34px; left: 50%; width: 170px; height: 46px; margin-left: -85px; border-radius: 30px; background: #000; z-index: 2; }
+  .phone.r { left: auto; right: 64px; transform: rotate(4deg); width: 520px; bottom: -200px; }
+  .chips { position: absolute; left: 64px; display: flex; flex-direction: column; gap: 22px; z-index: 3; }
+  .chip { display: inline-flex; align-items: center; gap: 18px; padding: 24px 32px; border-radius: 26px; font-size: 34px; font-weight: 700; color: var(--text);
+    background: rgba(24,24,28,.86); border: 2px solid rgba(217,169,79,.45); box-shadow: 0 20px 50px rgba(0,0,0,.55); backdrop-filter: blur(8px); width: fit-content; }
+  .chip i { font-style: normal; font-size: 40px; }
+  /* novedades */
+  .news { margin-top: 48px; display: flex; flex-direction: column; gap: 20px; }
+  .nw { display: flex; align-items: center; gap: 26px; padding: 28px 32px; border-radius: 28px; background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.08); }
+  .nw:first-child { background: linear-gradient(135deg, rgba(217,169,79,.28), rgba(217,169,79,.08)); border-color: rgba(217,169,79,.55); }
+  .nw i { font-style: normal; font-size: 52px; width: 70px; text-align: center; flex: none; }
+  .nw b { display: block; font-size: 38px; letter-spacing: -.01em; }
+  .nw span { display: block; font-size: 29px; color: var(--muted); margin-top: 6px; }
+  .tag { font-size: 22px; font-weight: 800; letter-spacing: .08em; color: var(--ink); background: var(--gold); padding: 8px 16px; border-radius: 999px; margin-left: auto; flex: none; }
+  /* cierre */
+  .cta { position: absolute; left: 84px; right: 84px; bottom: 130px; text-align: center; }
+  .cta .arrow { font-size: 90px; color: var(--gold); line-height: 1; }
+  .cta p { font-size: 34px; color: var(--muted); margin-top: 14px; }
+  .sticker { margin: 30px auto 0; width: 640px; height: 130px; border-radius: 34px; border: 4px dashed rgba(217,169,79,.6); display: grid; place-items: center; font-size: 28px; color: rgba(244,241,234,.55); font-weight: 600; }
+  .sticker.hide { border-color: transparent; color: transparent; }
+  .hero { position: relative; margin-top: 50px; height: 700px; border-radius: 44px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,.6), 0 0 0 3px rgba(217,169,79,.45); }
+  .hero img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; display: block; }
+  .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgba(11,11,13,.95)); }
+  .hero figcaption { position: absolute; left: 40px; right: 40px; bottom: 34px; z-index: 1; }
+  .hero b { display: block; font-size: 48px; } .hero span { display: block; font-size: 27px; color: var(--gold); margin-top: 8px; font-weight: 600; }
+  .coach { display: flex; align-items: center; gap: 28px; margin-top: 64px; }
+  .coach img { width: 170px; height: 170px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 5px var(--gold); }
+  .coach b { display: block; font-size: 44px; }
+  .coach span { display: block; font-size: 29px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .foot { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; font-size: 26px; color: rgba(244,241,234,.45); letter-spacing: .04em; }
+  .num { position: absolute; top: 120px; right: 84px; font-family: 'Inter Display', sans-serif; font-weight: 900; font-size: 150px; line-height: .8; color: transparent; -webkit-text-stroke: 2px rgba(217,169,79,.45); }
+</style>
+<style>
+  .hook { font-family: 'Inter Display','Inter',sans-serif; font-weight: 900; font-size: 92px; line-height: 1.02; letter-spacing: -.03em; margin-top: 26px; }
+  .ans { font-family: 'Inter Display','Inter',sans-serif; font-weight: 900; font-size: 74px; line-height: 1.02; letter-spacing: -.025em; color: var(--gold); margin-top: 26px; }
+  .pre { display: inline-flex; align-items: center; gap: 12px; margin-top: 40px; padding: 12px 22px; border-radius: 999px; background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.12); font-size: 28px; font-weight: 700; letter-spacing: .04em; color: var(--muted); width: fit-content; }
+  .sub2 { margin-top: 22px; font-size: 36px; line-height: 1.35; color: var(--muted); max-width: 900px; }
+  .sub2 b { color: var(--text); }
+  .phone.lo { bottom: -420px; }
+  /* pantalla de bloqueo con avisos */
+  .lock { position: relative; border-radius: 70px; overflow: hidden; height: 1400px; background: radial-gradient(80% 50% at 30% 20%, #3a2a10, #0b0b0d 70%), #0b0b0d; padding: 150px 34px 0; }
+  .lock .hr { text-align: center; font-size: 170px; font-weight: 300; letter-spacing: -.04em; color: #f4f1ea; line-height: 1; }
+  .lock .dt { text-align: center; font-size: 34px; color: rgba(244,241,234,.75); margin-bottom: 60px; font-weight: 600; }
+  .nt { background: rgba(40,40,46,.78); border-radius: 36px; padding: 26px 28px; margin-bottom: 18px; display: flex; gap: 20px; backdrop-filter: blur(10px); }
+  .nt img { width: 74px; height: 74px; border-radius: 18px; flex: none; background: #000; object-fit: contain; }
+  .nt b { display: block; font-size: 31px; } .nt p { font-size: 28px; color: rgba(244,241,234,.8); margin-top: 6px; line-height: 1.3; }
+  .nt .ap { display: flex; justify-content: space-between; font-size: 22px; color: rgba(244,241,234,.55); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+</style></head><body><div id="out"></div>
+<script>
+// Historias «¿Te pasa esto?» → «La app de TEAM JMFIT lo resuelve». Cada una sale con su nombre (file), sin numerar.
+const S = [
+  { file: 'recuerda-tus-cargas', hook: '¿No te acuerdas de cuánto cogiste la última vez?', ans: 'La app se acuerda por ti.', sub: 'En cada serie ves lo que hiciste la sesión anterior. Así sabes si toca <b>subir peso</b> o una repetición más.', phone: 'entreno', rot: -3, ct: 1640,
+    chips: [['📝', 'Lo que hiciste la última vez'], ['⬆️', 'Sabes cuándo subir peso']] },
+  { file: 'mejorando-o-estancado', hook: '¿Estás mejorando o llevas semanas igual?', ans: 'Lo ves en cada ejercicio.', sub: 'Tu última sesión, tu mejor marca y si vas <b>mejorando o estancado</b>.', phone: 'rendimiento', rot: 3,
+    chips: [['🟢', 'Mejorando'], ['🟡', 'Estancado: toca cambiar algo']] },
+  { file: 'evolucion-de-tu-fuerza', hook: '¿Cuánto has subido en sentadilla?', ans: 'Tu gráfica, ejercicio a ejercicio.', sub: '1RM estimado, carga máxima y tonelaje de <b>cada sesión</b>.', phone: 'evolucion', rot: -3,
+    chips: [['🔍', 'Busca cualquier ejercicio'], ['📈', 'Tendencia semana a semana']] },
+  { file: 'tus-mejores-marcas', hook: '¿Cuál es tu récord en hip thrust?', ans: 'Tus mejores marcas, siempre a mano.', sub: 'Cada récord queda guardado. <b>Sin libretas ni notas del móvil.</b>', phone: 'marcas', rot: 3,
+    chips: [['🏆', 'Tu récord en cada ejercicio']] },
+  { file: 'dieta-flexible', hook: '¿Harto de comer siempre pollo con arroz?', ans: 'Cambia alimentos sin salirte de tus macros.', sub: 'Tu plan con <b>opciones intercambiables</b>. No prohibimos comida: la cuadramos.', phone: 'dieta', rot: -3,
+    chips: [['🔁', 'Opciones intercambiables'], ['🎯', 'Kcal y macros del día']] },
+  { file: 'media-de-peso', hook: '¿La báscula te cambia el humor cada mañana?', ans: 'Mira la media, no un día suelto.', sub: 'Apuntas tu peso y la app te enseña <b>la tendencia real</b> semana a semana.', phone: 'peso', rot: 3,
+    chips: [['⚖️', 'Tu peso de cada día'], ['📊', 'La media de cada semana']] },
+  { file: 'calendario-de-constancia', hook: '¿Cuántos días entrenaste este mes?', ans: 'Tu constancia, en un calendario.', sub: 'Cada entreno hecho queda marcado y ves <b>lo que te toca hoy</b>.', phone: 'inicio', rot: -3,
+    chips: [['🟠', 'Cada entreno hecho'], ['📅', 'Lo que te toca hoy']] },
+  { file: 'revision-semanal', hook: '¿Te mandan un plan y nunca más se sabe?', ans: 'Aquí lo revisamos cada semana.', sub: 'Me cuentas cómo vas, ajustamos y <b>te respondo en la app</b>.', phone: 'checkins', rot: 3,
+    chips: [['💬', 'Mi respuesta en tu check-in']] },
+  { file: 'avisos-al-movil', hook: '¿Se te olvida entrenar o enviar la revisión?', ans: 'La app te avisa.', sub: 'Los días de entreno y de revisión <b>te llega un aviso al móvil</b>.', lock: true },
+];
+const LOCK = `<div class="lock"><div class="hr">8:00</div><div class="dt">lunes, 23 de noviembre</div>
+  <div class="nt"><img src="icon.png" alt=""><div style="flex:1"><div class="ap"><span>TEAM JMFIT</span><span>ahora</span></div><b>💪 Hoy toca: Pierna y glúteo</b><p>Hoy: entreno Pierna y glúteo. La disciplina es hacer lo que toca aunque no te apetezca.</p></div></div>
+  <div class="nt"><img src="icon.png" alt=""><div style="flex:1"><div class="ap"><span>TEAM JMFIT</span><span>viernes</span></div><b>📋 Hoy toca tu revisión</b><p>Hoy: enviar tu revisión. Dos minutos de revisión = un plan mejor hecho para ti.</p></div></div>
+  <div class="nt"><img src="icon.png" alt=""><div style="flex:1"><div class="ap"><span>TEAM JMFIT</span><span>sábado</span></div><b>💬 Tu entrenador ha revisado tu check-in</b><p>¡Muy buena semana! Subimos 100 kcal en días de entreno 💪</p></div></div></div>`;
+const html = s => `<section class="st"><div class="bg"></div><div class="in"><img class="logo" src="logo.webp" alt="" style="width:200px">
+    <span class="pre">¿Te pasa esto?</span><p class="hook">${s.hook}</p><p class="ans">${s.ans}</p><p class="sub2">${s.sub}</p></div>
+    <div class="phone ${s.lock ? 'lo' : ''}" style="--rot:${s.rot || 0}deg">${s.lock ? LOCK : `<div class="scr"><img src="${s.phone}.png" alt=""></div>`}</div>
+    ${s.chips ? `<div class="chips" style="top:${s.ct || 1150}px">${s.chips.map(([e, t]) => `<span class="chip"><i>${e}</i>${t}</span>`).join('')}</div>` : ''}</section>`;
+const only = new URLSearchParams(location.search).get('n');
+document.getElementById('out').innerHTML = S.map(html).filter((_, i) => only == null || +only === i).join('');
+window.FILES = S.map(s => s.file);
+</script></body></html>
