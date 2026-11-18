@@ -9,3 +9,10 @@ Plantilla para las historias semanales de la app.
 5. `node tools/historias/render.js tools/historias` → imágenes en `tools/historias/salida/`.
 
 Las capturas y la carpeta `salida/` no se suben al repositorio.
+
+## Historias «¿Te pasa esto?» (problema → solución)
+
+- `node tools/historias/capturas-progreso.js` → capturas extra (rendimiento, marcas, peso), además de `capturas.js`.
+- Copia también `icon-192.png` como `icon.png` (se usa en los avisos de la pantalla de bloqueo).
+- `node tools/historias/render-problemas.js tools/historias` → `salida-problemas/`, una imagen por función con nombre (sin números).
+- Para añadir una nueva: un objeto más en `S` dentro de `problemas.html` (file, hook, ans, sub, phone, chips).
