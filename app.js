@@ -154,6 +154,7 @@
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
     insta: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     users: '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-5-5.5"/>',
@@ -273,6 +274,7 @@
     S.route = parseRoute();
     if (location.hash.includes('type=recovery')) return renderNewPassword();
     if (!S.profile) return renderLogin();
+    if (S.profile.role === 'coach' && S.viewAs) return renderViewAs();
     if (S.profile.role === 'coach') return renderCoach();
     return renderClient();
   }
@@ -442,7 +444,7 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
-          ${S.profile.role === 'client' && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
+          ${(S.profile.role === 'client' || S.viewAs) && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
           <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
         <div class="content">${content}</div>
       </div>
@@ -676,7 +678,7 @@
       <h4>Tu cuenta</h4><div class="push-box" data-pushset></div>
       <button type="button" class="btn ghost block" data-ob-prev>${ic('play')} Ver la bienvenida de los clientes</button>
       <details class="po-box"><summary>Tus redes (salen en el Inicio de tus clientes)</summary><div data-links-ed></div></details>
-      <details class="po-box"><summary>Orden del Progreso de tus clientes</summary><p class="muted small">Sube o baja los apartados. Es el orden en que lo ven todos tus clientes en su pestaña Progreso (lo que no tengan activado no les sale).</p><div data-po-ed></div></details>
+      <button type="button" class="btn block primary" data-va>${ic('eye')} Vista como cliente · editar su app</button>
       <h4>Tus clientes</h4>
       <p class="muted small">Se aplica a tus <b>${cs.length} clientes activos</b>. Lo que dejes en «Igual» no se toca. Después puedes cambiar a cualquiera en su ficha.</p>
       ${hasUi ? `<h4>Qué ven en su app</h4><div class="all-list">${UI_MODS.map(([k, l, , h]) => { const v = n(k); return `<div class="all-row"><span class="grow"><b>${esc(l)}</b><small class="muted">${v === cs.length ? 'Lo ven todos' : v ? `Lo ven ${v} de ${cs.length}` : 'No lo ve nadie'} · ${esc(h)}</small></span>${seg('ui_' + k, 'Sí', 'No')}</div>`; }).join('')}</div>` : '<p class="muted small">Falta la migración 029 para elegir qué ve cada cliente.</p>'}
@@ -708,7 +710,8 @@
       } });
     { const m = document.querySelector('.modal'); pushSettings(m.querySelector('[data-pushset]'));
       m.querySelector('[data-ob-prev]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
-      progOrderEditor(m.querySelector('[data-po-ed]')); linksEditor(m.querySelector('[data-links-ed]')); }
+      m.querySelector('[data-va]').onclick = () => { closeModal(); setTimeout(viewAsPicker, 80); };
+      linksEditor(m.querySelector('[data-links-ed]')); }
   }
 
   // ---------- Frecuencia del check-in (029): pendientes por cliente y descartes del entrenador
@@ -2478,6 +2481,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Interruptor «Notificaciones» (se ve encendido o apagado según este móvil) + aviso de prueba
   async function pushSettings(box) {
     if (!box || !window.JMPush) { if (box) box.innerHTML = ''; return; }
+    if (S.viewAs) { box.innerHTML = `<label class="nsw is-dis"><span class="grow"><b>${ic('bell')} Notificaciones</b><small>Solo avisos de tus entrenos y revisiones. Cada cliente las activa en su móvil.</small></span><input type="checkbox" role="switch" disabled><span class="nsw-t" aria-hidden="true"></span></label>`; return; }
     const st = await JMPush.state().catch(() => 'unsupported'), on = st === 'on', can = st === 'on' || st === 'off';
     if (st === 'off' && JMPush.prepare) JMPush.prepare().catch(() => {});   // clave lista antes del toque (Safari)
     const coach = S.profile && S.profile.role === 'coach';
@@ -2618,7 +2622,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <div data-po="entrenos">
         <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
-    if (!asCoach || preview) applyProgOrder(box, await progOrder());
+    if (!asCoach || preview) await applyLayout('progreso', box);
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     const wcBox = box.querySelector('[data-wchart]');
     const drawW = () => {
@@ -3773,6 +3777,119 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       try { await claimPaid(e.target.note.value); toast('Se lo he dicho a tu entrenador; te reactivará en cuanto lo compruebe', 'ok'); } catch (er) { btn.disabled = false; } };
   }
 
+  // ================================================================ MAQUETA DE LA APP DEL CLIENTE (orden y visibilidad, para todos)
+  // Se guarda en public_texts.client_layout = { página: { order: [...], hidden: [...] } }. La edita el entrenador desde
+  // «Vista como cliente» (ruedita → Ajustes). Cada apartado de cada página lleva data-po="<clave>".
+  const LAYOUT_PAGES = {
+    inicio: { label: 'Inicio', parts: [['coach', 'Tu entrenador'], ['cal', 'Calendario del mes'], ['avisos', 'Avisos e instalar la app'], ['registro', 'Registro de hoy'], ['dieta', 'Dieta'], ['objetivo', 'Mi objetivo'], ['referidos', 'Invita a un amigo']] },
+    rutina: { label: 'Rutina', parts: [['semana', 'Esta semana'], ['dia', 'Entreno del día'], ['rutinas', 'Mis rutinas'], ['proximos', 'Próximos días'], ['libre', 'Mis rutinas (modo libre)']] },
+    dieta: { label: 'Dieta', parts: [['macros', 'Kcal y macros'], ['comidas', 'Mis comidas'], ['notas', 'Recomendaciones']] },
+    progreso: { label: 'Progreso', parts: null },
+    perfil: { label: 'Perfil', parts: [['yo', 'Mi foto y datos'], ['coach', 'Tu entrenador'], ['notif', 'Notificaciones'], ['tema', 'Apariencia'], ['instalar', 'Instalar la app'], ['acciones', 'Privacidad, bienvenida y salir']] }
+  };
+  const lyParts = pg => (pg === 'progreso' ? PROG_PARTS : LAYOUT_PAGES[pg].parts);
+  async function clientLayout(force) {
+    if (!force && S.layout && Date.now() - S.layout.t < 300e3) return S.layout.v;
+    let v = {};
+    try { const r = await DB.get('public_texts', 'client_layout', 'key'); v = r && r.value ? JSON.parse(r.value) : {}; } catch (e) { v = {}; }
+    if (!v.progreso) { const po = await progOrder().catch(() => null); if (po) v.progreso = { order: po, hidden: [] }; }   // orden antiguo (prog_order)
+    S.layout = { t: Date.now(), v }; return v;
+  }
+  const pageOrder = (pg, L) => { const ks = lyParts(pg).map(x => x[0]), o = ((L[pg] || {}).order || []).filter(k => ks.includes(k)); return o.concat(ks.filter(k => !o.includes(k))); };
+  async function saveLayout(L) {
+    S.layout = { t: Date.now(), v: L };
+    await DB.upsert('public_texts', { key: 'client_layout', value: JSON.stringify(L), updated_at: new Date().toISOString() }, 'key', true);
+  }
+  // Ordena los apartados y quita los ocultos. En modo edición (vista como cliente) los ocultos se ven en gris con su barra.
+  async function applyLayout(pg, root) {
+    if (!root) return;
+    const L = await clientLayout(), order = pageOrder(pg, L), hid = new Set((L[pg] || {}).hidden || []), edit = !!(S.viewAs && S.lyEdit);
+    order.forEach(k => root.querySelectorAll(`:scope > [data-po="${k}"]`).forEach(el => root.appendChild(el)));
+    root.querySelectorAll(':scope > [data-po]').forEach(el => {
+      const k = el.dataset.po, off = hid.has(k);
+      el.classList.toggle('lo-off', edit && off);
+      el.classList.toggle('lo-gone', !edit && off);
+      if (!edit) { const bar = el.querySelector(':scope > .lo-bar'); if (bar) bar.remove(); el.classList.remove('lo-item'); return; }
+      if (!el.textContent.trim() && !el.querySelector('img, svg, canvas')) { el.classList.add('lo-empty'); }
+      el.classList.add('lo-item');
+      let bar = el.querySelector(':scope > .lo-bar');
+      const lab = (lyParts(pg).find(x => x[0] === k) || [k, k])[1], i = order.indexOf(k);
+      if (!bar) { bar = document.createElement('div'); bar.className = 'lo-bar'; el.prepend(bar); }
+      bar.innerHTML = `<span class="grow">${esc(lab)}${off ? ' · <b>oculto</b>' : ''}</span>
+        <button type="button" data-lo="up" ${i ? '' : 'disabled'} aria-label="Subir">▲</button><button type="button" data-lo="dn" ${i < order.length - 1 ? '' : 'disabled'} aria-label="Bajar">▼</button>
+        <button type="button" data-lo="eye" class="${off ? 'off' : ''}" aria-label="${off ? 'Mostrar' : 'Ocultar'}">${off ? '🚫 Mostrar' : '👁 Ocultar'}</button>`;
+      bar.onclick = async e => {
+        const b = e.target.closest('[data-lo]'); if (!b) return; e.preventDefault(); e.stopPropagation();
+        const L2 = JSON.parse(JSON.stringify(await clientLayout())), cur = L2[pg] || (L2[pg] = {}), ord = pageOrder(pg, L2), j = ord.indexOf(k);
+        if (b.dataset.lo === 'up' && j > 0) [ord[j - 1], ord[j]] = [ord[j], ord[j - 1]];
+        if (b.dataset.lo === 'dn' && j < ord.length - 1) [ord[j + 1], ord[j]] = [ord[j], ord[j + 1]];
+        cur.order = ord;
+        if (b.dataset.lo === 'eye') { const h = new Set(cur.hidden || []); h.has(k) ? h.delete(k) : h.add(k); cur.hidden = [...h]; }
+        try { await saveLayout(L2); } catch (er) { toast('No se pudo guardar: ' + er.message, 'err'); return; }
+        applyLayout(pg, root);
+      };
+    });
+  }
+
+  // ---------- «Vista como cliente»: el entrenador ve la app de un cliente tal cual (solo lectura) y edita la maqueta
+  const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage)$/;
+  function enterViewAs(c) {
+    S.viewAs = c; S.lyEdit = true;
+    if (!S.dbReal) {
+      S.dbReal = { insert: DB.insert, update: DB.update, upsert: DB.upsert, remove: DB.remove, rpc: DB.rpc, uploadPhoto: DB.uploadPhoto };
+      const no = async () => { toast('Vista como cliente: aquí no se guarda nada', 'err'); throw new Error('Vista como cliente (solo lectura)'); };
+      DB.insert = no; DB.update = no; DB.remove = no; DB.uploadPhoto = no;
+      DB.upsert = (t, row, key, mine) => (mine === true && t === 'public_texts' ? S.dbReal.upsert.call(DB, t, row, key) : no());
+      DB.rpc = (fn, args) => {
+        if (fn === 'get_my_nutrition') return S.dbReal.rpc.call(DB, 'get_client_nutrition', { p_client: S.viewAs.id }).catch(() => null);
+        return VA_RPC_OK.test(fn) ? S.dbReal.rpc.call(DB, fn, args) : Promise.resolve(null);
+      };
+    }
+    location.hash = '#/'; render();
+  }
+  function exitViewAs() {
+    if (S.dbReal) { Object.assign(DB, S.dbReal); S.dbReal = null; }
+    S.viewAs = null; S.lyEdit = false; S.client = null; S.ava = null;
+    const vb = document.querySelector('.va-bar'); if (vb) vb.remove();
+    location.hash = '#/'; render();
+  }
+  async function renderViewAs() {
+    document.body.dataset.role = 'client';
+    S.client = S.viewAs;
+    const [r0, r1] = S.route;
+    if (r0 === 'entreno') await workout(r1);
+    else if (r0 === 'rutina') await clientToday();
+    else if (r0 === 'perfil') await clientProfile();
+    else if (r0 === 'nutricion' && canSee(S.client, 'nutricion')) await clientNutrition();
+    else if (r0 === 'progreso') { shell(clientNav(), 'progreso', loading(), { title: 'Mi progreso' }); await tabProgress(S.client, $app.querySelector('.content'), false); }
+    else await clientHome();
+    vaBar();
+  }
+  function vaBar() {
+    let bar = document.querySelector('.va-bar'); if (bar) bar.remove();
+    bar = document.createElement('div'); bar.className = 'va-bar';
+    bar.innerHTML = `<span class="grow">👁 <b>Vista como ${esc(S.viewAs.name.split(' ')[0])}</b><small>${S.lyEdit ? 'Sube, baja u oculta cada apartado: cambia para todos tus clientes.' : 'Así lo ve. Aquí no se guarda nada.'}</small></span>
+      <button type="button" class="btn small ${S.lyEdit ? 'primary' : ''}" data-va-edit>${S.lyEdit ? '✓ Editando' : '✏️ Editar'}</button>
+      <button type="button" class="btn small ghost" data-va-reset title="Volver al orden por defecto de esta página">↺</button>
+      <button type="button" class="btn small" data-va-out>Salir</button>`;
+    document.body.appendChild(bar);
+    bar.querySelector('[data-va-edit]').onclick = () => { S.lyEdit = !S.lyEdit; render(); };
+    bar.querySelector('[data-va-out]').onclick = exitViewAs;
+    bar.querySelector('[data-va-reset]').onclick = async () => {
+      const pg = { '': 'inicio', rutina: 'rutina', nutricion: 'dieta', progreso: 'progreso', perfil: 'perfil' }[S.route[0] || ''];
+      if (!pg || !(await confirmBox(`¿Dejar «${LAYOUT_PAGES[pg].label}» como venía (orden por defecto y todo visible)?`, 'Restablecer'))) return;
+      const L = JSON.parse(JSON.stringify(await clientLayout())); delete L[pg]; if (pg === 'progreso') L.progreso = { order: [], hidden: [] };
+      try { await saveLayout(L); render(); } catch (e) { toast(e.message, 'err'); }
+    };
+  }
+  async function viewAsPicker() {
+    const cs = (await DB.list('clients', { order: ['name', 'asc'] })).filter(c => c.active !== false && c.user_id);
+    if (!cs.length) return toast('Necesitas al menos un cliente con cuenta activa', 'err');
+    const f = modal('Vista como cliente', `<p class="muted small">Ves su app tal cual (solo lectura). Con «Editar» cambias el orden y lo que se ve: se aplica a <b>todos</b> tus clientes.</p>
+      <label>Cliente<select name="c">${cs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>`, { submitLabel: 'Entrar', onSubmit: (form, fd) => { const c = cs.find(x => x.id === fd.get('c')); if (c) setTimeout(() => enterViewAs(c), 60); } });
+    return f;
+  }
+
   // ================================================================ CLIENTE · INICIO (saludo, entrenador, calendario del mes, hoy, registro y dieta)
   const HOME_FR = ['¡Ahora es el momento, hazte caso!', 'La constancia gana a la motivación.', 'Un día más, una repetición más.', 'Lo que haces hoy lo notas en 3 meses.',
     'Pequeños pasos, todos los días.', 'Hoy también cuenta.', 'Disciplina hoy, resultados mañana.', 'No lo dejes para el lunes.'];
@@ -3876,18 +3993,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     $app.querySelector('.content').innerHTML = `<div class="c-home h2">
       ${ck.map(nt => `<section class="notice n-ck ck-pin ${nt.late ? 'late' : ''}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span><button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button></section>`).join('')}
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
-      ${coachCard(links)}
-      <section class="card cal-card"><div data-cal>${calHtml()}</div><div class="cal-day" data-cday>${loading()}</div></section>
-      ${installCardHtml()}<div data-pushcard></div>
-      ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></section>`).join('')}
-      <section class="card dm-card"><h3>Registro de hoy${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
+      <div data-po="coach">${coachCard(links)}</div>
+      <section class="card cal-card" data-po="cal"><div data-cal>${calHtml()}</div><div class="cal-day" data-cday>${loading()}</div></section>
+      <div data-po="avisos">${installCardHtml()}<div data-pushcard></div>
+      ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></section>`).join('')}</div>
+      <section class="card dm-card" data-po="registro"><h3>Registro de hoy${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
         <form class="dm-form" data-dm><label>Peso<span class="u-in"><input name="weight" type="number" step="0.05" min="20" max="350" inputmode="decimal" value="${m.weight ?? ''}" placeholder="–"><i>kg</i></span></label>
           <label>Pasos<input name="steps" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${m.steps ?? ''}" placeholder="–"></label>
           <label>Sueño<span class="u-in"><input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" value="${m.sleep_h ?? ''}" placeholder="–"><i>h</i></span></label>
           <button class="btn small primary">${m.date ? 'Actualizar' : 'Guardar'}</button></form>
         <p class="muted small">Pésate en ayunas, nada más levantarte: lo que cuenta es la media semanal.</p></section>
-      ${diet}
-      ${pg && canSee(c, 'objetivos') ? `<section class="card gl-home"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
+      <div data-po="dieta">${diet}</div>
+      ${pg && canSee(c, 'objetivos') ? `<section class="card gl-home" data-po="objetivo"><header class="row gap"><h3 class="grow">Mi objetivo</h3><a class="small link-a" href="#/progreso">Ver progreso ›</a></header>${goalCard(pg, gData, { big: true, actions: false, compact: true })}</section>` : ''}
     </div>`;
     const box = $app.querySelector('.content'), home = box.querySelector('.c-home');
     const wireCk = root => root.querySelectorAll('[data-evck]').forEach(b => b.onclick = () => checkinForm(c));
@@ -3911,9 +4028,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     };
     wireInstall(box); wirePushCard(box, false);
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
-      home.insertAdjacentHTML('beforeend', JMRefer.card(c));
+      home.insertAdjacentHTML('beforeend', `<div data-po="referidos">${JMRefer.card(c)}</div>`);
       const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(er => toast(er.message, 'err'));
     }
+    await applyLayout('inicio', home);
     await loadMonth(); drawCal();
   }
 
@@ -3924,24 +4042,25 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const links = await coachLinks(), hasAva = 'avatar_path' in c;
     const box = $app.querySelector('.content');
     box.innerHTML = `<div class="cprof">
-      <section class="card prof-top"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
-        <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.profile.email || '')}</small></div>
+      <section class="card prof-top" data-po="yo"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
+        <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.viewAs ? (c.email || '') : (S.profile.email || ''))}</small></div>
         ${hasAva ? `<label class="btn small prof-ph">${ic('camera')} ${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</section>
-      ${coachCard(links)}
-      <section class="card"><div class="push-box" data-pushset></div></section>
-      <section class="card"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
-      ${installCardHtml()}
-      <section class="card prof-acts">
+      <div data-po="coach">${coachCard(links)}</div>
+      <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
+      <section class="card" data-po="tema"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
+      <div data-po="instalar">${installCardHtml()}</div>
+      <section class="card prof-acts" data-po="acciones">
         <button type="button" class="btn ghost block" data-priv>${ic('shield')} Privacidad y mis datos</button>
         <button type="button" class="btn ghost block" data-ob>${ic('play')} Ver la bienvenida otra vez</button>
         <button type="button" class="btn ghost block danger" data-logout2>${ic('out')} Cerrar sesión</button></section></div>`;
     fillAvatars(box); fillAvatars($app);
+    await applyLayout('perfil', box.querySelector('.cprof'));
     pushSettings(box.querySelector('[data-pushset]'));
     wireInstall(box);
     box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     box.querySelector('[data-priv]').onclick = () => privacyModal();
     box.querySelector('[data-ob]').onclick = () => onboarding(true);
-    box.querySelector('[data-logout2]').onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; location.reload(); } };
+    box.querySelector('[data-logout2]').onclick = async () => { if (S.viewAs) return toast('En la vista como cliente no se cierra sesión', 'err'); if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; location.reload(); } };
     const inp = box.querySelector('[data-avin]');
     if (inp) inp.onchange = async () => {
       const f = inp.files && inp.files[0]; if (!f) return;
@@ -4019,12 +4138,12 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
       ${installCardHtml()}<div data-pushcard></div>
       ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
-      <section class="card wk-card"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
+      <section class="card wk-card" data-po="semana"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>
         <div class="weekstrip" data-strip>${stripHtml()}</div></section>
-      <div data-day></div>
-      ${others.length ? `<section class="card rlist-card"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
-      ${evNext.length ? `<section class="card"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
+      <div data-day data-po="dia"></div>
+      ${others.length ? `<section class="card rlist-card" data-po="rutinas"><h3>Mis rutinas</h3><ul class="rlist">${others.map(rrow).join('')}</ul></section>` : ''}
+      ${evNext.length ? `<section class="card" data-po="proximos"><h3>Próximos días</h3><ul class="evlist">${evNext.map(e => evRow(e, false)).join('')}</ul></section>` : ''}
       ${!routines.length && !events.length ? '<p class="empty">Tu entrenador todavía no ha publicado tus rutinas.</p>' : ''}</div>`;
     const box = $app.querySelector('.content'), dayBox = box.querySelector('[data-day]');
     const wire = root => {
@@ -4074,7 +4193,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     });
     wire(box.querySelector('.c-home'));
     wireInstall(box); wirePushCard(box, false);
-    if (canSee(c, 'libre')) freeRoutines(c, box.querySelector('.c-home') || box).catch(e => console.warn('modo libre', e));
+    const rHome = box.querySelector('.c-home') || box;
+    await applyLayout('rutina', rHome);
+    if (canSee(c, 'libre')) freeRoutines(c, rHome).then(() => applyLayout('rutina', rHome)).catch(e => console.warn('modo libre', e));
     drawDay();
     noticePopup(c, notices.filter(nt => nt.k !== 'ck' || (c.remind_checkin !== false && (nt.key || nt.late))), t0);
   }
@@ -4085,7 +4206,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (!rs) return;   // sin la migración 031
     const its = rs.length ? await DB.list('routine_items', { in: { routine_id: rs.map(r => r.id) }, order: ['position', 'asc'] }).catch(() => []) : [];
     let sec = host.querySelector('[data-free]');
-    if (!sec) { sec = document.createElement('section'); sec.className = 'card free-card'; sec.dataset.free = ''; host.appendChild(sec); }
+    if (!sec) { sec = document.createElement('section'); sec.className = 'card free-card'; sec.dataset.free = ''; sec.dataset.po = 'libre'; host.appendChild(sec); }
     sec.innerHTML = `<div class="row gap"><h3 class="grow">Mis rutinas</h3><button type="button" class="btn small primary" data-fnew>${ic('plus')} Crear rutina</button></div>
       ${rs.length ? `<ul class="list free-list">${rs.map(r => { const n = its.filter(i => i.routine_id === r.id); return `<li><span class="grow"><b>${esc(r.name)}</b><small>${r.day ? DIAS[r.day] + ' · ' : ''}${n.length} ejercicio${n.length === 1 ? '' : 's'}${n.length ? ': ' + esc(n.slice(0, 3).map(i => i.exercise_name).join(', ')) + (n.length > 3 ? '…' : '') : ''}</small></span>
         <button type="button" class="btn small ghost" data-fedit="${r.id}">${ic('edit')}</button>${n.length ? `<a class="btn small" href="#/entreno/${r.id}">${ic('play')} Empezar</a>` : ''}</li>`; }).join('')}</ul>`
@@ -4185,6 +4306,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     shell(clientNav(), 'nutricion', loading(), { title: 'Mi nutrición' });
     const [p0, d] = await Promise.all([DB.get('nutrition_plans', S.client.id, 'client_id'), DB.rpc('get_my_nutrition').catch(() => null)]);
     const box = $app.querySelector('.content');
+    box.classList.add('lo-root');
     const hasBlocks = !!(d && d.blocks && d.blocks.length && window.JMNutri);
     let p = p0 && d && d.show_macros === false ? Object.assign({}, p0, { kcal: null, protein: null, carbs: null, fat: null }) : p0;
     if (!p && !hasBlocks) { box.innerHTML = `<div class="hero-empty">${ic('apple', 'xl')}<h2>Aún no tienes plan de nutrición</h2><p>Cuando tu entrenador lo publique, lo verás aquí.</p></div>`; return; }
@@ -4204,12 +4326,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     };
     const mc0 = macroCard(0);
     box.innerHTML = `
-      <section class="card macros2" data-mcard ${mc0 ? '' : 'hidden'}>${mc0}</section>
-      ${hasBlocks ? window.JMNutri.clientView(d) : ''}
-      ${p.meals && !hasBlocks ? `<section class="card"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
-      ${p.notes ? `<section class="card"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
+      <section class="card macros2" data-mcard data-po="macros" ${mc0 ? '' : 'hidden'}>${mc0}</section>
+      ${hasBlocks ? `<div data-po="comidas">${window.JMNutri.clientView(d)}</div>` : ''}
+      ${p.meals && !hasBlocks ? `<section class="card" data-po="comidas"><h3>Mis comidas</h3><div class="meals">${esc(p.meals).split('\n').filter(Boolean).map(l => { const m = l.match(/^([^:]{1,30}):(.*)$/); return m ? `<div class="meal"><b>${m[1]}</b><p>${m[2]}</p></div>` : `<p>${l}</p>`; }).join('')}</div></section>` : ''}
+      ${p.notes ? `<section class="card" data-po="notas"><h3>Recomendaciones</h3><p>${nl2br(p.notes)}</p></section>` : ''}
       <p class="muted small">Actualizado ${ago(p.updated_at)}</p>`;
     if (hasBlocks) window.JMNutri.wireClient(box, d, S.client && S.client.id, gi => { const mc = box.querySelector('[data-mcard]'), h = macroCard(gi); mc.innerHTML = h; mc.hidden = !h; });
+    await applyLayout('dieta', box);
   }
 
   // ---------- Check-in (cliente): el mismo formulario «Valoración semanal» de Harbiz

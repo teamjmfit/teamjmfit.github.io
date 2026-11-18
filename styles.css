@@ -1778,3 +1778,23 @@ body { touch-action: pan-x pan-y; -webkit-tap-highlight-color: transparent; }
 @media (max-width: 400px) { .cal-h { flex-wrap: wrap; } .cal-nav { width: 100%; justify-content: space-between; } }
 .cprof { display: grid; gap: 12px; }
 .cprof .theme-set { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- Vista como cliente (entrenador): barra fija y edición de la maqueta */
+.lo-gone { display: none !important; }
+.va-bar { position: fixed; z-index: 70; left: 12px; right: 12px; top: max(10px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-radius: 16px; background: #19130a; color: #f4f1ea; border: 1px solid #d9a94f; box-shadow: 0 14px 40px rgba(0,0,0,.35); }
+.va-bar small { display: block; font-size: .75rem; opacity: .75; line-height: 1.3; }
+.va-bar .btn { flex: none; }
+body:has(.va-bar) .main { padding-top: 78px; }
+@media (min-width: 900px) { .va-bar { left: auto; width: 560px; right: 20px; } }
+.lo-item { position: relative; outline: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 3px; border-radius: 18px; }
+.lo-item.lo-off > :not(.lo-bar) { opacity: .35; filter: grayscale(.6); }
+.lo-item.lo-empty { min-height: 40px; }
+.lo-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 6px; border-radius: 12px; background: #19130a; color: #f4f1ea; font-size: .8rem; position: relative; z-index: 2; }
+.lo-item.lo-off .lo-bar { opacity: 1; }
+.lo-bar button { border: 1px solid rgba(217,169,79,.5); background: transparent; color: #f4f1ea; border-radius: 8px; padding: 4px 8px; font: inherit; font-size: .78rem; cursor: pointer; }
+.lo-bar button[disabled] { opacity: .3; cursor: default; }
+.lo-bar button.off { background: #d9a94f; color: #19130a; }
+.va-bar .btn.ghost { color: #f4f1ea; border-color: rgba(217,169,79,.5); }
+.va-bar .btn { padding: .45rem .75rem; }
+@media (max-width: 600px) { .va-bar small { display: none; } .va-bar { padding: 8px 10px; } }
