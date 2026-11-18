@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Historias TEAM JMFIT</title>
+<style>
+  :root { --gold: #d9a94f; --gold2: #f0c56f; --ink: #0b0b0d; --text: #f4f1ea; --muted: rgba(244,241,234,.66); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #000; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: var(--text); }
+  .st { width: 1080px; height: 1920px; position: relative; overflow: hidden; background: var(--ink); }
+  .bg { position: absolute; inset: 0; background:
+      radial-gradient(60% 40% at 85% 8%, rgba(217,169,79,.30), transparent 70%),
+      radial-gradient(50% 35% at 0% 100%, rgba(217,169,79,.20), transparent 70%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,.022) 0 2px, transparent 2px 18px); }
+  .in { position: relative; height: 100%; padding: 120px 84px 0; display: flex; flex-direction: column; }
+  .logo { width: 250px; height: auto; filter: drop-shadow(0 10px 30px rgba(217,169,79,.25)); }
+  .k { margin-top: 44px; font-weight: 800; font-size: 30px; letter-spacing: .22em; text-transform: uppercase; color: var(--gold); }
+  h1 { font-family: 'Inter Display', 'Inter', sans-serif; font-weight: 900; font-size: 118px; line-height: .98; letter-spacing: -.035em; margin-top: 18px; }
+  h1 em { font-style: normal; color: var(--gold); display: block; }
+  .sub { margin-top: 30px; font-size: 40px; line-height: 1.35; color: var(--muted); max-width: 900px; }
+  .sub b { color: var(--text); }
+  /* móvil */
+  .phone { position: absolute; left: 50%; bottom: -330px; width: 700px; transform: translateX(-50%) rotate(var(--rot, 0deg)); border-radius: 86px; padding: 18px; background: linear-gradient(145deg, #2a2a30, #0f0f12);
+    box-shadow: 0 50px 120px rgba(0,0,0,.7), 0 0 0 2px rgba(217,169,79,.35), inset 0 0 0 2px rgba(255,255,255,.06); }
+  .phone .scr { border-radius: 70px; overflow: hidden; background: #0e0e10; padding-top: 96px; }
+  .phone img { display: block; width: 100%; }
+  .phone::before { content: ''; position: absolute; top: 34px; left: 50%; width: 170px; height: 46px; margin-left: -85px; border-radius: 30px; background: #000; z-index: 2; }
+  .phone.r { left: auto; right: 64px; transform: rotate(4deg); width: 520px; bottom: -200px; }
+  .chips { position: absolute; left: 64px; display: flex; flex-direction: column; gap: 22px; z-index: 3; }
+  .chip { display: inline-flex; align-items: center; gap: 18px; padding: 24px 32px; border-radius: 26px; font-size: 34px; font-weight: 700; color: var(--text);
+    background: rgba(24,24,28,.86); border: 2px solid rgba(217,169,79,.45); box-shadow: 0 20px 50px rgba(0,0,0,.55); backdrop-filter: blur(8px); width: fit-content; }
+  .chip i { font-style: normal; font-size: 40px; }
+  /* novedades */
+  .news { margin-top: 48px; display: flex; flex-direction: column; gap: 20px; }
+  .nw { display: flex; align-items: center; gap: 26px; padding: 28px 32px; border-radius: 28px; background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.08); }
+  .nw:first-child { background: linear-gradient(135deg, rgba(217,169,79,.28), rgba(217,169,79,.08)); border-color: rgba(217,169,79,.55); }
+  .nw i { font-style: normal; font-size: 52px; width: 70px; text-align: center; flex: none; }
+  .nw b { display: block; font-size: 38px; letter-spacing: -.01em; }
+  .nw span { display: block; font-size: 29px; color: var(--muted); margin-top: 6px; }
+  .tag { font-size: 22px; font-weight: 800; letter-spacing: .08em; color: var(--ink); background: var(--gold); padding: 8px 16px; border-radius: 999px; margin-left: auto; flex: none; }
+  /* cierre */
+  .cta { position: absolute; left: 84px; right: 84px; bottom: 130px; text-align: center; }
+  .cta .arrow { font-size: 90px; color: var(--gold); line-height: 1; }
+  .cta p { font-size: 34px; color: var(--muted); margin-top: 14px; }
+  .sticker { margin: 30px auto 0; width: 640px; height: 130px; border-radius: 34px; border: 4px dashed rgba(217,169,79,.6); display: grid; place-items: center; font-size: 28px; color: rgba(244,241,234,.55); font-weight: 600; }
+  .sticker.hide { border-color: transparent; color: transparent; }
+  .hero { position: relative; margin-top: 50px; height: 700px; border-radius: 44px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,.6), 0 0 0 3px rgba(217,169,79,.45); }
+  .hero img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; display: block; }
+  .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgba(11,11,13,.95)); }
+  .hero figcaption { position: absolute; left: 40px; right: 40px; bottom: 34px; z-index: 1; }
+  .hero b { display: block; font-size: 48px; } .hero span { display: block; font-size: 27px; color: var(--gold); margin-top: 8px; font-weight: 600; }
+  .coach { display: flex; align-items: center; gap: 28px; margin-top: 64px; }
+  .coach img { width: 170px; height: 170px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 5px var(--gold); }
+  .coach b { display: block; font-size: 44px; }
+  .coach span { display: block; font-size: 29px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .foot { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; font-size: 26px; color: rgba(244,241,234,.45); letter-spacing: .04em; }
+  .num { position: absolute; top: 120px; right: 84px; font-family: 'Inter Display', sans-serif; font-weight: 900; font-size: 150px; line-height: .8; color: transparent; -webkit-text-stroke: 2px rgba(217,169,79,.45); }
+</style></head>
+<body>
+<div id="out"></div>
+<script>
+// Cada semana: cambia SEMANA y NOVEDADES y vuelve a generar las imágenes (render.js).
+const SEMANA = '16 – 22 nov';
+const NOVEDADES = [
+  ['🏠', 'Nuevo Inicio', 'Calendario del mes, registro del día y tu dieta de un vistazo'],
+  ['👤', 'Tu perfil con foto', 'Tus ajustes, notificaciones y apariencia en un sitio'],
+  ['🔔', 'Notificaciones', 'Te aviso los días de entreno y de revisión'],
+  ['💬', 'Te aviso cuando reviso', 'Y ves mi respuesta en cada check-in'],
+  ['🔍', 'Buscador de ejercicios', 'Encuentra tu evolución en cualquier ejercicio'],
+  ['✨', 'Bienvenida al equipo', 'Una presentación para cada cliente nuevo']
+];
+const SLIDES = [
+  { k: 'La app de TEAM JMFIT', h: ['Tu entrenador,', 'en el bolsillo.'], sub: 'Entreno, dieta, progreso y revisiones <b>conmigo</b>. Todo en una app.', phone: 'inicio' },
+  { n: '01', k: 'Rutina', h: ['Cada día sabes', 'qué te toca.'], sub: 'Series, repeticiones, RIR y descansos. Hecha <b>a tu medida</b>.', phone: 'entreno', rot: -3,
+    chips: [['▶️', 'Vídeo de cada ejercicio'], ['📈', 'Ves lo que hiciste la última vez'], ['⏱️', 'Descansos con temporizador']] },
+  { n: '02', k: 'Dieta', h: ['Come lo que', 'te gusta.'], sub: 'Tu plan con <b>opciones intercambiables</b>, cuadrado a tus macros.', phone: 'dieta', rot: 3,
+    chips: [['🔁', 'Cambia alimentos sin salirte'], ['🎯', 'Kcal y macros de cada día']] },
+  { n: '03', k: 'Progreso', h: ['Tu progreso,', 'a la vista.'], sub: 'Peso, medidas y <b>fuerza en cada ejercicio</b>, con gráficas claras.', phone: 'evolucion', rot: -3,
+    chips: [['⚖️', 'Peso diario y media semanal'], ['🏋️', 'Evolución de cada ejercicio'], ['🏆', 'Tus mejores marcas']] },
+  { n: '04', k: 'Revisiones', h: ['Revisión', 'conmigo.'], sub: 'Me cuentas cómo vas, ajustamos y <b>te respondo en la app</b>.', phone: 'checkins', rot: 3,
+    chips: [['💬', 'Mis respuestas en tu check-in'], ['🔔', 'Avisos de entreno y revisión']] },
+  { news: true, k: 'Novedades · ' + SEMANA, h: ['La app', 'sigue mejorando.'] },
+  { end: true, k: 'Plazas limitadas', h: ['¿Te unes', 'al equipo?'], sub: 'Escríbeme y empezamos tu cambio.' }
+];
+const q = new URLSearchParams(location.search), only = q.get('n'), sticker = q.get('sticker') !== '0';
+const html = (s, i) => {
+  if (s.news) return `<section class="st"><div class="bg"></div><div class="in"><img class="logo" src="logo.webp" alt=""><p class="k">${s.k}</p><h1>${s.h[0]}<em>${s.h[1]}</em></h1>
+    <div class="news">${NOVEDADES.map(([e, t, d], j) => `<div class="nw"><i>${e}</i><div><b>${t}</b><span>${d}</span></div>${j === 0 ? '<span class="tag">NUEVO</span>' : ''}</div>`).join('')}</div></div>
+    <p class="foot">teamjmfit.github.io</p></section>`;
+  if (s.end) return `<section class="st"><div class="bg"></div><div class="in"><img class="logo" src="logo.webp" alt=""><p class="k">${s.k}</p><h1>${s.h[0]}<em>${s.h[1]}</em></h1><p class="sub">${s.sub}</p>
+    <figure class="hero"><img src="coach.webp" alt=""><figcaption><b>Jorge Martínez Suárez</b><span>Ciencias de la Actividad Física y el Deporte · Técnico Superior en Dietética</span></figcaption></figure>
+    <div class="cta"><div class="arrow">↓</div><p>Toca el enlace</p><div class="sticker ${sticker ? '' : 'hide'}">pon aquí el sticker de enlace</div></div></div>
+    <p class="foot">Entrenamiento y nutrición · TEAM JMFIT</p></section>`;
+  return `<section class="st"><div class="bg"></div><div class="in"><img class="logo" src="logo.webp" alt="">${s.n ? `<span class="num">${s.n}</span>` : ''}<p class="k">${s.k}</p><h1>${s.h[0]}<em>${s.h[1]}</em></h1><p class="sub">${s.sub}</p></div>
+    <div class="phone" style="--rot:${s.rot || 0}deg"><div class="scr"><img src="${s.phone}.png" alt=""></div></div>
+    ${s.chips ? `<div class="chips" style="top:${s.n ? 900 : 860}px">${s.chips.map(([e, t]) => `<span class="chip"><i>${e}</i>${t}</span>`).join('')}</div>` : ''}</section>`;
+};
+document.getElementById('out').innerHTML = SLIDES.map(html).filter((_, i) => only == null || +only === i).join('');
+window.N = SLIDES.length;
+</script></body></html>
