@@ -1364,6 +1364,20 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Historial de un cliente (último año). Las mismas opciones en todas partes: así la caché de lecturas se comparte
   // entre Progreso, Rutinas y Objetivos. Con 4-5 entrenos/semana son ~5.000 series al año: se traen por páginas.
   const yearAgo = () => new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  // Series de un entreno en el orden de la rutina pautada (routine_items.position vía routine_item_id). Lo que no
+  // esté en la rutina (ejercicio añadido o de otra semana) va detrás, en el orden en que se guardó.
+  async function orderedSets(sets, routineId) {
+    let its = [];
+    if (routineId) its = await DB.list('routine_items', { eq: { routine_id: routineId }, order: ['position', 'asc'] }).catch(() => []);
+    const posId = new Map(its.map((i, k) => [i.id, k])), posLin = new Map(its.filter(i => i.lineage_id).map((i, k) => [i.lineage_id, k]));
+    const posName = new Map(its.map((i, k) => [String(i.exercise_name || '').trim().toLowerCase(), k]));
+    const idx = new Map(sets.map((l, k) => [l, k]));
+    const pos = l => (posId.has(l.routine_item_id) ? posId.get(l.routine_item_id) : posLin.has(l.lineage_id) ? posLin.get(l.lineage_id)
+      : posName.has(String(l.exercise_name || '').trim().toLowerCase()) ? posName.get(String(l.exercise_name || '').trim().toLowerCase()) : 1e4);
+    const first = {}; sets.forEach(l => { const n = l.exercise_name; if (!(n in first)) first[n] = { p: pos(l), i: idx.get(l) }; else first[n].p = Math.min(first[n].p, pos(l)); });
+    const g = {}; [...sets].sort((a, b) => (a.set_no - b.set_no)).forEach(l => { (g[l.exercise_name] = g[l.exercise_name] || []).push(l); });
+    return Object.entries(g).sort((a, b) => (first[a[0]].p - first[b[0]].p) || (first[a[0]].i - first[b[0]].i));
+  }
   const clientLogs = cid => DB.list('set_logs', { eq: { client_id: cid }, gte: { created_at: yearAgo() }, order: ['created_at', 'desc'], limit: 6000 });
   const clientSessions = cid => DB.list('sessions', { eq: { client_id: cid }, gte: { started_at: yearAgo() }, order: ['started_at', 'desc'], limit: 400 });
   async function goalData(c, need) {
@@ -1973,11 +1987,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     // Pinchar una rutina del calendario: si ese día la hizo, lo que hizo (series); si no, lo que le toca
     const openSession = async s => {
       if (!s) return;
-      const ls = await DB.list('set_logs', { eq: { session_id: s.id }, order: ['set_no', 'asc'] }).catch(() => []);
-      const g = {}; ls.forEach(l => { (g[l.exercise_name] = g[l.exercise_name] || []).push(l); });
+      const ls = await DB.list('set_logs', { eq: { session_id: s.id }, order: ['created_at', 'asc'] }).catch(() => []);
+      const g = await orderedSets(ls, s.routine_id);
       modal(`✓ ${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
         `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</p>
-        ${Object.entries(g).map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b><div class="sx-sets">${xs.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
+        ${g.map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b><div class="sx-sets">${xs.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
         ${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
         <a class="btn small" href="#/cliente/${c.id}/progreso">Editar en Progreso</a>`, { wide: true });
     };
@@ -2677,13 +2691,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const mb = sBox.querySelector('[data-smore]'); if (mb) mb.onclick = () => { sShown += 10; drawSes(); };
     };
     if (done.length) drawSes();
-    function sessionModal(s, li) {
-      const sets = logs.filter(l => l.session_id === s.id).sort((a, b) => a.set_no - b.set_no);
+    async function sessionModal(s, li) {
+      const sets0 = logs.filter(l => l.session_id === s.id);
+      const ord = await orderedSets([...sets0].reverse(), s.routine_id);   // logs viene del más nuevo al más viejo
+      const sets = ord.flatMap(([, xs]) => xs);
       const prevS = done.find(x => x.routine_name === s.routine_name && x.started_at < s.started_at);
       const prevSets = prevS ? logs.filter(l => l.session_id === prevS.id) : [];
-      const groups = {}; sets.forEach(l => { (groups[l.exercise_name] = groups[l.exercise_name] || []).push(l); });
       const top = ls => ls.reduce((m, l) => (e1rm(+l.weight, +l.reps) > e1rm(+m.weight, +m.reps) ? l : m), ls[0]);
-      const body = Object.entries(groups).map(([n, ls]) => {
+      const body = ord.map(([n, ls]) => {
         const pv = prevSets.filter(l => l.exercise_name === n), t = top(ls), tp = pv.length ? top(pv) : null;
         const d = tp ? e1rm(+t.weight, +t.reps) - e1rm(+tp.weight, +tp.reps) : null;
         const st = stallOf((H[String(n).trim().toLowerCase()] || []).filter(x => String(x.date) <= String(s.started_at)));
