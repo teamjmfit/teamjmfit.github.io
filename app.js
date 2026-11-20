@@ -1650,7 +1650,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <label>RIR de los prioritarios<span class="row gap"><small>de</small>${rirSel('prio_rir_hi', 1)}<small>a</small>${rirSel('prio_rir_lo', 0)}</span></label>
           <label>Series de los prioritarios<select name="prio_sets">${[[0, 'Igual'], [1, '+1 por ejercicio'], [2, '+2 por ejercicio']].map(([v, l]) => `<option value="${v}" ${v === 1 ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Series del resto<select name="other_sets">${[[0, 'Igual'], [-1, '−1 por ejercicio (mín. 1)']].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-          <label>RIR en la descarga<span class="row gap"><small>prioritarios</small>${rirSel('prio_dl_rir', 2, false)}<small>resto</small>${rirSel('dl_rir', 3, false)}</span></label>
+          <div class="rir-pair-f"><span class="lbl">RIR en la descarga</span><div class="rir-pair"><label><small>Prioritarios</small>${rirSel('prio_dl_rir', 2, false)}</label><label><small>Resto</small>${rirSel('dl_rir', 3, false)}</label></div></div>
         </div>
         <small class="muted" data-prio-hint>Elige los grupos que quieres priorizar en este bloque: más series y más cerca del fallo; el resto se mantiene.</small></fieldset>
       <fieldset class="deload-set"><legend>Semana de descarga</legend><div class="form-grid">
