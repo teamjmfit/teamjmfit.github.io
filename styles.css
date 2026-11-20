@@ -1810,3 +1810,10 @@ body:has(.va-bar) .main { padding-top: 78px; }
 .sx-key span { display: inline-block; padding: 1px 8px; border-radius: 8px; margin: 2px 4px 2px 0; }
 .sx-key .off-hard { box-shadow: inset 0 0 0 2px #e5484d; } .sx-key .off-easy { box-shadow: inset 0 0 0 2px #5aa7ff; }
 .sx-key .off-lo { box-shadow: inset 0 0 0 2px #f5a524; } .sx-key .off-hi { box-shadow: inset 0 0 0 2px #2e9e5b; }
+
+/* Mesociclo: RIR en la descarga (dos desplegables con su etiqueta encima, sin que se corte el número) */
+.rir-pair-f .lbl { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 6px; }
+.rir-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rir-pair label { display: flex; flex-direction: column; gap: 3px; margin: 0; font-weight: 400; }
+.rir-pair small { color: var(--muted); font-size: .78rem; }
+.rir-pair select { width: 100%; min-width: 0; }
