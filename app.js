@@ -1376,8 +1376,28 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       : posName.has(String(l.exercise_name || '').trim().toLowerCase()) ? posName.get(String(l.exercise_name || '').trim().toLowerCase()) : 1e4);
     const first = {}; sets.forEach(l => { const n = l.exercise_name; if (!(n in first)) first[n] = { p: pos(l), i: idx.get(l) }; else first[n].p = Math.min(first[n].p, pos(l)); });
     const g = {}; [...sets].sort((a, b) => (a.set_no - b.set_no)).forEach(l => { (g[l.exercise_name] = g[l.exercise_name] || []).push(l); });
-    return Object.entries(g).sort((a, b) => (first[a[0]].p - first[b[0]].p) || (first[a[0]].i - first[b[0]].i));
+    const res = Object.entries(g).sort((a, b) => (first[a[0]].p - first[b[0]].p) || (first[a[0]].i - first[b[0]].i));
+    res.items = its; return res;
   }
+  // Lo pautado de un ejercicio (por la serie guardada: id del ejercicio de la rutina, linaje o nombre)
+  const nrm = t => String(t || '').trim().toLowerCase();
+  const plannedOf = (its, xs) => { const l = xs[0] || {}; return (its || []).find(i => i.id === l.routine_item_id) || (l.lineage_id && (its || []).find(i => i.lineage_id === l.lineage_id)) || (its || []).find(i => nrm(i.exercise_name) === nrm(l.exercise_name)) || null; };
+  // Series hechas frente a lo pautado: línea «Pautado: 4 × 6-8 · 80 kg · RIR 2 · hizo 4/4» y cada serie marcada si se sale
+  function setsVsPlan(xs, it, deload) {
+    const tR = it && it.target_rir != null && it.target_rir !== '' ? Number(it.target_rir) : null, tP = it && it.target_rpe != null && it.target_rpe !== '' ? Number(it.target_rpe) : null;
+    const m = it ? String(it.reps || '').match(/(\d+)\s*(?:[-–a]\s*(\d+))?/) : null, rMin = m ? +m[1] : null, rMax = m ? +(m[2] || m[1]) : null;
+    const chip = l => {
+      const notes = []; let cls = '';
+      if (rMin != null && l.reps != null) { if (l.reps < rMin) { notes.push(`menos reps de lo pautado (${it.reps})`); cls = 'off-lo'; } else if (l.reps > rMax) { notes.push(`más reps de lo pautado (${it.reps})`); cls = 'off-hi'; } }
+      if (tR != null && !isFailT(it)) { const rr = l.failure ? 0 : l.rir != null ? Number(l.rir) : null; if (rr != null && rr !== tR) { notes.push(rr < tR ? `más cerca del fallo (pautado RIR ${fmtKg(tR)})` : `más lejos del fallo (pautado RIR ${fmtKg(tR)})`); cls = cls || (rr < tR ? 'off-hard' : 'off-easy'); } }
+      if (tP != null && l.rpe != null && Number(l.rpe) !== tP) { notes.push(`RPE ${fmtKg(l.rpe)} (pautado ${fmtKg(tP)})`); cls = cls || (Number(l.rpe) > tP ? 'off-hard' : 'off-easy'); }
+      return `<span class="${cls}" ${notes.length ? `title="${esc(notes.join(' · '))}"` : ''}>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`;
+    };
+    const plan = it ? `<small class="sx-plan">Pautado: <b>${it.sets} × ${esc(it.reps || '')}</b>${loadLabel(it) ? ' · ' + esc(loadLabel(it)) : ''}${/RIR|RPE|fallo/i.test(loadLabel(it) || '') ? '' : isFailT(it) ? ' · al fallo' : tR != null ? ` · RIR ${fmtKg(tR)}` : tP != null ? ` · RPE ${fmtKg(tP)}` : ''}${it.rest_sec ? ` · ${it.rest_sec}" desc.` : ''} · <span class="${xs.length < it.sets ? 'off-lo' : ''}">hizo ${xs.length}/${it.sets} series</span></small>`
+      : '<small class="sx-plan muted">No estaba en la rutina pautada</small>';
+    return `${plan}<div class="sx-sets">${xs.map(chip).join('')}</div>`;
+  }
+  const SX_KEY = '<p class="sx-key small muted"><span class="off-hard">más cerca del fallo</span> <span class="off-easy">más lejos del fallo</span> <span class="off-lo">menos reps / series</span> <span class="off-hi">más reps</span> · mantén el dedo o pasa el ratón por una serie para ver el detalle</p>';
   const clientLogs = cid => DB.list('set_logs', { eq: { client_id: cid }, gte: { created_at: yearAgo() }, order: ['created_at', 'desc'], limit: 6000 });
   const clientSessions = cid => DB.list('sessions', { eq: { client_id: cid }, gte: { started_at: yearAgo() }, order: ['started_at', 'desc'], limit: 400 });
   async function goalData(c, need) {
@@ -1989,9 +2009,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       if (!s) return;
       const ls = await DB.list('set_logs', { eq: { session_id: s.id }, order: ['created_at', 'asc'] }).catch(() => []);
       const g = await orderedSets(ls, s.routine_id);
+      const rt = byId(routines, s.routine_id), wk = rt && weeks.find(x => x.id === rt.program_week_id), d0 = String(s.started_at).slice(0, 10);
+      const dl = !!(wk && wk.kind === 'deload') || weeks.some(x => x.kind === 'deload' && d0 >= x.start_date && d0 <= addDays(x.start_date, 6));
+      const missing = (g.items || []).filter(i => !g.some(([, xs]) => plannedOf(g.items, xs) === i));
       modal(`✓ ${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}</p>
-        ${g.map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b><div class="sx-sets">${xs.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : ''}</span>`).join('')}</div></div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>
+        ${g.map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b>${setsVsPlan(xs, plannedOf(g.items, xs), dl)}</div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
+        ${missing.length ? `<p class="note small">No hizo: ${missing.map(i => esc(i.exercise_name)).join(', ')}</p>` : ''}${g.length ? SX_KEY : ''}
         ${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
         <a class="btn small" href="#/cliente/${c.id}/progreso">Editar en Progreso</a>`, { wide: true });
     };
@@ -2563,7 +2587,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
     ]);
     const goals = await loadGoals(c.id);
-    const H = exHistory(logs, sessions);
+    // Semanas de descarga: bajar carga es lo normal, así que esas sesiones no cuentan para «Estancado / Bajando» ni para las comparaciones
+    const dlW = pweeks.filter(w => w.kind === 'deload'), isDl = iso => { const d = String(iso || '').slice(0, 10); return dlW.some(w => d >= w.start_date && d <= addDays(w.start_date, 6)); };
+    const dlSid = new Set(sessions.filter(x => isDl(x.started_at)).map(x => x.id));
+    const H = exHistory(logs.filter(l => !dlSid.has(l.session_id)), sessions);
     const perf = Object.entries(H).map(([k, h]) => ({ name: (logs.find(l => String(l.exercise_name).trim().toLowerCase() === k) || {}).exercise_name || k, h, st: stallOf(h), lastDate: h[h.length - 1].date }))
       .sort((a, b) => String(b.lastDate).localeCompare(String(a.lastDate))).slice(0, 14);
     const chg4 = h => { const cut = Date.now() - 28 * 864e5; const old = h.filter(x => new Date(x.date) <= cut).pop() || h[0]; const lst = h[h.length - 1]; return old && lst !== old && old.e1 ? (lst.e1 - old.e1) / old.e1 * 100 : null; };
@@ -2694,20 +2721,20 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     async function sessionModal(s, li) {
       const sets0 = logs.filter(l => l.session_id === s.id);
       const ord = await orderedSets([...sets0].reverse(), s.routine_id);   // logs viene del más nuevo al más viejo
-      const sets = ord.flatMap(([, xs]) => xs);
-      const prevS = done.find(x => x.routine_name === s.routine_name && x.started_at < s.started_at);
+      const sets = ord.flatMap(([, xs]) => xs), dl = dlSid.has(s.id);
+      const prevS = done.find(x => x.routine_name === s.routine_name && x.started_at < s.started_at && !dlSid.has(x.id));
       const prevSets = prevS ? logs.filter(l => l.session_id === prevS.id) : [];
       const top = ls => ls.reduce((m, l) => (e1rm(+l.weight, +l.reps) > e1rm(+m.weight, +m.reps) ? l : m), ls[0]);
       const body = ord.map(([n, ls]) => {
         const pv = prevSets.filter(l => l.exercise_name === n), t = top(ls), tp = pv.length ? top(pv) : null;
         const d = tp ? e1rm(+t.weight, +t.reps) - e1rm(+tp.weight, +tp.reps) : null;
         const st = stallOf((H[String(n).trim().toLowerCase()] || []).filter(x => String(x.date) <= String(s.started_at)));
-        return `<div class="sx2"><div class="row gap"><b class="grow">${esc(n)}</b><span class="pill ${STALL_TXT[st.st][0]}">${STALL_TXT[st.st][1]}</span></div>
-          <div class="sx-sets">${ls.map(l => `<span>${fmtKg(l.weight)} × ${l.reps ?? '–'}${l.failure ? ' <small>Fallo</small>' : l.rir != null ? ` <small>RIR ${fmtKg(l.rir)}</small>` : l.rpe != null ? ` <small>RPE ${fmtKg(l.rpe)}</small>` : ''}</span>`).join('')}</div>
-          ${tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
+        return `<div class="sx2"><div class="row gap"><b class="grow">${esc(n)}</b>${dl ? '<span class="pill blue">Descarga</span>' : `<span class="pill ${STALL_TXT[st.st][0]}">${STALL_TXT[st.st][1]}</span>`}</div>
+          ${setsVsPlan(ls, plannedOf(ord.items, ls), dl)}
+          ${dl ? '<small class="muted">Semana de descarga: es normal mover menos carga, no cuenta como bajada de rendimiento.</small>' : tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
       const m0 = modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}</p>${body}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>${body}${sets.length ? SX_KEY : ''}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
         ${asCoach ? `<div class="row gap wrap sx-acts"><button type="button" class="btn small" data-sedit>${ic('edit')} Editar entreno</button><button type="button" class="btn small ghost danger" data-sdel>${ic('trash')} Borrar entreno</button></div>` : ''}`, { wide: true });
       if (asCoach) {
         m0.querySelector('[data-sedit]').onclick = () => editSession(s, sets);
@@ -2796,7 +2823,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="tscroll"><table class="wk-t"><thead><tr><th>Ejercicio</th><th>Última</th><th>Mejor 1RM est.</th><th>4 sem.</th><th>Estado</th></tr></thead><tbody>
         ${perf.map(p => { const l = p.h[p.h.length - 1], b = p.h.reduce((m, x) => (x.e1 > m.e1 ? x : m), p.h[0]), c4 = chg4(p.h), [cls, txt] = STALL_TXT[p.st.st];
           return `<tr><td>${esc(p.name)}</td><td><b>${fmtKg(l.w)}×${l.r}</b> <small class="muted">${fmtDate(l.date, { day: 'numeric', month: 'short' })}</small></td><td>${Math.round(b.e1)} kg</td><td class="${c4 == null ? '' : c4 > 0.5 ? 'dn' : c4 < -0.5 ? 'up' : ''}">${c4 == null ? '–' : (c4 > 0 ? '+' : '') + fmtKg(c4) + ' %'}</td><td><span class="pill ${cls}">${txt}${p.st.st === 'stall' || p.st.st === 'down' ? ' · ' + p.st.since + ' ses.' : ''}</span></td></tr>`; }).join('')}
-        </tbody></table></div><p class="muted small pad">1RM estimado con la mejor serie de cada sesión. «Estancado»: 3 o más sesiones sin superar su mejor marca.</p></section>`;
+        </tbody></table></div><p class="muted small pad">1RM estimado con la mejor serie de cada sesión. «Estancado»: 3 o más sesiones sin superar su mejor marca. Las semanas de descarga no cuentan.</p></section>`;
     }
     function weeksHtml() {
       const prog = progs.filter(p => p.status !== 'archived').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
