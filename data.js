@@ -104,6 +104,15 @@
         async unenroll(factorId) { const { error } = await sb.auth.mfa.unenroll({ factorId }); if (error) throw error; drop(); }
       },
       async removePhotos(paths) { if (paths.length) await sb.storage.from('checkins').remove(paths); },
+      // Archivos de «Píldoras y novedades» (migración 039)
+      async uploadPost(file) {
+        const ext = (String(file.name || '').split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        ok(await sb.storage.from('posts').upload(path, file, { contentType: file.type || 'application/octet-stream' }));
+        return path;
+      },
+      async postUrl(path) { const d = ok(await sb.storage.from('posts').createSignedUrl(path, 3600)); return d.signedUrl; },
+      async removePostFile(path) { if (path) await sb.storage.from('posts').remove([path]); },
       async photoUrl(path) {
         const d = ok(await sb.storage.from('checkins').createSignedUrl(path, 3600));
         return d.signedUrl;
@@ -280,6 +289,9 @@
       },
       async photoUrl(path) { return path; },
       async removePhotos() {},
+      async uploadPost(file) { return await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); }); },
+      async postUrl(path) { return path; },
+      async removePostFile() {},
       mfa: { async level() { return { currentLevel: 'aal1', nextLevel: 'aal1' }; }, async factors() { return []; }, async enroll() { throw new Error('No disponible en modo demo'); }, async verify() {}, async unenroll() {} },
       async getSetting(key) { const r = T('settings').find(s => s.key === key); return r ? r.value : ''; },
       async setSetting(key, value) { await this.upsert('settings', { key, value }, 'key'); },

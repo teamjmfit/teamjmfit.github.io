@@ -581,6 +581,7 @@
     if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : r1 === 'plantillas' ? coachTemplates() : coachPrograms(); }
     if (r0 === 'revisiones') return coachReviews(r1);
     if (r0 === 'revision' && r1) return reviewCenter(r1);
+    if (r0 === 'publicaciones') return coachPosts();
     if (r0 === 'formularios') { shell(COACH_NAV, 'inicio', loading(), { title: 'Formularios' }); const fb = $app.querySelector('.content'); if (window.JMForms) return window.JMForms.page(fb); window.addEventListener('load', () => window.JMForms.page(fb), { once: true }); return; }
     if (r0 === 'cobros') { setTimeout(refreshReviewBadge, 0); return coachPayments(); }
     if (r0 === 'notas') { setTimeout(refreshReviewBadge, 0); return coachNotes(r1); }
@@ -764,7 +765,7 @@
 
   // ---------- Inicio
   async function coachHome() {
-    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><button class="btn ghost small" data-allset title="Ajustes para todos los clientes a la vez">${ic('cog')}<span>Para todos</span></button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><a class="btn ghost small" href="#/publicaciones" title="Píldoras, novedades y ventajas para tus clientes">📣<span>Publicaciones</span></a><button class="btn ghost small" data-allset title="Ajustes para todos los clientes a la vez">${ic('cog')}<span>Para todos</span></button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
     $app.querySelector('[data-allset]').onclick = () => allClientsSettings();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
@@ -4240,6 +4241,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (!r0) return clientHome();
     if (r0 === 'rutina') return clientToday();
     if (r0 === 'perfil') return clientProfile();
+    if (r0 === 'pildoras') return clientPosts();
     if (r0 === 'nutricion') return canSee(S.client, 'nutricion') ? clientNutrition() : go('#/');
     if (r0 === 'progreso') { shell(clientNav(), 'progreso', loading(), { title: 'Mi progreso' }); return tabProgress(S.client, $app.querySelector('.content'), false); }
     go('#/');
@@ -4301,7 +4303,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Se guarda en public_texts.client_layout = { página: { order: [...], hidden: [...] } }. La edita el entrenador desde
   // «Vista como cliente» (ruedita → Ajustes). Cada apartado de cada página lleva data-po="<clave>".
   const LAYOUT_PAGES = {
-    inicio: { label: 'Inicio', parts: [['coach', 'Tu entrenador'], ['cal', 'Calendario del mes'], ['avisos', 'Avisos e instalar la app'], ['registro', 'Registro de hoy'], ['dieta', 'Dieta'], ['objetivo', 'Mi objetivo'], ['referidos', 'Invita a un amigo']] },
+    inicio: { label: 'Inicio', parts: [['coach', 'Tu entrenador'], ['cal', 'Calendario del mes'], ['avisos', 'Avisos e instalar la app'], ['registro', 'Registro de hoy'], ['dieta', 'Dieta'], ['objetivo', 'Mi objetivo'], ['novedades', 'Píldoras y novedades'], ['ventajas', 'Ventajas (descuentos)'], ['referidos', 'Invita a un amigo']] },
     rutina: { label: 'Rutina', parts: [['semana', 'Esta semana'], ['dia', 'Entreno del día'], ['rutinas', 'Mis rutinas'], ['proximos', 'Próximos días'], ['libre', 'Mis rutinas (modo libre)']] },
     dieta: { label: 'Dieta', parts: [['macros', 'Kcal y macros'], ['comidas', 'Mis comidas'], ['notas', 'Recomendaciones']] },
     progreso: { label: 'Progreso', parts: null },
@@ -4382,6 +4384,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (r0 === 'entreno') await workout(r1);
     else if (r0 === 'rutina') await clientToday();
     else if (r0 === 'perfil') await clientProfile();
+    else if (r0 === 'pildoras') await clientPosts();
     else if (r0 === 'nutricion' && canSee(S.client, 'nutricion')) await clientNutrition();
     else if (r0 === 'progreso') { shell(clientNav(), 'progreso', loading(), { title: 'Mi progreso' }); await tabProgress(S.client, $app.querySelector('.content'), false); }
     else await clientHome();
@@ -4565,12 +4568,116 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       btn.disabled = false; btn.textContent = 'Actualizar';
     };
     wireInstall(box); wirePushCard(box, false);
+    home.insertAdjacentHTML('beforeend', '<div data-po="novedades" data-posts></div><div data-po="ventajas" data-perks></div>');
+    await homePosts(home).catch(er => console.warn('píldoras', er));
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
       home.insertAdjacentHTML('beforeend', `<div data-po="referidos">${JMRefer.card(c)}</div>`);
       const rb = home.querySelector('[data-refopen]'); if (rb) rb.onclick = () => JMRefer.open(c).catch(er => toast(er.message, 'err'));
     }
     await applyLayout('inicio', home);
     await loadMonth(); drawCal();
+  }
+
+  // ================================================================ PÍLDORAS Y NOVEDADES (migración 039) + VENTAJAS
+  // El entrenador publica textos y archivos (Inicio → 📣 Publicaciones); los clientes los ven en su Inicio y en #/pildoras.
+  const POST_K = { pildora: ['Píldora', '💊'], novedad: ['Novedad', '📣'] };
+  const POST_TAGS = ['Nutrición', 'Entreno', 'Descanso', 'Suplementos', 'Hábitos', 'Mentalidad', 'App'];
+  const PERKS_DEF = [{ title: '10 % en LifePro Güímar', text: 'Premio por usar la app de TEAM JMFIT. Di el código al pagar.', code: 'Jorgeft' }];
+  async function loadPerks() { try { const r = await DB.get('public_texts', 'perks', 'key'); const v = r && r.value ? JSON.parse(r.value) : null; return Array.isArray(v) ? v : PERKS_DEF; } catch (e) { return PERKS_DEF; } }
+  async function loadPosts() { const ps = await DB.list('posts', { order: ['created_at', 'desc'] }); return ps.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)); }
+  // Texto con **negrita**, listas con «- » y enlaces
+  const postBody = t => String(t || '').trim().split(/\n{2,}/).map(par => { const e = esc(par);
+    return /^\s*[-•] /.test(par) && par.split('\n').every(l => /^\s*[-•] /.test(l) || !l.trim()) ? `<ul>${e.split('\n').filter(l => l.trim()).map(l => `<li>${l.replace(/^\s*[-•] /, '')}</li>`).join('')}</ul>`
+      : `<p>${e.replace(/\n/g, '<br>')}</p>`; }).join('').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  const isNewPost = p => Date.now() - new Date(p.created_at) < 7 * 864e5;
+  const postRow = p => `<li><button type="button" class="nv-row" data-post="${p.id}"><span class="nv-ic">${(POST_K[p.kind] || POST_K.pildora)[1]}</span><span class="grow"><b>${esc(p.title)}</b><small>${esc(p.tag || (POST_K[p.kind] || POST_K.pildora)[0])} · ${esc(fmtDate(p.created_at, { day: 'numeric', month: 'short' }))}${p.file_path ? ' · 📎' : ''}${S.profile.role === 'coach' && !p.published ? ' · <b class="nv-draft">Borrador</b>' : ''}</small></span>${isNewPost(p) && p.published ? '<span class="pill">Nuevo</span>' : ''}${p.pinned ? '📌' : ''}${ic('next')}</button></li>`;
+  async function openPost(p) {
+    const isImg = p.file_type && /^image\//.test(p.file_type);
+    const m = modal(`${(POST_K[p.kind] || POST_K.pildora)[1]} ${p.title}`, `<p class="muted small">${esc((POST_K[p.kind] || POST_K.pildora)[0])}${p.tag ? ' · ' + esc(p.tag) : ''} · ${esc(fmtDate(p.created_at, { day: 'numeric', month: 'long', year: 'numeric' }))}</p>
+      ${p.file_path && isImg ? '<div class="nv-img" data-nvf></div>' : ''}<div class="nv-body">${postBody(p.body)}</div>
+      ${p.file_path && !isImg ? `<p><button type="button" class="btn small" data-nvfile>📎 Abrir ${esc(p.file_name || 'archivo')}</button></p>` : ''}
+      ${p.link ? `<p><a class="btn small ghost" href="${esc(p.link)}" target="_blank" rel="noopener">🔗 Abrir enlace</a></p>` : ''}`, { wide: true });
+    if (p.file_path) {
+      const u = await DB.postUrl(p.file_path).catch(() => null);
+      const f = m.querySelector('[data-nvf]'); if (f && u) f.innerHTML = `<img src="${esc(u)}" alt="">`;
+      const b = m.querySelector('[data-nvfile]'); if (b) b.onclick = async () => { const u2 = await DB.postUrl(p.file_path).catch(() => null); if (u2) window.open(u2, '_blank', 'noopener'); else toast('No se pudo abrir el archivo', 'err'); };
+    }
+  }
+  const wirePosts = (root, posts) => root.querySelectorAll('[data-post]').forEach(b => b.onclick = () => openPost(posts.find(p => p.id === b.dataset.post)));
+  // Inicio del cliente: las últimas 3 y las ventajas
+  async function homePosts(home) {
+    const [posts, perks] = await Promise.all([loadPosts().catch(() => null), loadPerks()]);
+    const pb = home.querySelector('[data-posts]'), vb = home.querySelector('[data-perks]');
+    const list = (posts || []).filter(p => p.published);
+    if (pb) { if (!list.length) pb.innerHTML = ''; else {
+      pb.innerHTML = `<section class="card nv-card"><header class="row gap"><h3 class="grow">💊 Píldoras y novedades</h3><a class="small link-a" href="#/pildoras">Ver todas ›</a></header><ul class="nv-list">${list.slice(0, 3).map(postRow).join('')}</ul></section>`;
+      wirePosts(pb, list); } }
+    if (vb) { vb.innerHTML = perks.filter(x => x && x.title).map(x => `<section class="card perk"><span class="perk-ic">🎁</span><div class="grow"><small>Premio por usar la app</small><b>${esc(x.title)}</b>${x.text ? `<p>${esc(x.text)}</p>` : ''}</div>${x.code ? `<button type="button" class="perk-code" data-copy="${esc(x.code)}" title="Copiar el código"><b>${esc(x.code)}</b><small>Copiar</small></button>` : ''}</section>`).join('');
+      vb.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Código copiado: ' + b.dataset.copy); } catch (e) { toast('Tu código: ' + b.dataset.copy); } }); }
+  }
+  // Página de todas (cliente)
+  async function clientPosts() {
+    shell(clientNav(), 'inicio', loading(), { title: 'Píldoras y novedades', back: '' });
+    const box = $app.querySelector('.content'); let posts = [];
+    try { posts = (await loadPosts()).filter(p => p.published); } catch (e) { posts = []; }
+    let f = 'all';
+    const draw = () => { const l = posts.filter(p => f === 'all' || p.kind === f);
+      box.innerHTML = `<div class="np-plans">${[['all', 'Todas'], ['pildora', '💊 Píldoras'], ['novedad', '📣 Novedades']].map(([k, t]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+        ${l.length ? `<section class="card flush"><ul class="nv-list">${l.map(postRow).join('')}</ul></section>` : '<p class="empty">Aún no hay nada publicado aquí.</p>'}`;
+      box.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { f = b.dataset.f; draw(); }); wirePosts(box, posts); };
+    draw();
+  }
+  // Entrenador: publicar y editar
+  async function coachPosts() {
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Publicaciones', back: '', actions: `<button class="btn small primary" data-pnew>${ic('plus')}<span>Nueva</span></button>` });
+    const box = $app.querySelector('.content');
+    let posts; try { posts = await loadPosts(); } catch (e) { box.innerHTML = '<p class="empty">Falta ejecutar la migración 039 en Supabase.</p>'; return; }
+    const perks = await loadPerks();
+    box.innerHTML = `<p class="muted small">Lo publicado sale en el Inicio de todos tus clientes («Píldoras y novedades»). Los borradores solo los ves tú.</p>
+      <section class="card flush">${posts.length ? `<ul class="nv-list">${posts.map(p => postRow(p).replace('</button></li>', `</button><button type="button" class="icon-btn sm" data-pedit="${p.id}" aria-label="Editar" title="Editar">${ic('edit')}</button></li>`)).join('')}</ul>` : '<p class="empty pad">Aún no hay publicaciones. Pulsa «Nueva».</p>'}</section>
+      <section class="card"><header class="row gap"><h3 class="grow">🎁 Ventajas para clientes</h3><button type="button" class="btn small" data-perkadd>${ic('plus')} Añadir</button></header>
+        <p class="muted small">Salen en el Inicio de cada cliente como premio por usar la app, con un botón para copiar el código.</p>
+        <div data-perks>${perks.map((x, i) => `<div class="perk-ed" data-i="${i}"><input data-pt value="${esc(x.title || '')}" placeholder="Ej: 10 % en LifePro Güímar" maxlength="80"><input data-px value="${esc(x.text || '')}" placeholder="Texto (opcional)" maxlength="200"><input data-pc value="${esc(x.code || '')}" placeholder="Código" maxlength="40"><button type="button" class="icon-btn sm" data-perkdel aria-label="Quitar">${ic('trash')}</button></div>`).join('')}</div>
+        <button type="button" class="btn small primary" data-perksave>Guardar ventajas</button></section>`;
+    $app.querySelector('[data-pnew]').onclick = () => postForm(null, coachPosts);
+    box.querySelectorAll('[data-pedit]').forEach(b => b.onclick = () => postForm(posts.find(p => p.id === b.dataset.pedit), coachPosts));
+    wirePosts(box, posts);
+    const readPerks = () => [...box.querySelectorAll('.perk-ed')].map(r => ({ title: r.querySelector('[data-pt]').value.trim(), text: r.querySelector('[data-px]').value.trim(), code: r.querySelector('[data-pc]').value.trim() }));
+    const redrawPerks = list => { box.querySelector('[data-perks]').innerHTML = list.map(x => `<div class="perk-ed"><input data-pt value="${esc(x.title)}" placeholder="Ej: 10 % en LifePro Güímar" maxlength="80"><input data-px value="${esc(x.text)}" placeholder="Texto (opcional)" maxlength="200"><input data-pc value="${esc(x.code)}" placeholder="Código" maxlength="40"><button type="button" class="icon-btn sm" data-perkdel aria-label="Quitar">${ic('trash')}</button></div>`).join(''); wirePerkDel(); };
+    const wirePerkDel = () => box.querySelectorAll('[data-perkdel]').forEach(b => b.onclick = () => { b.closest('.perk-ed').remove(); });
+    wirePerkDel();
+    box.querySelector('[data-perkadd]').onclick = () => redrawPerks(readPerks().concat([{ title: '', text: '', code: '' }]));
+    box.querySelector('[data-perksave]').onclick = () => safe(() => DB.upsert('public_texts', { key: 'perks', value: JSON.stringify(readPerks().filter(x => x.title)), updated_at: new Date().toISOString() }, 'key'), 'Ventajas guardadas ✓');
+  }
+  function postForm(p, after) {
+    const e = p || { kind: 'pildora', published: true };
+    const f = modal(p ? 'Editar publicación' : 'Nueva publicación', `
+      <div class="form-grid"><label>Tipo<select name="kind">${Object.entries(POST_K).map(([k, [l, em]]) => `<option value="${k}" ${e.kind === k ? 'selected' : ''}>${em} ${l}</option>`).join('')}</select></label>
+        <label>Tema<input name="tag" list="post-tags" value="${esc(e.tag || '')}" maxlength="40" placeholder="Nutrición, Entreno…"><datalist id="post-tags">${POST_TAGS.map(t => `<option value="${t}">`).join('')}</datalist></label></div>
+      <label>Título<input name="title" required maxlength="200" value="${esc(e.title || '')}"></label>
+      <label>Texto<textarea name="body" rows="10" maxlength="20000" placeholder="Escribe aquí. **negrita**, y líneas que empiecen por «- » para hacer una lista.">${esc(e.body || '')}</textarea></label>
+      <label>Archivo <small class="muted">imagen, PDF… hasta 20 MB</small><input type="file" name="file"></label>
+      ${e.file_path ? `<label class="check"><input type="checkbox" name="rmfile"> Quitar el archivo actual (${esc(e.file_name || 'archivo')})</label>` : ''}
+      <label>Enlace <small class="muted">opcional</small><input name="link" type="url" maxlength="1000" value="${esc(e.link || '')}" placeholder="https://…"></label>
+      <label class="check"><input type="checkbox" name="published" ${e.published ? 'checked' : ''}> Publicada (la ven tus clientes)</label>
+      <label class="check"><input type="checkbox" name="pinned" ${e.pinned ? 'checked' : ''}> Fijada arriba</label>`, {
+      submitLabel: p ? 'Guardar' : 'Publicar',
+      danger: p ? { label: 'Borrar', run: async () => { if (!(await confirmBox('Se borrará esta publicación para todos.'))) return; await safe(async () => { if (p.file_path) await DB.removePostFile(p.file_path).catch(() => {}); await DB.remove('posts', p.id); }, 'Borrada'); closeModal(); after(); } } : null,
+      onSubmit: async (form, fd) => {
+        const title = String(fd.get('title') || '').trim(); if (!title) { toast('Pon un título', 'err'); return false; }
+        const row = { kind: fd.get('kind'), title, tag: String(fd.get('tag') || '').trim() || null, body: String(fd.get('body') || '').trim() || null, link: String(fd.get('link') || '').trim() || null,
+          published: !!fd.get('published'), pinned: !!fd.get('pinned'), updated_at: new Date().toISOString() };
+        const file = form.file.files[0];
+        if (file && file.size > 20 * 1024 * 1024) { toast('El archivo pasa de 20 MB', 'err'); return false; }
+        try { await safe(async () => {
+          if (file || fd.get('rmfile')) { if (p && p.file_path) await DB.removePostFile(p.file_path).catch(() => {}); Object.assign(row, { file_path: null, file_name: null, file_type: null }); }
+          if (file) Object.assign(row, { file_path: await DB.uploadPost(file), file_name: file.name.slice(0, 200), file_type: (file.type || '').slice(0, 100) || null });
+          if (p) await DB.update('posts', p.id, row); else await DB.insert('posts', row);
+        }, row.published ? 'Publicado ✓' : 'Guardado como borrador'); } catch (er) { return false; }
+        after();
+      }
+    });
+    return f;
   }
 
   // ================================================================ CLIENTE · PERFIL (foto, datos, notificaciones, apariencia, privacidad)

@@ -2068,3 +2068,22 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 .rs-out { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .rs-out img { width: 220px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
 @media (max-width: 700px) { .rs-tpls { grid-template-columns: 1fr; } }
+
+/* ---------- Píldoras y novedades + ventajas */
+.nv-list { list-style: none; margin: 0; padding: 0; }
+.nv-list li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.nv-list li:last-child { border-bottom: 0; }
+.nv-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 6px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nv-row:hover { background: var(--card2); border-radius: 10px; }
+.nv-ic { width: 38px; height: 38px; flex: none; border-radius: 12px; display: grid; place-items: center; font-size: 19px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.nv-row .grow { min-width: 0; } .nv-row .grow b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .nv-row small { color: var(--muted); font-size: 12px; }
+.nv-draft { color: var(--amber, #c98a1b); display: inline !important; }
+.nv-body p { margin: 0 0 10px; line-height: 1.55; } .nv-body ul { margin: 0 0 10px; padding-left: 20px; line-height: 1.5; }
+.nv-img img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; margin-bottom: 10px; background: var(--card2); }
+.perk { display: flex; align-items: center; gap: 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--card)), var(--card)); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.perk-ic { font-size: 30px; flex: none; }
+.perk .grow { min-width: 0; } .perk small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); } .perk b { display: block; font-size: 16px; } .perk p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.perk-code { flex: none; display: flex; flex-direction: column; align-items: center; padding: 8px 14px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; cursor: pointer; }
+.perk-code b { font-size: 16px; letter-spacing: .04em; } .perk-code small { color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 600; }
+.perk-ed { display: grid; grid-template-columns: 1.2fr 1.5fr .8fr auto; gap: 6px; margin-bottom: 6px; align-items: center; }
+@media (max-width: 700px) { .perk-ed { grid-template-columns: 1fr 1fr auto; } .perk-ed [data-px] { grid-column: 1 / -1; grid-row: 2; } }
