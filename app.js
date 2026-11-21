@@ -1109,7 +1109,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['diario', 'Diario'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['resumen', 'Resumen 📸'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['diario', 'Diario'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     if (tab === 'mensajes') return go(`#/cliente/${id}/progreso`);   // los mensajes se quitaron: se habla por WhatsApp
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
@@ -1135,10 +1135,88 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
     if (tab === 'progreso') return tabProgress(c, box, true);
+    if (tab === 'resumen') return tabResumen(c, box);
     if (tab === 'ficha') return tabFicha(c, box);
     if (tab === 'revisiones') return tabReviews(c, box);
     if (tab === 'cobros') return tabClientPayments(c, box);
     if (tab === 'diario') return notesBox(c, box);
+  }
+
+  // ---------- Resumen para Instagram: lo más importante del cliente, en una tarjeta para sacarle foto (solo entrenador)
+  // Opciones (en este dispositivo): nombre completo / inicial / anónimo, kilos o solo cambios, fotos de antes y ahora.
+  const IG_KEY = 'jmfit-ig-opts';
+  async function tabResumen(c, box) {
+    const [checkins, sessions, logs, daily, photos, pweeks] = await Promise.all([
+      DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
+      clientSessions(c.id), clientLogs(c.id),
+      DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
+    ]);
+    let O = { name: 'first', kg: true, pics: false };
+    try { O = Object.assign(O, JSON.parse(localStorage.getItem(IG_KEY) || '{}')); } catch (e) { /* por defecto */ }
+    const done = sessions.filter(s => s.finished_at);
+    const rows = weeklyRows(checkins, daily).filter(r => r.avg != null), w0 = rows[0], w1 = rows[rows.length - 1];
+    const cks = checkins.slice().reverse();                                  // del más antiguo al más nuevo
+    const dates = [cks[0] && cks[0].date, done.length && String(done[done.length - 1].started_at).slice(0, 10), c.start_date, w0 && w0.wk].filter(Boolean).sort();
+    const from = dates[0] || today(), weeks = Math.max(1, Math.round((new Date(today()) - new Date(from)) / (7 * 864e5)));
+    // fuerza: mejor serie del principio frente a la mejor de ahora (sin semanas de descarga)
+    const dlW = pweeks.filter(w => w.kind === 'deload'), isDl = iso => { const d = String(iso || '').slice(0, 10); return dlW.some(w => d >= w.start_date && d <= addDays(w.start_date, 6)); };
+    const dlSid = new Set(sessions.filter(x => isDl(x.started_at)).map(x => x.id));
+    const H = exHistory(logs.filter(l => !dlSid.has(l.session_id)), sessions);
+    const nameOf = k => (logs.find(l => String(l.exercise_name).trim().toLowerCase() === k) || {}).exercise_name || k;
+    const str = Object.entries(H).filter(([, h]) => h.length >= 2).map(([k, h]) => { const a = h[0], b = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]); return { n: nameOf(k), a, b, pct: a.e1 ? (b.e1 - a.e1) / a.e1 * 100 : 0 }; })
+      .filter(x => x.pct > 0.5).sort((x, y) => y.pct - x.pct).slice(0, 4);
+    // medidas: primera y última vez que se midió cada una
+    const MS = [['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['body_fat', '% grasa']];
+    const meas = MS.map(([k, l]) => { const xs = cks.filter(x => x[k] != null && x[k] !== ''); return xs.length > 1 ? { l, k, a: Number(xs[0][k]), b: Number(xs[xs.length - 1][k]) } : null; }).filter(m => m && Math.abs(m.b - m.a) >= 0.5).slice(0, 4);
+    const last8 = checkins.slice(0, 8), adh = k => avg(last8.map(x => x[k]));
+    const tA = adh('train_adh'), dA = adh('diet_adh');
+    const vol = done.reduce((s, x) => s + (Number(x.volume) || 0), 0);
+    const dw = w0 && w1 && w0 !== w1 ? w1.avg - w0.avg : null;
+    const first = String(c.name || '').trim().split(/\s+/)[0] || 'Cliente';
+    const who = O.name === 'full' ? c.name : O.name === 'first' ? first : O.name === 'initial' ? first[0] + '.' : 'Cliente del equipo';
+    const fmtD = d => fmtDate(d, { day: 'numeric', month: 'short', year: 'numeric' });
+    const pct = v => (v > 0 ? '+' : '') + Math.round(v) + ' %';
+    const front = photos.filter(p => !p.archived_at && (p.pose === 'front' || !p.pose)).map(p => ({ p, d: (checkins.find(k => k.id === p.checkin_id) || {}).date || '' })).filter(x => x.d).sort((a, b) => a.d.localeCompare(b.d));
+    const pA = front[0], pB = front.length > 1 ? front[front.length - 1] : null;
+    const tile = (big, small, cls = '') => `<div class="ig-k ${cls}"><b>${big}</b><small>${small}</small></div>`;
+    const card = `<div class="ig-card" data-igcard>
+        <div class="ig-top"><img src="logo.webp" alt="TEAM JMFIT"><span>Progreso</span></div>
+        <h2>${esc(who)}</h2><p class="ig-sub">${weeks} semana${weeks === 1 ? '' : 's'} de trabajo · desde ${esc(fmtD(from))}</p>
+        ${O.pics && pA && pB ? `<div class="ig-pics"><figure><div data-igp="a"></div><figcaption>Antes · ${esc(fmtDate(pA.d, { day: 'numeric', month: 'short' }))}</figcaption></figure><figure><div data-igp="b"></div><figcaption>Ahora · ${esc(fmtDate(pB.d, { day: 'numeric', month: 'short' }))}</figcaption></figure></div>` : ''}
+        <div class="ig-grid">
+          ${dw != null ? tile(`${sgn(Math.round(dw * 10) / 10)} kg`, O.kg ? `${fmtKg(w0.avg)} → ${fmtKg(w1.avg)} kg` : 'de peso', 'hl') : ''}
+          ${tile(done.length, 'entrenos hechos')}
+          ${tile(checkins.length, 'revisiones')}
+          ${vol > 0 ? tile(vol >= 1e4 ? Math.round(vol / 1000).toLocaleString('es-ES') + '.000 kg' : Math.round(vol).toLocaleString('es-ES') + ' kg', 'levantados en total') : ''}
+          ${tA != null ? tile(Math.round(tA * 10) / 10 + '/10', 'cumplimiento entreno') : ''}
+          ${dA != null ? tile(Math.round(dA * 10) / 10 + '/10', 'cumplimiento dieta') : ''}
+        </div>
+        ${str.length ? `<h3>💪 Fuerza</h3><ul class="ig-list">${str.map(x => `<li><span>${esc(x.n)}</span>${O.kg ? `<small>${fmtKg(x.a.w)}×${x.a.r} → ${fmtKg(x.b.w)}×${x.b.r}</small>` : ''}<b>${pct(x.pct)}</b></li>`).join('')}</ul>` : ''}
+        ${meas.length ? `<h3>📏 Medidas</h3><ul class="ig-list">${meas.map(m => `<li><span>${esc(m.l)}</span>${O.kg ? `<small>${fmtKg(m.a)} → ${fmtKg(m.b)}${m.k === 'body_fat' ? ' %' : ' cm'}</small>` : ''}<b>${sgn(Math.round((m.b - m.a) * 10) / 10)}${m.k === 'body_fat' ? ' %' : ' cm'}</b></li>`).join('')}</ul>` : ''}
+        <p class="ig-foot">Entrenamiento y nutrición · <b>TEAM JMFIT</b></p>
+      </div>`;
+    const chip = (k, v, l) => `<button type="button" class="chip ${O[k] === v ? 'on' : ''}" data-ig="${k}" data-v="${v}">${l}</button>`;
+    box.innerHTML = `<section class="card ig-opts"><h3>Resumen para Instagram</h3>
+        <p class="muted small">Lo más importante de ${esc(first)} en una tarjeta. Pulsa «Pantalla completa» y saca una captura. Antes de publicarlo, pídele permiso a ${esc(first)}.</p>
+        <div class="np-plans"><small class="muted">Nombre</small>${chip('name', 'full', 'Completo')}${chip('name', 'first', 'Solo nombre')}${chip('name', 'initial', 'Inicial')}${chip('name', 'anon', 'Anónimo')}</div>
+        <div class="np-plans"><small class="muted">Cifras</small>${chip('kg', true, 'Kilos y medidas')}${chip('kg', false, 'Solo cambios')}</div>
+        ${pA && pB ? `<div class="np-plans"><small class="muted">Fotos</small>${chip('pics', false, 'Sin fotos')}${chip('pics', true, 'Antes y ahora')}</div>` : ''}
+        <button type="button" class="btn primary" data-igfull>⤢ Pantalla completa</button></section>
+      <div class="ig-wrap">${card}</div>`;
+    box.querySelectorAll('[data-ig]').forEach(b => b.onclick = () => {
+      const v = b.dataset.v; O[b.dataset.ig] = v === 'true' ? true : v === 'false' ? false : v;
+      try { localStorage.setItem(IG_KEY, JSON.stringify(O)); } catch (e) { /* solo esta vez */ }
+      tabResumen(c, box);
+    });
+    const loadPics = root => { if (!(O.pics && pA && pB)) return; [['a', pA], ['b', pB]].forEach(([k, x]) => DB.photoUrl(x.p.path).then(u => { const el = root.querySelector(`[data-igp="${k}"]`); if (el) el.innerHTML = `<img src="${esc(u)}" alt="">`; }).catch(() => {})); };
+    const ks = [...box.querySelectorAll('.ig-k:not(.hl)')]; if (ks.length % 2) ks[ks.length - 1].classList.add('wide');
+    loadPics(box);
+    box.querySelector('[data-igfull]').onclick = () => {
+      const ov = document.createElement('div'); ov.className = 'ig-full'; ov.innerHTML = '<div class="ig-in">' + box.querySelector('[data-igcard]').outerHTML + '<p class="ig-close">Toca para cerrar</p></div>';
+      ov.onclick = () => ov.remove(); document.body.appendChild(ov); loadPics(ov);
+    };
   }
 
   // ---------- Diario / bloc de notas del entrenador por cliente (migración 020; solo lo ve el entrenador)
