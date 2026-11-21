@@ -2577,7 +2577,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       h.addEventListener('click', tog); h.addEventListener('keydown', tog);
     });
   }
-  // Progreso del entrenador: dos columnas en ordenador y orden propio arrastrando ⋮⋮ junto al nombre de cada apartado.
+  // Progreso del entrenador: orden propio arrastrando ⋮⋮ junto al nombre de cada apartado.
   // El orden se guarda en public_texts.coach_prog_order (solo lo ve el entrenador; no cambia lo que ve el cliente).
   const CPO_KEY = 'jmfit-coach-prog-order';
   async function coachProgOrder() {
@@ -2594,6 +2594,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function coachProgLayout(box) {
     box.classList.add('pg2');
     const blocks = () => [...box.querySelectorAll(':scope > [data-po]')];
+    // un apartado con varias tarjetas (p. ej. Estrés y fatiga + Carga semanal y bienestar) se separa para moverlas por separado
+    blocks().forEach(el => {
+      const kids = [...el.children].filter(x => x.matches('section.card') || x.querySelector('section.card'));
+      kids.slice(1).forEach((k, n) => { const d = document.createElement('div'); d.dataset.po = el.dataset.po + '-' + (n + 2); d.appendChild(k); el.after(d); });
+    });
     blocks().forEach(el => { el.hidden = !el.querySelector('section, .kpis, .card, canvas, svg'); });
     const o = await coachProgOrder();
     o.forEach(k => { const el = box.querySelector(`:scope > [data-po="${k}"]`); if (el) box.appendChild(el); });
@@ -2687,14 +2692,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${preview ? `<p class="note small">👁 Así ve ${esc(c.name.split(' ')[0])} su Progreso. <button type="button" class="btn small" data-unpreview>Volver a mi vista</button></p>` : ''}
       ${!asCoach && !preview && !ckOff(c) ? ckCta(checkins[0], window.JMCk && ckOn(c) ? JMCk.status(c, checkins, await loadSkips(c.id), today()) : null) : ''}
       ${asCoach ? '' : `<div data-po="cks"><section class="card ck-top"><h3>Mis check-ins <small class="muted">${checkins.length}</small></h3>${checkins.some(k => k.coach_reply) ? '<p class="ck-legend">💬 = tienes un mensaje de tu entrenador. Toca el check-in para leerlo.</p>' : ''}<div data-cks>${checkins.length ? '' : '<p class="empty">Aún no hay check-ins.</p>'}</div></section></div>`}
-      <div data-po="kpis"><div class="kpis small">
+      <div data-po="kpis">${asCoach && !preview ? '<section class="card kpi-fold"><h3>Resumen de la semana</h3>' : ''}<div class="kpis small">
         <div class="kpi"><small>Peso medio esta semana</small><b>${last ? fmtKg(last.avg) + ' kg' : '–'}</b><span>${last ? `${last.n} pesaje${last.n === 1 ? '' : 's'} · semana del ${fmtDate(last.wk)}` : 'Apunta tu peso en el check-in'}</span></div>
         ${target != null ? (() => { const prevW = wrows.length > 1 ? wrows[wrows.length - 2] : null, exp = prevW ? Math.round((prevW.avg + target) * 10) / 10 : null, bd = window.JMGoals && last ? JMGoals.rateBand(target, last.avg) : null;
           return `<div class="kpi exp"><small>Cambio esperado</small><b>${sgn(target)} kg</b><span>por semana${bd ? ' (' + esc(bd.l.toLowerCase()) + ')' : ''}${exp != null ? ` · ≈ ${fmtKg(exp)} kg esta semana` : ''}</span></div>`; })() : ''}
         <div class="kpi ${last && last.delta != null && vsT(last.delta) === 'off' ? 'warn' : ''}"><small>Cambio semanal</small><b>${last && last.delta != null ? sgn(last.delta) + ' kg' : '–'}</b><span>${target != null && last && last.delta != null ? `${sgn(Math.round((last.delta - target) * 100) / 100)} kg vs lo esperado` : pace != null ? `media ${sgn(pace)} kg/sem` : 'falta otra semana'}</span></div>
         <div class="kpi"><small>${goal != null ? 'Peso objetivo' : 'Desde el inicio'}</small><b>${goal != null ? fmtKg(goal) + ' kg' : first && last && first !== last ? sgn(last.avg - first.avg) + ' kg' : '–'}</b><span>${goal != null && left != null ? (Math.abs(left) <= 0.2 ? '¡Conseguido! 🎉' : `faltan ${fmtKg(Math.abs(left))} kg${etaW ? ` · ~${etaW} sem.` : ''}`) : first && last && first !== last ? 'en ' + (wrows.length - 1) + ' semanas' : '—'}</span></div>
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
-      </div></div>
+      </div>${asCoach && !preview ? '</section>' : ''}</div>
       <div data-po="goals"><div data-goals></div></div>
       <div data-po="carga">${VZ.map(v => v.html).join('')}${LP ? LP.html : ''}</div>
       <div data-po="peso">${wpts.length > 1 ? `<section class="card" data-wchart><h3>Peso diario</h3><div class="np-plans wc-rng">${WR.map(([k, l]) => `<button type="button" class="chip ${k === wr ? 'on' : ''}" data-wr="${k}">${l}</button>`).join('')}</div><div data-wc></div><p class="muted small">Cada punto es un día que se pesó (o su check-in). La media de cada semana está en «Semana a semana».</p></section>` : ''}
@@ -2727,11 +2732,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       wcBox.querySelectorAll('[data-wr]').forEach(b => b.classList.toggle('on', b.dataset.wr === wr));
     };
     if (wcBox) { drawW(); wcBox.querySelectorAll('[data-wr]').forEach(b => b.onclick = () => { wr = b.dataset.wr; try { localStorage.setItem('jmfit-wrange', wr); } catch (e) { /* solo esta vez */ } drawW(); }); }
-    if (!only) foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso', 'Mis check-ins']);
+    if (!only) foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Resumen', 'Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso', 'Mis check-ins']);
     if (!only) {
       VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
       if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
-      if (asCoach) foldify(box, 'progc', ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos']);   // otra vez: los objetivos se pintan después
+      if (asCoach) foldify(box, 'progc', ['Resumen', 'Peso', 'Carga', 'Estrés y fatiga', 'Objetivos']);   // otra vez: los objetivos se pintan después
       if (coachV) await coachProgLayout(box);
     }
     const unp = box.querySelector('[data-unpreview]'); if (unp) unp.onclick = () => tabProgress(c, box, true);

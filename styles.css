@@ -1851,18 +1851,12 @@ body:has(.va-bar) .main { padding-top: 78px; }
   body[data-role="coach"] .content { max-width: 1600px; }
 }
 
-/* ---------- Progreso del entrenador: de dos en dos y orden propio arrastrando ⋮⋮ */
+/* ---------- Progreso del entrenador: orden propio arrastrando ⋮⋮ (una columna) */
 .dragh { border: 0; background: none; color: var(--muted); cursor: grab; touch-action: none; padding: 0 6px 0 0; font: inherit; font-weight: 700; letter-spacing: -2px; line-height: 1; vertical-align: baseline; }
 .dragh:hover { color: var(--accent); }
 body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
 .pg2 > [data-po].dragging { opacity: .55; outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 14px; }
 .pg2 > [data-po][hidden] { display: none; }
-@media (min-width: 1000px) {
-  /* dos columnas que se rellenan sin huecos (cada apartado entero en una columna) */
-  .pg2 { columns: 2; column-gap: 16px; }
-  .pg2 > [data-po] { break-inside: avoid; display: flow-root; }
-  .pg2 > :not([data-po]), .pg2 > [data-po="kpis"], .pg2 > [data-po="semanas"] { column-span: all; }
-}
 .r-ses { margin-top: 18px; }
 
 /* ---------- Revisiones → Cuestionario semanal */
@@ -1883,3 +1877,5 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .ck-ed-acts { margin-top: 16px; }
 @media (max-width: 600px) { .ck-ed-row { flex-wrap: wrap; } .ck-ed-side { flex-direction: row; align-items: center; min-width: 0; width: 100%; justify-content: space-between; padding-left: 38px; } }
 .ck-extra { margin-top: 4px; }
+.kpi-fold .kpis { margin-bottom: 0; }
+.pg2 { max-width: 1150px; margin-inline: auto; }   /* una columna: sin estirar las gráficas a todo el ancho */
