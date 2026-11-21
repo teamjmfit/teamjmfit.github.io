@@ -33,7 +33,7 @@
       if (!rows.length) return;
       const { esc } = U();
       const el = document.createElement('section'); el.className = 'card fr-home';
-      el.innerHTML = `<div class="row gap"><b class="grow">📝 ${rows.length} formulario${rows.length > 1 ? 's' : ''} nuevo${rows.length > 1 ? 's' : ''}</b><a class="btn small primary" href="#/formularios">Ver</a></div>
+      el.innerHTML = `<div class="row gap"><b class="grow">📝 ${rows.length} formulario${rows.length > 1 ? 's' : ''} nuevo${rows.length > 1 ? 's' : ''}</b><a class="btn small primary" href="#/revisiones/formularios">Ver</a></div>
         <p class="small muted">${rows.slice(0, 3).map(r => `${esc(r.name || 'Sin nombre')} · ${FORMS[r.form] || r.form}`).join('<br>')}</p>`;
       host.prepend(el);
     } catch (e) { /* la tabla aún no existe o sin conexión */ }
