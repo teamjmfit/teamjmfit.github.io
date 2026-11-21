@@ -1155,14 +1155,20 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Opciones (en este dispositivo): nombre completo / inicial / anónimo, kilos o solo cambios, fotos de antes y ahora.
   const IG_KEY = 'jmfit-ig-opts';
   async function tabResumen(c, box) {
-    const [checkins, sessions, logs, daily, pweeks] = await Promise.all([
+    const [checkins, sessions, logs, daily, pweeks, phs] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
       clientSessions(c.id), clientLogs(c.id),
       DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
-      DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
+      DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => []),
+      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => [])
     ]);
-    let O = { name: 'first', kg: true, range: 'all', inc: { peso: true, graf: true, tot: true, cump: true, ej: true } };
-    try { const v = JSON.parse(localStorage.getItem(IG_KEY) || '{}'); O = Object.assign(O, v, { inc: Object.assign({}, O.inc, v.inc || {}) }); } catch (e) { /* por defecto */ }
+    let O = { name: 'first', kg: true, range: 'all', inc: { peso: true, graf: true, tot: true, cump: true, ej: true }, img: 'none', tpl: 'duo', pose: 'front', cinc: { peso: true, graf: true, ej: true, cump: false, tot: false } };
+    try { const v = JSON.parse(localStorage.getItem(IG_KEY) || '{}'); O = Object.assign(O, v, { inc: Object.assign({}, O.inc, v.inc || {}), cinc: Object.assign({}, O.cinc, v.cinc || {}) }); } catch (e) { /* por defecto */ }
+    // Módulo de imagen: revisiones con fotos (de la más antigua a la más nueva) y lo elegido (en memoria mientras la app está abierta)
+    const ckWith = checkins.slice().reverse().map(k => ({ k, ps: ckPics(k, phs.filter(p => p.checkin_id === k.id)) })).filter(x => x.ps.length);
+    S.rsImg = S.rsImg || {}; const st = S.rsImg[c.id] = S.rsImg[c.id] || {};
+    if (!ckWith.some(x => x.k.id === st.A)) st.A = ckWith[0] ? ckWith[0].k.id : null;
+    if (!ckWith.some(x => x.k.id === st.B)) st.B = ckWith.length > 1 ? ckWith[ckWith.length - 1].k.id : null;
     const save = () => { try { localStorage.setItem(IG_KEY, JSON.stringify(O)); } catch (e) { /* solo esta vez */ } };
     const t = today(), RG = [['28', '4 semanas'], ['56', '8 semanas'], ['91', '3 meses'], ['all', 'Todo']];
     const allDates = [checkins.length && checkins[checkins.length - 1].date, sessions.length && String(sessions[sessions.length - 1].started_at).slice(0, 10), c.start_date].filter(Boolean).sort();
@@ -1203,6 +1209,25 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const dTxt = (v, f) => (v == null ? '' : `<small class="${dCls(v)}">${v > 0 ? '▲' : v < 0 ? '▼' : '='} ${f(Math.abs(v))}</small>`);
     const chip = (k, v, l) => `<button type="button" class="chip ${String(O[k]) === String(v) ? 'on' : ''}" data-o="${k}" data-v="${v}">${l}</button>`;
     const inc = (k, l) => `<label class="check"><input type="checkbox" data-inc="${k}" ${O.inc[k] ? 'checked' : ''}> ${l}</label>`;
+    const ckOpt = sel0 => ckWith.map(x => `<option value="${x.k.id}" ${x.k.id === sel0 ? 'selected' : ''}>${esc(fmtDate(x.k.date, { day: 'numeric', month: 'short', year: 'numeric' }))}${x.k.weight ? ' · ' + fmtKg(x.k.weight) + ' kg' : ''} (${x.ps.length} foto${x.ps.length > 1 ? 's' : ''})</option>`).join('');
+    const TPL = [['duo', 'Antes / Después', 'Historia 9:16 · 2 fotos de la misma postura'], ['trio', '3 posturas', 'Historia 9:16 · frente, perfil y espalda'], ['post', 'Publicación', 'Post 4:5 · 2 fotos de la misma postura']];
+    function imgModule() {
+      const mc = (v, l) => `<button type="button" class="chip ${O.img === v ? 'on' : ''}" data-o="img" data-v="${v}">${l}</button>`;
+      const recent = ckWith.slice().reverse().flatMap(x => x.ps.map(p => ({ p, d: x.k.date }))).slice(0, 12);
+      let body = '';
+      if (O.img === 'single') body = `<div class="rs-single"><div class="rs-sprev" data-sprev>${st.single ? `<img src="${esc(st.single.src)}" alt="">` : '<span>Ninguna elegida</span>'}</div>
+          <div class="grow"><label class="btn small">⬆ Subir una foto<input type="file" accept="image/*" hidden data-sup></label>
+          ${recent.length ? `<p class="muted small">o elige una de sus revisiones:</p><div class="rs-thumbs">${recent.map((x, i) => `<button type="button" class="rs-th ${st.single && st.single.path === x.p.path ? 'on' : ''}" data-spick="${i}" title="${esc(phLabel(x.p.pose))} · ${esc(fmtDate(x.d, { day: 'numeric', month: 'short' }))}"><span data-path="${esc(x.p.path)}"></span></button>`).join('')}</div>` : ''}
+          <p class="muted small">La foto va arriba, a todo el ancho, y debajo lo marcado en «Incluir».</p></div></div>`;
+      if (O.img === 'comp') body = ckWith.length < 2 ? '<p class="empty">Hacen falta al menos dos revisiones con fotos para comparar.</p>' : `
+          <div class="rs-tpls">${TPL.map(([k, l, dsc]) => `<button type="button" class="rs-tpl ${O.tpl === k ? 'on' : ''}" data-o="tpl" data-v="${k}"><span class="rs-mini m-${k}"><i></i><i></i>${k === 'trio' ? '<i></i><i></i><i></i><i></i>' : ''}<b></b><b></b></span><span><b>${l}</b><small>${dsc}</small></span></button>`).join('')}</div>
+          <div class="rs-pick"><label>Antes<select data-ca>${ckOpt(st.A)}</select></label><label>Después<select data-cb>${ckOpt(st.B)}</select></label></div>
+          ${O.tpl !== 'trio' ? `<div class="np-plans"><small class="muted">Postura</small>${CK_POSES.map(([k, l]) => `<button type="button" class="chip ${O.pose === k ? 'on' : ''}" data-o="pose" data-v="${k}">${l}</button>`).join('')}</div>` : ''}
+          <div class="rs-cprev" data-cprev></div>
+          <div class="rs-inc"><small class="muted">Gráficos debajo</small>${[['peso', 'Cambio de peso'], ['graf', 'Gráfica de peso'], ['ej', `Ejercicios marcados (${sel.length})`], ['cump', 'Cumplimiento'], ['tot', 'Entrenos y revisiones']].map(([k, l]) => `<label class="check"><input type="checkbox" data-cinc="${k}" ${O.cinc[k] ? 'checked' : ''}> ${l}</label>`).join('')}</div>`;
+      return `<section class="card rs-img"><h3>Imagen <small class="muted">opcional, para la historia o publicación</small></h3>
+        <div class="np-plans">${mc('none', 'Sin imagen')}${mc('single', '1 imagen')}${mc('comp', 'Composición antes / después')}</div>${body}</section>`;
+    }
     box.innerHTML = `<div class="rs">
       <section class="card rs-head"><div class="grow"><small class="muted">Resumen de progreso</small><h2>${esc(c.name)}</h2><p class="muted small">${weeks} semana${weeks === 1 ? '' : 's'} · desde ${esc(fmtDate(from, { day: 'numeric', month: 'long', year: 'numeric' }))}</p></div>
         <div class="np-plans">${RG.map(([k, l]) => chip('range', k, l)).join('')}</div></section>
@@ -1228,85 +1253,149 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         ${EXS.length ? `<ul class="rs-ex">${EXS.map(x => `<li class="${sel.includes(x.k) ? 'on' : ''}"><label><input type="checkbox" data-ex="${esc(x.k)}" ${sel.includes(x.k) ? 'checked' : ''}><span class="grow"><b>${esc(x.n)}</b><small>${fmtKg(x.a.w)} × ${x.a.r} → ${fmtKg(x.b.w)} × ${x.b.r} · ${x.n0} sesiones</small></span>
             <span class="rs-bar"><i style="width:${Math.max(3, Math.min(100, x.pct * 2.5))}%" class="${x.pct < 0 ? 'neg' : ''}"></i></span><b class="${x.pct > 0.5 ? 'up' : x.pct < -0.5 ? 'dn' : ''}">${pct(x.pct)}</b></label></li>`).join('')}</ul>` : '<p class="empty">Aún no hay ejercicios con al menos dos sesiones en este periodo.</p>'}
         <p class="muted small">Mejora = mejor serie (1RM estimado) frente a la primera del periodo, sin contar semanas de descarga.</p></section>
+      ${imgModule()}
       <section class="card rs-story"><h3>Historia para Instagram</h3>
         <div class="np-plans"><small class="muted">Nombre</small>${chip('name', 'full', 'Completo')}${chip('name', 'first', 'Solo nombre')}${chip('name', 'initial', 'Inicial')}${chip('name', 'anon', 'Anónimo')}</div>
         <div class="np-plans"><small class="muted">Cifras</small>${chip('kg', true, 'Kilos')}${chip('kg', false, 'Solo cambios')}</div>
         <div class="rs-inc"><small class="muted">Incluir</small>${inc('peso', 'Cambio de peso')}${inc('graf', 'Gráfica de peso')}${inc('tot', 'Entrenos y revisiones')}${inc('cump', 'Cumplimiento')}${inc('ej', `Ejercicios marcados (${sel.length})`)}</div>
-        <div class="row gap wrap"><button type="button" class="btn primary" data-story>📲 Generar historia</button><small class="muted">Imagen 1080 × 1920. Antes de publicarla, pídele permiso a ${esc(first)}.</small></div></section>
+        <div class="row gap wrap"><button type="button" class="btn primary" data-story>${O.img === 'comp' ? '🖼 Generar composición' : '📲 Generar historia'}</button><small class="muted">Imagen ${O.img === 'comp' && O.tpl === 'post' ? '1080 × 1350 (publicación)' : '1080 × 1920'}${O.img === 'comp' ? ' · gráficos: los elegidos en «Imagen»' : ''}. Antes de publicarla, pídele permiso a ${esc(first)}.</small></div>
+        <div class="rs-out" data-out hidden></div></section>
     </div>`;
     box.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { const v = b.dataset.v; O[b.dataset.o] = v === 'true' ? true : v === 'false' ? false : v; save(); tabResumen(c, box); });
     box.querySelectorAll('[data-inc]').forEach(x => x.onchange = () => { O.inc[x.dataset.inc] = x.checked; save(); });
+    box.querySelectorAll('[data-cinc]').forEach(x => x.onchange = () => { O.cinc[x.dataset.cinc] = x.checked; save(); });
+    box.querySelectorAll('.rs-img [data-path]').forEach(el => phUrl(el.dataset.path).then(u => { if (u) el.innerHTML = `<img src="${esc(u)}" alt="">`; }));
+    const sup = box.querySelector('[data-sup]');
+    if (sup) sup.onchange = () => { const f = sup.files[0]; if (!f) return; if (st.single && st.single.blob) URL.revokeObjectURL(st.single.src); st.single = { src: URL.createObjectURL(f), blob: true }; tabResumen(c, box); };
+    const recent = ckWith.slice().reverse().flatMap(x => x.ps.map(p => ({ p, d: x.k.date }))).slice(0, 12);
+    box.querySelectorAll('[data-spick]').forEach(b => b.onclick = async () => { const x0 = recent[+b.dataset.spick], u = await phUrl(x0.p.path); if (!u) return; st.single = { src: u, path: x0.p.path }; tabResumen(c, box); });
+    const ca = box.querySelector('[data-ca]'), cb = box.querySelector('[data-cb]');
+    if (ca) ca.onchange = () => { st.A = ca.value; drawCprev(); }; if (cb) cb.onchange = () => { st.B = cb.value; drawCprev(); };
+    const poseOf = (id, p) => { const x0 = ckWith.find(z => z.k.id === id); return x0 ? x0.ps.find(q => (q.pose || 'front') === p) : null; };
+    function drawCprev() {
+      const pv = box.querySelector('[data-cprev]'); if (!pv) return;
+      const ps = O.tpl === 'trio' ? ['front', 'side', 'back'] : [O.pose];
+      pv.innerHTML = [['Antes', st.A], ['Después', st.B]].map(([l, id]) => `<div class="rs-crow"><small>${l}</small>${ps.map(p => { const q = poseOf(id, p); return `<span class="rs-cph">${q ? `<span data-path="${esc(q.path)}"></span>` : '<em>Sin foto</em>'}<i>${esc(phLabel(p))}</i></span>`; }).join('')}</div>`).join('');
+      pv.querySelectorAll('[data-path]').forEach(el => phUrl(el.dataset.path).then(u => { if (u) el.innerHTML = `<img src="${esc(u)}" alt="">`; }));
+    }
+    drawCprev();
     const saveSel = () => { try { localStorage.setItem(EK, JSON.stringify(sel)); } catch (e) { /* solo esta vez */ } const l = box.querySelector('[data-inc="ej"]'); if (l) l.parentNode.lastChild.textContent = ` Ejercicios marcados (${sel.length})`; };
     box.querySelectorAll('[data-ex]').forEach(x => x.onchange = () => { const k = x.dataset.ex; sel = sel.filter(y => y !== k); if (x.checked) sel.push(k); x.closest('li').classList.toggle('on', x.checked); saveSel(); });
     box.querySelector('[data-exbest]').onclick = () => { sel = EXS.filter(x => x.pct > 0.5).slice(0, 4).map(x => x.k); saveSel(); tabResumen(c, box); };
     box.querySelector('[data-story]').onclick = async () => {
       const b = box.querySelector('[data-story]'); b.disabled = true;
       try {
-        const blob = await storyImage({ who, weeks, from, dW, w0, w1, wpts, goal, done: done.length, cks: cks.length, vol, tA, dA, ex: sel.map(k => EXS.find(x => x.k === k)).filter(Boolean).slice(0, 5), O });
+        let img = { mode: 'none' };
+        if (O.img === 'single') { if (!st.single) throw new Error('elige o sube una foto (o pon «Sin imagen»)'); img = { mode: 'single', single: await canvasImg(st.single.src) }; }
+        if (O.img === 'comp') {
+          if (ckWith.length < 2 || !st.A || !st.B) throw new Error('elige dos revisiones con fotos');
+          const side = async id => { const x0 = ckWith.find(z => z.k.id === id), imgs = {};
+            for (const p of ['front', 'side', 'back']) { const q = poseOf(id, p); if (q && (O.tpl === 'trio' || p === O.pose)) imgs[p] = await canvasImg(await phUrl(q.path)).catch(() => null); }
+            return { lab: fmtDate(x0.k.date, { day: 'numeric', month: 'short' }) + (O.kg && x0.k.weight ? ' · ' + fmtKg(x0.k.weight) + ' kg' : ''), imgs }; };
+          const [A, B] = String(ckWith.find(z => z.k.id === st.A).k.date) <= String(ckWith.find(z => z.k.id === st.B).k.date) ? [st.A, st.B] : [st.B, st.A];
+          img = { mode: 'comp', tpl: O.tpl, pose: O.pose, inc: O.cinc, A: await side(A), B: await side(B) };
+        }
+        const blob = await storyImage({ who, weeks, from, dW, w0, w1, wpts, goal, done: done.length, cks: cks.length, vol, tA, dA, ex: sel.map(k => EXS.find(x => x.k === k)).filter(Boolean).slice(0, 5), O, img });
+        const out = box.querySelector('[data-out]'), ou = URL.createObjectURL(blob); out.hidden = false;
+        out.innerHTML = `<img src="${ou}" alt="Vista previa de la imagen generada"><small class="muted">Vista previa · ya se ha descargado</small>`;
         const name = `progreso-${(who || 'cliente').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${t}.png`;
         const file = new File([blob], name, { type: 'image/png' });
         if (navigator.canShare && navigator.canShare({ files: [file] }) && /iP(hone|ad|od)|Android/.test(navigator.userAgent)) { await navigator.share({ files: [file] }).catch(() => {}); }
-        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); toast('Historia descargada ✓'); }
+        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); toast('Imagen descargada ✓'); }
       } catch (e) { toast('No se pudo generar la imagen: ' + e.message, 'err'); }
       b.disabled = false;
     };
   }
-  // Dibuja la historia (1080 × 1920) con lo seleccionado
+  // Carga una imagen para dibujarla en el lienzo (las fotos de revisión vienen de otro dominio: se piden con CORS)
+  const canvasImg = src => new Promise((res, rej) => {
+    if (!src) return rej(new Error('sin foto'));
+    const i = new Image(); if (/^https?:/.test(src)) i.crossOrigin = 'anonymous';
+    i.onload = () => res(i);
+    i.onerror = () => fetch(src).then(r => r.blob()).then(b => { const j = new Image(); j.onload = () => res(j); j.onerror = () => rej(new Error('no se pudo cargar una foto')); j.src = URL.createObjectURL(b); }).catch(() => rej(new Error('no se pudo cargar una foto')));
+    i.src = src;
+  });
+  // Dibuja la imagen final con lo seleccionado. Formatos: historia 1080 × 1920 o publicación 1080 × 1350.
+  // d.img: { mode: 'none' | 'single' | 'comp', single: Image, tpl: 'duo' | 'trio' | 'post', A, B: { lab, imgs: { front, side, back } }, pose, inc }
   async function storyImage(d) {
-    const W = 1080, Hh = 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh; let x = cv.getContext('2d');
+    const im = d.img || { mode: 'none' }, post = im.mode === 'comp' && im.tpl === 'post';
+    const W = 1080, Hh = post ? 1350 : 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh; let x = cv.getContext('2d');
     if (document.fonts && document.fonts.ready) await document.fonts.ready.catch(() => {});
     const F = (w, s) => `${w} ${s}px Inter, "Inter Display", system-ui, -apple-system, sans-serif`, G = '#d9a94f', TX = '#f4f1ea', MU = 'rgba(244,241,234,.62)';
     x.fillStyle = '#0b0b0d'; x.fillRect(0, 0, W, Hh);
     let g = x.createRadialGradient(W * .9, 80, 10, W * .9, 80, 900); g.addColorStop(0, 'rgba(217,169,79,.35)'); g.addColorStop(1, 'rgba(217,169,79,0)'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
     g = x.createRadialGradient(0, Hh, 10, 0, Hh, 900); g.addColorStop(0, 'rgba(217,169,79,.22)'); g.addColorStop(1, 'rgba(217,169,79,0)'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
     const rr = (X, Y, w, h, r) => { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); };
+    const cover = (img, X, Y, w, h, r) => { x.save(); rr(X, Y, w, h, r); x.clip(); x.fillStyle = 'rgba(255,255,255,.06)'; x.fillRect(X, Y, w, h);
+      if (img) { const k = Math.max(w / img.width, h / img.height), iw = img.width * k, ih = img.height * k; x.drawImage(img, X + (w - iw) / 2, Y + (h - ih) * .3, iw, ih); }
+      else { x.fillStyle = MU; x.font = F(600, 26); x.textAlign = 'center'; x.fillText('Sin foto', X + w / 2, Y + h / 2); x.textAlign = 'left'; }
+      x.restore(); x.lineWidth = 3; x.strokeStyle = 'rgba(217,169,79,.45)'; rr(X, Y, w, h, r); x.stroke(); };
+    const tag = (txt, X, Y, w, big) => { const h = big ? 64 : 50; x.save(); const gg = x.createLinearGradient(0, Y - h, 0, Y); gg.addColorStop(0, 'rgba(0,0,0,0)'); gg.addColorStop(1, 'rgba(0,0,0,.72)'); x.fillStyle = gg; x.fillRect(X, Y - h - 20, w, h + 20); x.restore();
+      x.fillStyle = '#fff'; x.font = F(800, big ? 30 : 24); x.textAlign = 'center'; x.fillText(txt, X + w / 2, Y - (big ? 22 : 16)); x.textAlign = 'left'; };
     const logo = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = 'logo.webp'; });
-    const M = 84; let y = 110;
-    if (logo) { const lw = 260, lh = lw * logo.height / logo.width; x.drawImage(logo, M, y, lw, lh); }
-    x.fillStyle = G; x.font = F(800, 30); x.textAlign = 'right'; x.fillText('P R O G R E S O', W - M, y + 60); x.textAlign = 'left';
-    y += 230;
-    x.fillStyle = '#fff'; x.font = F(900, 104); x.fillText(String(d.who).slice(0, 18), M, y); y += 62;
-    x.fillStyle = MU; x.font = F(500, 36); x.fillText(`${d.weeks} semana${d.weeks === 1 ? '' : 's'} de trabajo · desde ${fmtDate(d.from, { day: 'numeric', month: 'short', year: 'numeric' })}`, M, y); y += 60;
-    // el resto se dibuja aparte y se centra en el hueco que queda hasta el pie
-    const top = y, main = x, bc = document.createElement('canvas'); bc.width = W; bc.height = Hh - 170 - top; const bx = bc.getContext('2d');
-    x = bx; y = 0;
+    const M = post ? 64 : 84, small = im.mode !== 'none'; let y = post ? 56 : 100;
+    // cabecera: más compacta cuando hay imagen
+    if (logo) { const lw = small ? 200 : 260, lh = lw * logo.height / logo.width; x.drawImage(logo, M, y, lw, lh); }
+    x.fillStyle = G; x.font = F(800, small ? 26 : 30); x.textAlign = 'right'; x.fillText('P R O G R E S O', W - M, y + (small ? 50 : 60)); x.textAlign = 'left';
+    y += small ? 170 : 230;
+    x.fillStyle = '#fff'; x.font = F(900, small ? 76 : 104); x.fillText(String(d.who).slice(0, 18), M, y); y += small ? 46 : 62;
+    x.fillStyle = MU; x.font = F(500, small ? 30 : 36); x.fillText(`${d.weeks} semana${d.weeks === 1 ? '' : 's'} de trabajo · desde ${fmtDate(d.from, { day: 'numeric', month: 'short', year: 'numeric' })}`, M, y); y += small ? 40 : 60;
+    // fotos
+    const fw = W - 2 * M;
+    if (im.mode === 'single') { const h = 680; cover(im.single, M, y, fw, h, 34); y += h + 30; }
+    else if (im.mode === 'comp') {
+      const lab = s => [s.lab].filter(Boolean).join('');
+      if (im.tpl === 'trio') {
+        const ps = ['front', 'side', 'back'], cw = (fw - 2 * 16) / 3, ch = 380;
+        [im.A, im.B].forEach((S0, row) => { x.fillStyle = row ? G : MU; x.font = F(800, 26); x.fillText(`${row ? 'DESPUÉS' : 'ANTES'} · ${lab(S0)}`, M, y + 28); y += 42;
+          ps.forEach((p, i) => { cover(S0.imgs[p], M + i * (cw + 16), y, cw, ch, 24); if (!row) tag(phLabel(p), M + i * (cw + 16), y + ch, cw, false); }); y += ch + 22; });
+        y += 8;
+      } else {
+        const cw = (fw - 24) / 2, ch = post ? 560 : 760;
+        [im.A, im.B].forEach((S0, i) => { cover(S0.imgs[im.pose], M + i * (cw + 24), y, cw, ch, 30); tag(`${i ? 'DESPUÉS' : 'ANTES'} · ${lab(S0)}`, M + i * (cw + 24), y + ch, cw, true); });
+        y += ch + 28;
+      }
+    }
+    // gráficos y datos: se dibujan aparte y se centran (y se encogen si no caben) en el hueco hasta el pie
+    const top = y, main = x, avail = Hh - (post ? 110 : 160) - top, bc = document.createElement('canvas'); bc.width = W; bc.height = Math.max(avail, 1800); x = bc.getContext('2d'); y = 0;
     const box = (X, Y, w, h, hl) => { rr(X, Y, w, h, 34); if (hl) { const gg = x.createLinearGradient(X, Y, X + w, Y + h); gg.addColorStop(0, 'rgba(217,169,79,.34)'); gg.addColorStop(1, 'rgba(217,169,79,.08)'); x.fillStyle = gg; } else x.fillStyle = 'rgba(255,255,255,.06)'; x.fill(); x.lineWidth = 3; x.strokeStyle = hl ? 'rgba(217,169,79,.6)' : 'rgba(255,255,255,.09)'; x.stroke(); };
-    const O = d.O;
-    if (O.inc.peso && d.dW != null) {
-      const h = O.inc.graf && d.wpts.length > 1 ? 400 : 190; box(M, y, W - 2 * M, h, true);
-      x.fillStyle = G; x.font = F(900, 96); x.fillText(`${d.dW > 0 ? '+' : ''}${fmtKg(d.dW)} kg`, M + 40, y + 120);
-      x.fillStyle = MU; x.font = F(600, 34); x.fillText(O.kg ? `${fmtKg(d.w0.avg)} → ${fmtKg(d.w1.avg)} kg` : 'de peso', M + 40, y + 168);
-      if (O.inc.graf && d.wpts.length > 1) {
-        const cx0 = M + 40, cy0 = y + 210, cw = W - 2 * M - 80, ch = 160, vs = d.wpts.map(p => p.w), lo = Math.min(...vs), hi = Math.max(...vs), sp = hi - lo || 1;
-        const px = i => cx0 + (d.wpts.length === 1 ? cw / 2 : i * cw / (d.wpts.length - 1)), py = v => cy0 + ch - (v - lo) / sp * ch;
+    const O = d.O, inc = im.mode === 'comp' ? im.inc : O.inc;
+    if (inc.peso && d.dW != null || inc.graf && d.wpts.length > 1) {
+      const showN = inc.peso && d.dW != null, showG = inc.graf && d.wpts.length > 1, h = (showN ? 190 : 40) + (showG ? 210 : 0); box(M, y, fw, h, true);
+      if (showN) { x.fillStyle = G; x.font = F(900, 96); x.fillText(`${d.dW > 0 ? '+' : ''}${fmtKg(d.dW)} kg`, M + 40, y + 120);
+        x.fillStyle = MU; x.font = F(600, 34); x.fillText(O.kg ? `${fmtKg(d.w0.avg)} → ${fmtKg(d.w1.avg)} kg` : 'de peso', M + 40, y + 168); }
+      if (showG) {
+        const cx0 = M + 40, cy0 = y + (showN ? 210 : 30), cw = fw - 80, ch = 160, vs = d.wpts.map(p => p.w), lo = Math.min(...vs), hi = Math.max(...vs), sp = hi - lo || 1;
+        const px = i => cx0 + i * cw / (d.wpts.length - 1), py = v => cy0 + ch - (v - lo) / sp * ch;
         x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 2; [0, 1].forEach(k => { x.beginPath(); x.moveTo(cx0, cy0 + k * ch); x.lineTo(cx0 + cw, cy0 + k * ch); x.stroke(); });
         const gr = x.createLinearGradient(0, cy0, 0, cy0 + ch); gr.addColorStop(0, 'rgba(217,169,79,.35)'); gr.addColorStop(1, 'rgba(217,169,79,0)');
         x.beginPath(); d.wpts.forEach((p, i) => (i ? x.lineTo(px(i), py(p.w)) : x.moveTo(px(i), py(p.w)))); x.lineTo(px(d.wpts.length - 1), cy0 + ch); x.lineTo(px(0), cy0 + ch); x.closePath(); x.fillStyle = gr; x.fill();
         x.beginPath(); d.wpts.forEach((p, i) => (i ? x.lineTo(px(i), py(p.w)) : x.moveTo(px(i), py(p.w)))); x.strokeStyle = G; x.lineWidth = 7; x.lineJoin = 'round'; x.stroke();
         x.fillStyle = G; [0, d.wpts.length - 1].forEach(i => { x.beginPath(); x.arc(px(i), py(d.wpts[i].w), 11, 0, 7); x.fill(); });
+        if (!showN) { x.fillStyle = MU; x.font = F(600, 28); x.fillText('Peso', M + 40, y + 28); }
       }
       y += h + 26;
     }
     const tiles = [];
-    if (O.inc.tot) { tiles.push([String(d.done), 'entrenos hechos']); tiles.push([String(d.cks), 'revisiones']); }
-    if (O.inc.cump) { if (d.tA != null) tiles.push([fmtKg(Math.round(d.tA * 10) / 10) + '/10', 'cumplimiento entreno']); if (d.dA != null) tiles.push([fmtKg(Math.round(d.dA * 10) / 10) + '/10', 'cumplimiento dieta']); }
-    const tw = (W - 2 * M - 24) / 2;
-    tiles.forEach((tl, i) => { const X = M + (i % 2) * (tw + 24), Y = y + Math.floor(i / 2) * 184, w = i === tiles.length - 1 && tiles.length % 2 ? W - 2 * M : tw; box(X, Y, w, 160);
+    if (inc.tot) { tiles.push([String(d.done), 'entrenos hechos']); tiles.push([String(d.cks), 'revisiones']); }
+    if (inc.cump) { if (d.tA != null) tiles.push([fmtKg(Math.round(d.tA * 10) / 10) + '/10', 'cumplimiento entreno']); if (d.dA != null) tiles.push([fmtKg(Math.round(d.dA * 10) / 10) + '/10', 'cumplimiento dieta']); }
+    const tw = (fw - 24) / 2;
+    tiles.forEach((tl, i) => { const X = M + (i % 2) * (tw + 24), Y = y + Math.floor(i / 2) * 184, w = i === tiles.length - 1 && tiles.length % 2 ? fw : tw; box(X, Y, w, 160);
       x.fillStyle = '#fff'; x.font = F(800, 64); x.fillText(tl[0], X + 34, Y + 86); x.fillStyle = MU; x.font = F(600, 30); x.fillText(tl[1], X + 34, Y + 130); });
     y += Math.ceil(tiles.length / 2) * 184 + (tiles.length ? 20 : 0);
-    if (O.inc.ej && d.ex.length) {
+    if (inc.ej && d.ex.length) {
       x.fillStyle = G; x.font = F(800, 34); x.fillText('💪  FUERZA', M, y + 30); y += 64;
-      const room = Math.max(1, Math.min(d.ex.length, Math.floor((bc.height - y) / 92)));
-      d.ex.slice(0, room).forEach(e => {
+      d.ex.slice(0, 5).forEach(e => {
         x.fillStyle = TX; x.font = F(600, 40); let n = e.n; while (x.measureText(n).width > (O.kg ? 470 : 700) && n.length > 4) n = n.slice(0, -2); if (n !== e.n) n += '…'; x.fillText(n, M, y + 46);
         if (O.kg) { x.fillStyle = MU; x.font = F(500, 30); x.textAlign = 'right'; x.fillText(`${fmtKg(e.a.w)}×${e.a.r} → ${fmtKg(e.b.w)}×${e.b.r}`, W - M - 170, y + 46); }
         x.fillStyle = e.pct >= 0 ? '#7fd18b' : '#ef8a7a'; x.font = F(800, 44); x.textAlign = 'right'; x.fillText((e.pct > 0 ? '+' : '') + Math.round(e.pct) + ' %', W - M, y + 48); x.textAlign = 'left';
         x.strokeStyle = 'rgba(255,255,255,.1)'; x.lineWidth = 2; x.beginPath(); x.moveTo(M, y + 78); x.lineTo(W - M, y + 78); x.stroke(); y += 92; });
     }
-    main.drawImage(bc, 0, top + Math.max(0, (bc.height - y) / 2)); x = main;
-    x.textAlign = 'center'; x.fillStyle = 'rgba(244,241,234,.5)'; x.font = F(600, 30); x.fillText('Entrenamiento y nutrición · TEAM JMFIT', W / 2, Hh - 90); x.textAlign = 'left';
-    return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('sin imagen'))), 'image/png'));
+    if (y > 0 && avail > 40) { const k = Math.min(1, avail / y), hh = y * k, ww = W * k; main.drawImage(bc, 0, 0, W, y, (W - ww) / 2, top + (avail - hh) / 2, ww, hh); }
+    x = main;
+    x.textAlign = 'center'; x.fillStyle = 'rgba(244,241,234,.5)'; x.font = F(600, post ? 26 : 30); x.fillText('Entrenamiento y nutrición · TEAM JMFIT', W / 2, Hh - (post ? 50 : 90)); x.textAlign = 'left';
+    return new Promise((res, rej) => { try { cv.toBlob(b => (b ? res(b) : rej(new Error('sin imagen'))), 'image/png'); } catch (e) { rej(new Error('las fotos no se pueden usar en la imagen (permiso del almacenamiento)')); } });
   }
+
 
   // ---------- Diario / bloc de notas del entrenador por cliente (migración 020; solo lo ve el entrenador)
   const NOTE_TAGS = ['Entreno', 'Nutrición', 'Salud', 'Revisión', 'Llamada', 'Idea'];
