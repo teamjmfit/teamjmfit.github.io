@@ -661,7 +661,7 @@
     ['referidos', 'Referidos', true, 'Tarjeta para invitar a amigos'],
     ['carga', 'Carga de entrenamiento (ACWR)', false, 'Normalmente solo la ves tú'],
     ['volumen', 'Volumen semanal por músculo', false, 'Normalmente solo lo ves tú'],
-    ['avisos', 'Avisos de entrenos y revisiones', true, 'A las 8 de la mañana, solo los días que le toca entrenar o enviar la revisión (si activa las notificaciones en su móvil)'],
+    ['avisos', 'Avisos de entrenos y revisiones', true, 'A las 7 de la mañana, los días que le toca entrenar o enviar la revisión: sus tareas (también apuntar peso y sueño) y una frase de motivación (si activa las notificaciones en su móvil)'],
     ['libre', 'Modo libre: crear sus propias rutinas', false, 'Puede crear rutinas (ejercicios, series, reps y RIR) y registrar lo que entrene. Las tuyas no las puede tocar']];
   const canSee = (c, k) => { const p = (c && c.ui_prefs) || {}, m = UI_MODS.find(x => x[0] === k); return k in p ? !!p[k] : (m ? m[2] : true); };
   const clientNav = () => CLIENT_NAV.filter(n => n.key !== 'nutricion' || canSee(S.client, 'nutricion'));
