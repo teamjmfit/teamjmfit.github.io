@@ -1,6 +1,6 @@
 // TEAM JMFIT · función «avisos» (Supabase Edge Function). Migración 032.
 // Trabajos (POST JSON {job}):
-//  · daily   — lo lanza pg_cron cada hora; desde las 08:00 (hora canaria) manda a cada cliente, una vez al día y
+//  · daily   — lo lanza pg_cron cada hora; desde las 07:00 (hora canaria) manda a cada cliente, una vez al día y
 //              solo si hoy le toca entrenar o enviar la revisión, sus tareas de hoy y una frase de motivación.
 //  · checkin — lo lanza la base de datos al guardar una revisión en fin de semana: aviso al entrenador.
 //  · reviewed — lo lanza la base de datos cuando el entrenador marca un check-in como revisado o le responde: aviso al cliente.
@@ -11,7 +11,7 @@
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
-const TZ = "Atlantic/Canary", HOUR = 8, APP = "https://teamjmfit.github.io/";
+const TZ = "Atlantic/Canary", HOUR = 7, APP = "https://teamjmfit.github.io/";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 
 // ---------- fechas (en hora canaria)
@@ -71,10 +71,38 @@ export function dayTasks(c: Row, d: { routines: Row[]; programs: Row[]; weeks: R
 
 // ---------- frases (propias)
 const FR = {
-  train: ["La disciplina es hacer lo que toca aunque no te apetezca.", "No hace falta que sea perfecto, hace falta que lo hagas.", "Cada serie de hoy es una inversión en tu yo de dentro de seis meses.", "La motivación te hace empezar; la constancia te hace llegar.", "Hoy no se negocia: entras, entrenas y sales mejor.", "El progreso viene de repetir lo básico muchas veces.", "Un entreno hecho vale más que diez planeados.", "Tu cuerpo cambia con lo que haces todas las semanas, no con lo que haces un día.", "Ve a por una repetición más de calidad que la última vez.", "Ganas el día cuando cumples lo que te prometiste."],
-  rest: ["Descansar también es entrenar: hoy se construye lo que trabajaste.", "Hoy toca recuperar: duerme bien, come según tu plan y muévete un poco.", "La constancia también es saber parar cuando toca.", "El músculo crece cuando descansas. Respeta el día de hoy.", "Un buen descanso hoy es un mejor entreno mañana.", "Paseo, agua y buena comida: así se gana un día de descanso."],
-  ck: ["Lo que se mide, mejora. Tu revisión me ayuda a ajustarlo todo para ti.", "Sé sincero en la revisión: con datos reales afinamos mejor.", "Dos minutos de revisión = un plan mejor hecho para ti."],
-  nutri: ["La dieta no se hace un lunes, se hace cada comida.", "Constancia antes que perfección: una buena comida detrás de otra.", "No se trata de comer perfecto, se trata de cumplir casi siempre.", "Cada comida según el plan suma. Hoy también."],
+  train: [
+    "La disciplina es hacer lo que toca aunque no te apetezca.", "No hace falta que sea perfecto, hace falta que lo hagas.",
+    "Cada serie de hoy es una inversión en tu yo de dentro de seis meses.", "La motivación te hace empezar; la constancia te hace llegar.",
+    "Hoy no se negocia: entras, entrenas y sales mejor.", "El progreso viene de repetir lo básico muchas veces.",
+    "Un entreno hecho vale más que diez planeados.", "Tu cuerpo cambia con lo que haces todas las semanas, no con lo que haces un día.",
+    "Ve a por una repetición más de calidad que la última vez.", "Ganas el día cuando cumples lo que te prometiste.",
+    "Disciplina es acordarte de por qué empezaste cuando no te apetece seguir.", "Los días sin ganas son los que más cuentan.",
+    "No esperes a estar motivado: actúa y la motivación llega.", "Comprometerse es seguir cuando la emoción del principio ya se fue.",
+    "Tú eliges: la comodidad de hoy o el resultado de mañana.", "El que cumple los días normales es el que llega lejos.",
+    "Nadie va a entrenar por ti. Hoy te toca a ti.", "Hazlo cansado, hazlo con sueño, pero hazlo.",
+    "La diferencia entre querer y conseguir se llama constancia.", "Sé la persona que no se salta el entreno.",
+    "Pequeñas victorias diarias, grandes cambios al año.", "Lo difícil de hoy es tu calentamiento de mañana.",
+    "Te comprometiste contigo: hoy toca demostrarlo.", "Entrena con intención: cada serie cuenta.",
+    "El compromiso no se nota el día que te apetece, se nota el día que no.", "Constancia aburrida, resultados increíbles.",
+  ],
+  rest: [
+    "Descansar también es entrenar: hoy se construye lo que trabajaste.", "Hoy toca recuperar: duerme bien, come según tu plan y muévete un poco.",
+    "La constancia también es saber parar cuando toca.", "El músculo crece cuando descansas. Respeta el día de hoy.",
+    "Un buen descanso hoy es un mejor entreno mañana.", "Paseo, agua y buena comida: así se gana un día de descanso.",
+    "Descansar no es parar: es cumplir el plan también hoy.", "Disciplina también es dormir bien y comer bien un día sin gimnasio.",
+  ],
+  ck: [
+    "Lo que se mide, mejora. Tu revisión me ayuda a ajustarlo todo para ti.", "Sé sincero en la revisión: con datos reales afinamos mejor.",
+    "Dos minutos de revisión = un plan mejor hecho para ti.", "Tu compromiso también es contarme cómo vas, aunque la semana no fuera perfecta.",
+    "Sin datos no hay ajustes. Con tu revisión, el plan trabaja para ti.", "Una semana mala bien contada vale más que una buena sin contar.",
+    "Revisar es parte del proceso: nos dice qué mantener y qué cambiar.", "Cumplir también es rendir cuentas. Te espero en la revisión.",
+  ],
+  nutri: [
+    "La dieta no se hace un lunes, se hace cada comida.", "Constancia antes que perfección: una buena comida detrás de otra.",
+    "No se trata de comer perfecto, se trata de cumplir casi siempre.", "Cada comida según el plan suma. Hoy también.",
+    "Disciplina es elegir lo que quieres más sobre lo que quieres ahora.", "Tu compromiso se ve en el plato, comida a comida.",
+  ],
 };
 const pick = (arr: string[], seed: string) => { let h = 0; for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) | 0; return arr[Math.abs(h) % arr.length]; };
 const list = (xs: string[]) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " y " + xs[xs.length - 1];
@@ -99,6 +127,9 @@ export function dailyMessage(c: Row, k: ReturnType<typeof dayTasks>, t: string) 
   }
   tasks.push(...k.extra);
   if (ckTxt) tasks.push(ckTxt);
+  // registro diario en la app (Inicio → Registro de hoy): peso en ayunas y horas de sueño
+  const kk = k as Row, reg = [kk.needW !== false ? "tu peso en ayunas" : "", kk.needS !== false ? "tus horas de sueño" : ""].filter(Boolean);
+  if (reg.length) tasks.push("apuntar " + reg.join(" y "));
   const body = `Hoy: ${list(tasks)}.\n${fr}`;
   return { title, body, url: APP + "#/", tag: "dia-" + t };
 }
@@ -136,11 +167,13 @@ async function sendTo(db: any, userIds: string[], msg: Row) {
 // deno-lint-ignore no-explicit-any
 async function loadDay(db: any, c: Row, t: string) {
   const q = (tb: string) => db.from(tb).select("*").eq("client_id", c.id);
-  const [routines, programs, weeks, events, checkins, skips] = await Promise.all([
+  const [routines, programs, weeks, events, checkins, skips, dm] = await Promise.all([
     q("routines"), q("programs"), q("program_weeks").eq("published", true), q("calendar_events").eq("date", t),
-    q("checkins").order("date", { ascending: false }).limit(30), q("checkin_skips"),
+    q("checkins").order("date", { ascending: false }).limit(30), q("checkin_skips"), q("daily_metrics").eq("date", t),
   ]).then(rs => rs.map((r: Row) => r.data || []));
-  return dayTasks(c, { routines, programs, weeks, events, checkins, skips }, t);
+  const k = dayTasks(c, { routines, programs, weeks, events, checkins, skips }, t);
+  const m = (dm as Row[])[0] || {};
+  return Object.assign(k, { needW: m.weight == null, needS: m.sleep_h == null });
 }
 
 export const worth = (k: ReturnType<typeof dayTasks>) => !!(k.train.length || k.ck || k.active);
