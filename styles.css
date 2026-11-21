@@ -1966,3 +1966,42 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 @media (min-width: 700px) { .cal-4 button { min-height: 72px; } .cal-4 .cd-r { font-size: 11px; } }
 .cal-key em.k-done, .cal-key em.k-plan, .cal-key em.k-dl { width: 10px; height: 10px; border-radius: 3px; }
 .k-done { background: color-mix(in srgb, var(--green) 45%, transparent); } .k-plan { background: color-mix(in srgb, var(--accent) 40%, transparent); } .k-dl { background: #2ec4b6; }
+
+/* ---------- Visor de fotos de revisión (encima de la app) */
+.ph-open { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.ph-open img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.pv { position: fixed; inset: 0; z-index: 300; background: #08080a; color: #f4f1ea; display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.pv-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px 6px; }
+.pv-t { flex: 1; min-width: 0; } .pv-t b { display: block; font-size: 15px; } .pv-t small { color: rgba(244,241,234,.6); font-size: 12.5px; }
+.pv-x { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 16px; cursor: pointer; }
+.pv-tabs { display: flex; align-items: center; gap: 6px; padding: 4px 14px 10px; overflow-x: auto; scrollbar-width: none; }
+.pv-tabs .chip { flex: none; background: rgba(255,255,255,.08); color: #f4f1ea; border-color: rgba(255,255,255,.12); }
+.pv-tabs .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pv-tabs .pv-cbtn { background: rgba(217,169,79,.2); border-color: rgba(217,169,79,.6); }
+.pv-body { flex: 1; min-height: 0; overflow: auto; padding: 0 10px 12px; }
+.pv figure { margin: 0; display: flex; flex-direction: column; min-height: 0; cursor: pointer; }
+.pv figcaption { text-align: center; font-size: 12px; color: rgba(244,241,234,.7); padding: 6px 0 0; }
+.pv-img { flex: 1; min-height: 0; display: grid; place-items: center; border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.04); }
+.pv-img img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.pv-img span { color: rgba(244,241,234,.45); font-size: 13px; }
+.pv-row { height: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.pv-row.one figure, .pv-cmp.one .pv-pair { cursor: default; }
+.pv-cmp { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+.pv-cmp.one .pv-pair { flex: 1; }
+.pv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; flex: 1 0 70%; }
+.pv-cmp.one .pv-pair { flex-basis: 100%; }
+@media (max-width: 700px) { .pv-row:not(.one) { grid-auto-flow: row; grid-auto-rows: minmax(60vh, auto); } .pv-row:not(.one) .pv-img { height: 60vh; } .pv-pair { flex-basis: 52vh; } }
+.pv-pick { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; }
+.pv-pk { width: min(560px, 100%); max-height: 80vh; overflow: auto; background: var(--card); color: var(--text); border-radius: 18px 18px 0 0; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); }
+@media (min-width: 700px) { .pv-pick { align-items: center; } .pv-pk { border-radius: 18px; } }
+.pv-pk header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pv-pk .pv-x { background: var(--card2); color: var(--text); }
+.pv-pk ul { list-style: none; margin: 0; padding: 0; }
+.pv-pk li button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pv-pk li button:hover { background: var(--card2); }
+.pv-pk li small { display: block; color: var(--muted); font-size: 12px; }
+.pv-th { width: 46px; height: 58px; flex: none; border-radius: 8px; overflow: hidden; background: var(--card2); }
+.pv-th img { width: 100%; height: 100%; object-fit: cover; }
+.pv-cmpg { height: 100%; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px 8px; }
+.pv-rl { grid-column: 1 / -1; margin: 0; font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .03em; }
