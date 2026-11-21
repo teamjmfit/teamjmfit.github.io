@@ -1934,7 +1934,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function tabCalendar(c, box) {
     S.calMonth = S.calMonth || {};
     if (!S.calHide) { try { S.calHide = new Set(JSON.parse(localStorage.getItem('jm-cal-hide') || '[]')); } catch (e) { S.calHide = new Set(); } }
-    const [y, m] = (S.calMonth[c.id] || today().slice(0, 7)).split('-').map(Number);
+    // 4 semanas: la pasada, esta y las dos siguientes (se avanza de 4 en 4); S.calFrom guarda el lunes de la primera
+    S.calFrom = S.calFrom || {};
+    if (!S.calFrom[c.id] || !/^\d{4}-\d{2}-\d{2}$/.test(S.calFrom[c.id])) S.calFrom[c.id] = addDays(mondayOf(today()), -7);
+    const from0 = S.calFrom[c.id], to0 = addDays(from0, 27);
     await rollWeeks(await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []));
     const [routines, programs, weeks, sessions] = await Promise.all([
       DB.list('routines', { eq: { client_id: c.id }, order: ['position', 'asc'] }),
@@ -1943,7 +1946,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       clientSessions(c.id)
     ]);
     // ejercicios solo de las semanas que caen en el mes que se ve (y de las rutinas fijas)
-    const mFrom = addDays(`${y}-${String(m).padStart(2, '0')}-01`, -13), mTo = addDays(`${y}-${String(m).padStart(2, '0')}-01`, 44);
+    const mFrom = addDays(from0, -7), mTo = addDays(to0, 7);
     const wIn = new Set(weeks.filter(w => w.start_date >= mFrom && w.start_date <= mTo).map(w => w.id));
     programs.forEach(p => { const l = weeks.filter(w => w.program_id === p.id).sort((a, b) => b.week_no - a.week_no)[0]; if (l) wIn.add(l.id); });   // la última semana se repite sola
     const calIds = routines.filter(r => !r.program_week_id || wIn.has(r.program_week_id)).map(r => r.id);
@@ -1952,15 +1955,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const pweeks = prog ? weeks.filter(w => w.program_id === prog.id).sort((a, b) => a.week_no - b.week_no) : [];
     const lastW = pweeks[pweeks.length - 1];
     const fixed = routines.filter(r => !r.program_week_id);
-    const t = today(), ym = `${y}-${String(m).padStart(2, '0')}`;
-    const first = new Date(y, m - 1, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
-    const lastDay = new Date(y, m, 0), end = new Date(lastDay); end.setDate(lastDay.getDate() + (7 - ((lastDay.getDay() + 6) % 7)) - 1);
+    const t = today(), inR = iso => iso >= from0 && iso <= to0;
+    const start = new Date(from0 + 'T12:00:00'), end = new Date(to0 + 'T12:00:00');
     const [events0, checkins] = await Promise.all([loadEvents(c.id, ymd(start), ymd(end)), DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 200 }).catch(() => [])]);
     const events = events0 || [];
     const evOn = iso => events.filter(e => e.date === iso);
     const gls = window.JMGoals ? ((await loadGoals(c.id)) || []).filter(g => g.status === 'active') : [];
     const msOn = iso => gls.flatMap(g => JMGoals.blocks(g).filter(b => b.to === iso).map(b => ({ g, b })));
-    const reload = iso => { if (iso) { S.calSel = iso; S.calMonth[c.id] = iso.slice(0, 7); } tabCalendar(c, box); };
+    const reload = iso => { if (iso) { S.calSel = iso; if (!(iso >= from0 && iso <= to0)) S.calFrom[c.id] = addDays(mondayOf(iso), -7); } tabCalendar(c, box); };
     const noTable = () => { toast('Falta ejecutar la migración 011 en Supabase', 'err'); };
     const planHas = (iso, rid, title) => plan(iso).rs.some(r => (rid && r.id === rid) || (title && r.name.trim().toLowerCase() === String(title).trim().toLowerCase()));
     const addOn = iso => events0 === null ? noTable() : eventForm(c, { date: iso, routines, weeks: pweeks, fixedCount: fixed.length, after: reload, planHas });
@@ -2007,49 +2009,51 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const rows = [];
     for (let ws = new Date(start); ws <= end; ws.setDate(ws.getDate() + 7)) {
       const mon = ymd(ws), p0 = plan(mon), w = p0.week;
-      let bar, bcls = 'pb-none';
-      if (w && p0.kind !== 'auto') {
-        const dl = w.kind === 'deload';
-        bar = `${esc(prog.name)} · ${prog.meso_weeks ? `S${w.week_no}/${Math.max(prog.meso_weeks, w.week_no)} · ${dl ? 'Descarga' : 'Carga'}` : esc(weekLabel(w))}${w.published ? '' : ' · borrador'}`;
-        bcls = dl ? 'pb-dl' : w.published ? 'pb-pub' : 'pb-draft';
-      } else if (p0.kind === 'auto') { bar = `${esc(prog.name)} · se repetirá sola`; bcls = 'pb-auto'; }
-      else if (p0.kind === 'fixed') { bar = fixed.length ? 'Rutinas fijas' : 'Sin plan'; bcls = fixed.length ? 'pb-fixed' : 'pb-none'; }
-      else bar = 'Sin plan';
+      // Etiqueta de la semana: solo si está en un mesociclo (Carga, Descarga…); con rutinas fijas no se pone nada
+      let bar = '', bcls = 'pb-none', wk = '';
+      const kindTxt = k => (k === 'deload' ? 'Descarga' : !k || k === 'normal' ? 'Carga' : (KINDS[k] || [k])[0]);
+      const kindIc = k => (k === 'deload' ? '↓' : !k || k === 'normal' ? '↑' : (KINDS[k] || ['', ''])[1] || '•');
+      if (w) {
+        const kk = w.kind || 'normal', tot = prog && prog.meso_weeks ? Math.max(prog.meso_weeks, w.week_no) : null;
+        bar = `<span class="pb-kind">${kindIc(kk)} ${kindTxt(kk)}</span><span class="pb-w">Semana ${w.week_no}${tot ? ' de ' + tot : ''}</span><span class="pb-p">${esc(prog.name)}${p0.kind === 'auto' ? ' · se repite sola' : w.published ? '' : ' · borrador'}</span>`;
+        bcls = p0.kind === 'auto' ? 'pb-auto' : kk === 'deload' ? 'pb-dl' : !w.published ? 'pb-draft' : kk === 'normal' ? 'pb-pub' : 'pb-k-' + kk;
+        wk = kk === 'deload' ? 'wk-dl' : 'wk-load';
+      }
       const isLast = !!(w && prog && prog.meso_weeks && lastW && w.id === lastW.id && p0.kind !== 'auto');
       const clipW = S.calClip && S.calClip.cid === c.id && S.calClip.type === 'week';
       const days = [];
       for (let i = 0; i < 7; i++) {
         const iso = addDays(mon, i), d = new Date(iso + 'T12:00:00'), tk = tasks(iso);
-        if (iso.slice(0, 7) === ym && iso <= t) tk.forEach(x => { if (x.st === 'ok') nOk++; else if (x.st === 'miss') nMiss++; });
-        if (iso.slice(0, 7) === ym && iso > t) tk.forEach(x => { if (x.st === 'todo') nTodo++; });
-        const vis = tk.slice(0, 3), more = tk.length - vis.length;
-        days.push(`<div class="cday ${iso.slice(0, 7) !== ym ? 'out' : ''} ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''} ${iso < t ? 'past' : ''}" data-day="${iso}" role="button" tabindex="0" aria-label="${esc(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}${tk.length ? ', ' + tk.length + ' tareas' : ''}">
-          <span class="cnum"><b>${d.getDate()}</b><button type="button" class="cadd" data-add="${iso}" aria-label="Añadir el ${d.getDate()}" title="Añadir">${ic('plus')}</button></span>
+        if (inR(iso) && iso <= t) tk.forEach(x => { if (x.st === 'ok') nOk++; else if (x.st === 'miss') nMiss++; });
+        if (inR(iso) && iso > t) tk.forEach(x => { if (x.st === 'todo') nTodo++; });
+        const vis = tk.slice(0, 4), more = tk.length - vis.length;
+        days.push(`<div class="cday ${iso === t ? 'today' : ''} ${S.calSel === iso ? 'sel' : ''} ${iso < t ? 'past' : ''}" data-day="${iso}" role="button" tabindex="0" aria-label="${esc(fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long' }))}${tk.length ? ', ' + tk.length + ' tareas' : ''}">
+          <span class="cnum"><b>${d.getDate()}${d.getDate() === 1 || i === 0 && mon === from0 ? ` <small>${esc(d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', ''))}</small>` : ''}</b><button type="button" class="cadd" data-add="${iso}" aria-label="Añadir el ${d.getDate()}" title="Añadir">${ic('plus')}</button></span>
           ${vis.map(x => `<span class="${x.cls} ${x.rt || x.sid ? 'cev-link' : ''}" ${x.id ? `draggable="true" data-ev="${x.id}"` : ''} ${x.rt ? `data-rt="${x.rt}"` : ''} ${x.sid ? `data-sid="${x.sid}"` : ''} data-iso="${iso}" ${x.title ? `title="${esc(x.title)}"` : ''}>${x.ic ? ic(x.ic) : ''}<em>${esc(x.txt)}</em></span>`).join('')}
           ${more > 0 ? `<span class="cmore">+${more} más</span>` : ''}</div>`);
       }
-      rows.push(`<div class="cweek"><div class="pbar ${bcls}"><span class="grow">${bar}</span>
+      rows.push(`<div class="cweek ${wk} ${mon <= t && t <= addDays(mon, 6) ? 'wk-now' : ''}"><div class="pbar ${bcls}"><span class="grow pb-l">${bar}</span>
           ${events0 !== null ? `<button type="button" class="pb-btn" data-cpw="${mon}" title="Copiar los eventos de esta semana">${ic('copy')}<span>Copiar</span></button>${clipW && S.calClip.from !== mon ? `<button type="button" class="pb-btn on" data-psw="${mon}" title="Pegar aquí la semana copiada">Pegar semana</button>` : ''}` : ''}
           ${isLast ? `<button type="button" class="pb-btn link" data-link>Enlazar próximo mesociclo →</button>` : ''}
 </div><div class="cdays">${days.join('')}</div></div>`);
     }
-    const mName = cap(first.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }));
+    const mName = `${fmtDate(from0, { day: 'numeric', month: 'short' })} – ${fmtDate(to0, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     box.innerHTML = `<section class="card cal cal2">
         <header class="cal-top">
-          <div class="row gap"><button class="icon-btn" data-mv="-1" aria-label="Mes anterior">‹</button><button class="btn small ghost" data-today>Hoy</button><button class="icon-btn" data-mv="1" aria-label="Mes siguiente">›</button></div>
+          <div class="row gap"><button class="icon-btn" data-mv="-1" aria-label="4 semanas antes">‹</button><button class="btn small ghost" data-today>Hoy</button><button class="icon-btn" data-mv="1" aria-label="4 semanas después">›</button></div>
           <h3>${esc(mName)}</h3>
           <div class="row gap"><button class="btn small ghost ${S.calHide.size ? 'on' : ''}" data-filt aria-expanded="false">${ic('filter')}<span class="lbl">Filtros</span>${S.calHide.size ? ` (${FILT.length - S.calHide.size}/${FILT.length})` : ''}</button><button class="btn small primary" data-addev>${ic('plus')}<span class="lbl">Tarea</span></button></div>
         </header>
         <div class="cal-filt" data-fbox hidden>${FILT.map(([k, l]) => `<label class="check"><input type="checkbox" data-fk="${k}" ${shown(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div>
-        <div class="cal-kpi"><span class="ok">${ic('check')}<b>${nOk}</b> tareas completadas</span><span class="miss">!<b>${nMiss}</b> sin completar</span><span class="todo">${ic('clock')}<b>${nTodo}</b> por hacer este mes</span></div>
+        <div class="cal-kpi"><span class="ok">${ic('check')}<b>${nOk}</b> tareas completadas</span><span class="miss">!<b>${nMiss}</b> sin completar</span><span class="todo">${ic('clock')}<b>${nTodo}</b> por hacer</span></div>
         ${S.calClip && S.calClip.cid === c.id ? `<p class="note small cal-clip">📋 Copiado: ${S.calClip.type === 'week' ? 'semana del ' + fmtDate(S.calClip.from) : fmtDate(S.calClip.from, { weekday: 'long', day: 'numeric', month: 'short' })} (${S.calClip.evs.length} evento${S.calClip.evs.length === 1 ? '' : 's'}). ${S.calClip.type === 'week' ? 'Pulsa «Pegar semana» en otra semana.' : 'Elige un día y pulsa «Pegar aquí».'} <button type="button" class="link" data-clipx>Cancelar</button></p>` : ''}
         <div class="chead7">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<small>${x}</small>`).join('')}</div>
         <div class="cweeks">${rows.join('')}</div>
         <div class="clegend"><span class="cev pub"><em>Planificado</em></span><span class="cev done"><em>Hecho</em></span><span class="cev moved pub"><em>Hecho otro día</em></span><span class="cev missed pub"><em>No hecho</em></span>${Object.entries(EV_KINDS).filter(([k]) => k !== 'workout').map(([k, [l, icn]]) => `<span class="cev k-${k}">${ic(icn)}<em>${l}</em></span>`).join('')}<span class="cev k-goal"><em>🎯 Hito</em></span></div>
         <p class="muted small center">Pincha un día para ver y gestionar lo que tiene; con «+» añades directamente. En el ordenador puedes arrastrar un evento a otro día.</p>
       </section><div data-dayinfo></div>`;
-    box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const d = new Date(y, m - 1 + Number(b.dataset.mv), 1); S.calMonth[c.id] = ymd(d).slice(0, 7); tabCalendar(c, box); });
-    box.querySelector('[data-today]').onclick = () => { S.calMonth[c.id] = t.slice(0, 7); S.calSel = t; tabCalendar(c, box); };
+    box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { S.calFrom[c.id] = addDays(from0, 28 * Number(b.dataset.mv)); tabCalendar(c, box); });
+    box.querySelector('[data-today]').onclick = () => { S.calFrom[c.id] = addDays(mondayOf(t), -7); S.calSel = t; tabCalendar(c, box); };
     const fb = box.querySelector('[data-fbox]'), fbt = box.querySelector('[data-filt]');
     fbt.onclick = () => { fb.hidden = !fb.hidden; fbt.setAttribute('aria-expanded', String(!fb.hidden)); };
     fb.querySelectorAll('[data-fk]').forEach(x => x.onchange = () => { if (x.checked) S.calHide.delete(x.dataset.fk); else S.calHide.add(x.dataset.fk); try { localStorage.setItem('jm-cal-hide', JSON.stringify([...S.calHide])); } catch (e) { /* sin almacenamiento */ } tabCalendar(c, box); });
@@ -2145,7 +2149,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     box.querySelector('[data-addev]').onclick = () => addOn(S.calSel || t);
     box.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addOn(b.dataset.add); });
     box.querySelectorAll('.cday').forEach(b => { b.onclick = () => showDay(b.dataset.day); b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showDay(b.dataset.day); } }; });
-    const inMonth = S.calSel && S.calSel.slice(0, 7) === ym ? S.calSel : (t.slice(0, 7) === ym ? t : null);
+    const inMonth = S.calSel && inR(S.calSel) ? S.calSel : (inR(t) ? t : null);
     if (inMonth) { const sc = window.scrollY; showDay(inMonth); window.scrollTo(0, sc); }
   }
 
