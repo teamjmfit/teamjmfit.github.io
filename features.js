@@ -40,7 +40,10 @@
       var card = document.createElement('section'); card.className = 'card'; card.setAttribute('data-dmp', '');
       card.innerHTML = '<h3>Métricas diarias</h3>' + summaryHtml(weeksSummary(rows)) + (rows.length ? '<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Día</th><th class="r">Peso</th><th class="r">Pasos</th><th class="r">Sueño</th></tr></thead><tbody>' +
         rows.map(function (r) { return '<tr><td>' + new Date(r.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) + '</td><td class="r">' + f1(r.weight) + '</td><td class="r">' + (r.steps == null ? '–' : r.steps.toLocaleString('es-ES')) + '</td><td class="r">' + f1(r.sleep_h) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="empty">Sin registros diarios todavía.</p>');
-      kpis.parentNode.insertBefore(card, kpis.nextSibling);
+      // va como su propio apartado, justo después del resumen, para poder plegarlo (y moverlo en la vista del entrenador)
+      var host = kpis.closest('[data-po]') || kpis, wrap = document.createElement('div'); wrap.setAttribute('data-po', 'metricas'); wrap.appendChild(card);
+      host.parentNode.insertBefore(wrap, host.nextSibling);
+      if (window.JMProgExtra) window.JMProgExtra(wrap.parentNode);
     } finally { busy.p = false; }
   }
   // Entrenador: cumplimiento en la lista de clientes
