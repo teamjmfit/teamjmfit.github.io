@@ -1109,7 +1109,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- Ficha de cliente
-  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['resumen', 'Resumen 📸'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['diario', 'Diario'], ['cobros', 'Cobros']];
+  const CLIENT_TABS = [['rutinas', 'Rutinas'], ['calendario', 'Calendario'], ['nutricion', 'Nutrición'], ['progreso', 'Progreso'], ['resumen', 'Resumen'], ['revisiones', 'Revisiones'], ['ficha', 'Ficha'], ['diario', 'Diario'], ['cobros', 'Cobros']];
   async function coachClient(id, tab) {
     if (tab === 'mensajes') return go(`#/cliente/${id}/progreso`);   // los mensajes se quitaron: se habla por WhatsApp
     shell(COACH_NAV, 'clientes', loading(), { title: '', back: 'clientes' });
@@ -1146,77 +1146,157 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Opciones (en este dispositivo): nombre completo / inicial / anónimo, kilos o solo cambios, fotos de antes y ahora.
   const IG_KEY = 'jmfit-ig-opts';
   async function tabResumen(c, box) {
-    const [checkins, sessions, logs, daily, photos, pweeks] = await Promise.all([
+    const [checkins, sessions, logs, daily, pweeks] = await Promise.all([
       DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'] }),
       clientSessions(c.id), clientLogs(c.id),
       DB.list('daily_metrics', { eq: { client_id: c.id }, order: ['date', 'asc'] }).catch(() => []),
-      DB.list('checkin_photos', { eq: { client_id: c.id } }).catch(() => []),
       DB.list('program_weeks', { eq: { client_id: c.id } }).catch(() => [])
     ]);
-    let O = { name: 'first', kg: true, pics: false };
-    try { O = Object.assign(O, JSON.parse(localStorage.getItem(IG_KEY) || '{}')); } catch (e) { /* por defecto */ }
-    const done = sessions.filter(s => s.finished_at);
-    const rows = weeklyRows(checkins, daily).filter(r => r.avg != null), w0 = rows[0], w1 = rows[rows.length - 1];
-    const cks = checkins.slice().reverse();                                  // del más antiguo al más nuevo
-    const dates = [cks[0] && cks[0].date, done.length && String(done[done.length - 1].started_at).slice(0, 10), c.start_date, w0 && w0.wk].filter(Boolean).sort();
-    const from = dates[0] || today(), weeks = Math.max(1, Math.round((new Date(today()) - new Date(from)) / (7 * 864e5)));
-    // fuerza: mejor serie del principio frente a la mejor de ahora (sin semanas de descarga)
+    let O = { name: 'first', kg: true, range: 'all', inc: { peso: true, graf: true, tot: true, cump: true, ej: true } };
+    try { const v = JSON.parse(localStorage.getItem(IG_KEY) || '{}'); O = Object.assign(O, v, { inc: Object.assign({}, O.inc, v.inc || {}) }); } catch (e) { /* por defecto */ }
+    const save = () => { try { localStorage.setItem(IG_KEY, JSON.stringify(O)); } catch (e) { /* solo esta vez */ } };
+    const t = today(), RG = [['28', '4 semanas'], ['56', '8 semanas'], ['91', '3 meses'], ['all', 'Todo']];
+    const allDates = [checkins.length && checkins[checkins.length - 1].date, sessions.length && String(sessions[sessions.length - 1].started_at).slice(0, 10), c.start_date].filter(Boolean).sort();
+    const from = O.range === 'all' ? (allDates[0] || t) : addDays(t, -Number(O.range));
+    const inR = d => String(d).slice(0, 10) >= from;
+    const cks = checkins.filter(k => inR(k.date)), done = sessions.filter(s => s.finished_at && inR(s.started_at));
+    const weeks = Math.max(1, Math.round((new Date(t) - new Date(from)) / (7 * 864e5)));
+    // peso
+    const wByDay = {}; cks.forEach(k => { if (k.weight) wByDay[String(k.date).slice(0, 10)] = Number(k.weight); });
+    daily.forEach(d => { if (d.weight != null && d.weight !== '' && inR(d.date)) wByDay[String(d.date).slice(0, 10)] = Number(d.weight); });
+    const wpts = Object.keys(wByDay).sort().map(d => ({ d, w: wByDay[d] }));
+    const rows = weeklyRows(cks, daily.filter(d => inR(d.date))), wr = rows.filter(r => r.avg != null), w0 = wr[0], w1 = wr[wr.length - 1];
+    const dW = w0 && w1 && w0 !== w1 ? Math.round((w1.avg - w0.avg) * 10) / 10 : null;
+    const goal = c.goal_weight != null && c.goal_weight !== '' ? Number(c.goal_weight) : null;
+    // ejercicios (sin semanas de descarga): primera mejor serie del periodo frente a la mejor
     const dlW = pweeks.filter(w => w.kind === 'deload'), isDl = iso => { const d = String(iso || '').slice(0, 10); return dlW.some(w => d >= w.start_date && d <= addDays(w.start_date, 6)); };
-    const dlSid = new Set(sessions.filter(x => isDl(x.started_at)).map(x => x.id));
-    const H = exHistory(logs.filter(l => !dlSid.has(l.session_id)), sessions);
+    const okSid = new Set(done.filter(x => !isDl(x.started_at)).map(x => x.id));
+    const H = exHistory(logs.filter(l => okSid.has(l.session_id)), done);
     const nameOf = k => (logs.find(l => String(l.exercise_name).trim().toLowerCase() === k) || {}).exercise_name || k;
-    const str = Object.entries(H).filter(([, h]) => h.length >= 2).map(([k, h]) => { const a = h[0], b = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]); return { n: nameOf(k), a, b, pct: a.e1 ? (b.e1 - a.e1) / a.e1 * 100 : 0 }; })
-      .filter(x => x.pct > 0.5).sort((x, y) => y.pct - x.pct).slice(0, 4);
-    // medidas: primera y última vez que se midió cada una
-    const MS = [['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['body_fat', '% grasa']];
-    const meas = MS.map(([k, l]) => { const xs = cks.filter(x => x[k] != null && x[k] !== ''); return xs.length > 1 ? { l, k, a: Number(xs[0][k]), b: Number(xs[xs.length - 1][k]) } : null; }).filter(m => m && Math.abs(m.b - m.a) >= 0.5).slice(0, 4);
-    const last8 = checkins.slice(0, 8), adh = k => avg(last8.map(x => x[k]));
-    const tA = adh('train_adh'), dA = adh('diet_adh');
+    const EXS = Object.entries(H).filter(([, h]) => h.length >= 2).map(([k, h]) => { const a = h[0], b = h.reduce((m, x) => (x.e1 > m.e1 ? x : m), h[0]);
+      return { k, n: nameOf(k), a, b, n0: h.length, pct: a.e1 ? (b.e1 - a.e1) / a.e1 * 100 : 0, h }; }).sort((x, y) => y.pct - x.pct);
+    const EK = 'jmfit-ig-ex-' + c.id;
+    let sel; try { sel = JSON.parse(localStorage.getItem(EK) || 'null'); } catch (e) { sel = null; }
+    if (!Array.isArray(sel)) sel = EXS.filter(x => x.pct > 0.5).slice(0, 4).map(x => x.k);
+    sel = sel.filter(k => EXS.some(x => x.k === k));
+    // cumplimiento y semanas
+    const adh = (list, k) => avg(list.map(x => x[k]));
+    const tA = adh(cks.slice(0, 8), 'train_adh'), dA = adh(cks.slice(0, 8), 'diet_adh');
     const vol = done.reduce((s, x) => s + (Number(x.volume) || 0), 0);
-    const dw = w0 && w1 && w0 !== w1 ? w1.avg - w0.avg : null;
+    const mon0 = mondayOf(t), WK = [...Array(6)].map((_, i) => addDays(mon0, -7 * (5 - i)));
+    const wkRows = WK.map(a => { const z = addDays(a, 6), ss = sessions.filter(s => s.finished_at && String(s.started_at).slice(0, 10) >= a && String(s.started_at).slice(0, 10) <= z), kk = checkins.filter(k => k.date >= a && k.date <= z);
+      const wa = rows.find(r => r.wk === a) || weeklyRows(checkins, daily).find(r => r.wk === a);
+      return { a, n: ss.length, vol: ss.reduce((s, x) => s + (Number(x.volume) || 0), 0), tr: adh(kk, 'train_adh'), di: adh(kk, 'diet_adh'), w: wa ? wa.avg : null, dl: isDl(a) }; });
     const first = String(c.name || '').trim().split(/\s+/)[0] || 'Cliente';
     const who = O.name === 'full' ? c.name : O.name === 'first' ? first : O.name === 'initial' ? first[0] + '.' : 'Cliente del equipo';
-    const fmtD = d => fmtDate(d, { day: 'numeric', month: 'short', year: 'numeric' });
     const pct = v => (v > 0 ? '+' : '') + Math.round(v) + ' %';
-    const front = photos.filter(p => !p.archived_at && (p.pose === 'front' || !p.pose)).map(p => ({ p, d: (checkins.find(k => k.id === p.checkin_id) || {}).date || '' })).filter(x => x.d).sort((a, b) => a.d.localeCompare(b.d));
-    const pA = front[0], pB = front.length > 1 ? front[front.length - 1] : null;
-    const tile = (big, small, cls = '') => `<div class="ig-k ${cls}"><b>${big}</b><small>${small}</small></div>`;
-    const card = `<div class="ig-card" data-igcard>
-        <div class="ig-top"><img src="logo.webp" alt="TEAM JMFIT"><span>Progreso</span></div>
-        <h2>${esc(who)}</h2><p class="ig-sub">${weeks} semana${weeks === 1 ? '' : 's'} de trabajo · desde ${esc(fmtD(from))}</p>
-        ${O.pics && pA && pB ? `<div class="ig-pics"><figure><div data-igp="a"></div><figcaption>Antes · ${esc(fmtDate(pA.d, { day: 'numeric', month: 'short' }))}</figcaption></figure><figure><div data-igp="b"></div><figcaption>Ahora · ${esc(fmtDate(pB.d, { day: 'numeric', month: 'short' }))}</figcaption></figure></div>` : ''}
-        <div class="ig-grid">
-          ${dw != null ? tile(`${sgn(Math.round(dw * 10) / 10)} kg`, O.kg ? `${fmtKg(w0.avg)} → ${fmtKg(w1.avg)} kg` : 'de peso', 'hl') : ''}
-          ${tile(done.length, 'entrenos hechos')}
-          ${tile(checkins.length, 'revisiones')}
-          ${vol > 0 ? tile(vol >= 1e4 ? Math.round(vol / 1000).toLocaleString('es-ES') + '.000 kg' : Math.round(vol).toLocaleString('es-ES') + ' kg', 'levantados en total') : ''}
-          ${tA != null ? tile(Math.round(tA * 10) / 10 + '/10', 'cumplimiento entreno') : ''}
-          ${dA != null ? tile(Math.round(dA * 10) / 10 + '/10', 'cumplimiento dieta') : ''}
-        </div>
-        ${str.length ? `<h3>💪 Fuerza</h3><ul class="ig-list">${str.map(x => `<li><span>${esc(x.n)}</span>${O.kg ? `<small>${fmtKg(x.a.w)}×${x.a.r} → ${fmtKg(x.b.w)}×${x.b.r}</small>` : ''}<b>${pct(x.pct)}</b></li>`).join('')}</ul>` : ''}
-        ${meas.length ? `<h3>📏 Medidas</h3><ul class="ig-list">${meas.map(m => `<li><span>${esc(m.l)}</span>${O.kg ? `<small>${fmtKg(m.a)} → ${fmtKg(m.b)}${m.k === 'body_fat' ? ' %' : ' cm'}</small>` : ''}<b>${sgn(Math.round((m.b - m.a) * 10) / 10)}${m.k === 'body_fat' ? ' %' : ' cm'}</b></li>`).join('')}</ul>` : ''}
-        <p class="ig-foot">Entrenamiento y nutrición · <b>TEAM JMFIT</b></p>
-      </div>`;
-    const chip = (k, v, l) => `<button type="button" class="chip ${O[k] === v ? 'on' : ''}" data-ig="${k}" data-v="${v}">${l}</button>`;
-    box.innerHTML = `<section class="card ig-opts"><h3>Resumen para Instagram</h3>
-        <p class="muted small">Lo más importante de ${esc(first)} en una tarjeta. Pulsa «Pantalla completa» y saca una captura. Antes de publicarlo, pídele permiso a ${esc(first)}.</p>
+    const dCls = (v, inv) => (v == null || Math.abs(v) < 1e-9 ? '' : (v > 0) !== !!inv ? 'up' : 'dn');
+    const dTxt = (v, f) => (v == null ? '' : `<small class="${dCls(v)}">${v > 0 ? '▲' : v < 0 ? '▼' : '='} ${f(Math.abs(v))}</small>`);
+    const chip = (k, v, l) => `<button type="button" class="chip ${String(O[k]) === String(v) ? 'on' : ''}" data-o="${k}" data-v="${v}">${l}</button>`;
+    const inc = (k, l) => `<label class="check"><input type="checkbox" data-inc="${k}" ${O.inc[k] ? 'checked' : ''}> ${l}</label>`;
+    box.innerHTML = `<div class="rs">
+      <section class="card rs-head"><div class="grow"><small class="muted">Resumen de progreso</small><h2>${esc(c.name)}</h2><p class="muted small">${weeks} semana${weeks === 1 ? '' : 's'} · desde ${esc(fmtDate(from, { day: 'numeric', month: 'long', year: 'numeric' }))}</p></div>
+        <div class="np-plans">${RG.map(([k, l]) => chip('range', k, l)).join('')}</div></section>
+      <div class="rs-kpis">
+        <div class="kpi ${dW != null ? (goal != null && w1 && Math.abs(goal - w1.avg) < Math.abs(goal - w0.avg) ? 'good' : '') : ''}"><small>Peso</small><b>${dW != null ? sgn(dW) + ' kg' : '–'}</b><span>${w0 && w1 ? `${fmtKg(w0.avg)} → ${fmtKg(w1.avg)} kg` : 'sin pesajes'}</span></div>
+        <div class="kpi"><small>Entrenos</small><b>${done.length}</b><span>${vol ? Math.round(vol).toLocaleString('es-ES') + ' kg levantados' : '—'}</span></div>
+        <div class="kpi"><small>Revisiones</small><b>${cks.length}</b><span>${cks[0] ? 'última ' + esc(fmtDate(cks[0].date, { day: 'numeric', month: 'short' })) : '—'}</span></div>
+        <div class="kpi"><small>Cumplimiento</small><b>${tA != null ? fmtKg(tA) : '–'} · ${dA != null ? fmtKg(dA) : '–'}</b><span>entreno · dieta (de 10)</span></div>
+      </div>
+      <div class="rs-grid">
+        <section class="card"><h3>Peso</h3>${wpts.length > 1 ? multiChart(wpts.map(x => x.d), [{ name: 'Peso', cls: 's1', vals: wpts.map(x => x.w) }], { goal, unit: 'kg', label: 'Peso', daily: true }) : '<p class="empty">Faltan pesajes en este periodo.</p>'}</section>
+        <section class="card flush"><h3 class="pad">Semana a semana</h3><div class="tscroll"><table class="wk-t rs-wk"><thead><tr><th>Semana</th><th>Entrenos</th><th>Volumen</th><th>Cumpl. entreno</th><th>Cumpl. dieta</th><th>Peso</th></tr></thead><tbody>
+          ${wkRows.slice().reverse().map((r, i, arr) => { const p = arr[i + 1];
+            return `<tr class="${r.a === mon0 ? 'now' : ''}"><td>${esc(fmtDate(r.a, { day: 'numeric', month: 'short' }))}${r.dl ? ' <span class="pill blue">Descarga</span>' : ''}</td>
+              <td><b>${r.n}</b> ${p ? dTxt(r.n - p.n, v => v) : ''}</td>
+              <td>${r.vol ? Math.round(r.vol / 100) / 10 + ' t' : '–'} ${p && r.vol && p.vol ? dTxt((r.vol - p.vol) / p.vol * 100, v => Math.round(v) + ' %') : ''}</td>
+              <td>${r.tr != null ? fmtKg(r.tr) : '–'} ${p && r.tr != null && p.tr != null ? dTxt(r.tr - p.tr, fmtKg) : ''}</td>
+              <td>${r.di != null ? fmtKg(r.di) : '–'} ${p && r.di != null && p.di != null ? dTxt(r.di - p.di, fmtKg) : ''}</td>
+              <td>${r.w != null ? fmtKg(r.w) : '–'}</td></tr>`; }).join('')}</tbody></table></div>
+          <p class="muted small pad">▲▼ frente a la semana anterior. Las semanas de descarga bajan volumen a propósito.</p></section>
+      </div>
+      <section class="card"><header class="row gap wrap"><h3 class="grow">Mejoras en ejercicios <small class="muted">marca los que quieras destacar</small></h3><button type="button" class="btn small ghost" data-exbest>Los 4 mejores</button></header>
+        ${EXS.length ? `<ul class="rs-ex">${EXS.map(x => `<li class="${sel.includes(x.k) ? 'on' : ''}"><label><input type="checkbox" data-ex="${esc(x.k)}" ${sel.includes(x.k) ? 'checked' : ''}><span class="grow"><b>${esc(x.n)}</b><small>${fmtKg(x.a.w)} × ${x.a.r} → ${fmtKg(x.b.w)} × ${x.b.r} · ${x.n0} sesiones</small></span>
+            <span class="rs-bar"><i style="width:${Math.max(3, Math.min(100, x.pct * 2.5))}%" class="${x.pct < 0 ? 'neg' : ''}"></i></span><b class="${x.pct > 0.5 ? 'up' : x.pct < -0.5 ? 'dn' : ''}">${pct(x.pct)}</b></label></li>`).join('')}</ul>` : '<p class="empty">Aún no hay ejercicios con al menos dos sesiones en este periodo.</p>'}
+        <p class="muted small">Mejora = mejor serie (1RM estimado) frente a la primera del periodo, sin contar semanas de descarga.</p></section>
+      <section class="card rs-story"><h3>Historia para Instagram</h3>
         <div class="np-plans"><small class="muted">Nombre</small>${chip('name', 'full', 'Completo')}${chip('name', 'first', 'Solo nombre')}${chip('name', 'initial', 'Inicial')}${chip('name', 'anon', 'Anónimo')}</div>
-        <div class="np-plans"><small class="muted">Cifras</small>${chip('kg', true, 'Kilos y medidas')}${chip('kg', false, 'Solo cambios')}</div>
-        ${pA && pB ? `<div class="np-plans"><small class="muted">Fotos</small>${chip('pics', false, 'Sin fotos')}${chip('pics', true, 'Antes y ahora')}</div>` : ''}
-        <button type="button" class="btn primary" data-igfull>⤢ Pantalla completa</button></section>
-      <div class="ig-wrap">${card}</div>`;
-    box.querySelectorAll('[data-ig]').forEach(b => b.onclick = () => {
-      const v = b.dataset.v; O[b.dataset.ig] = v === 'true' ? true : v === 'false' ? false : v;
-      try { localStorage.setItem(IG_KEY, JSON.stringify(O)); } catch (e) { /* solo esta vez */ }
-      tabResumen(c, box);
-    });
-    const loadPics = root => { if (!(O.pics && pA && pB)) return; [['a', pA], ['b', pB]].forEach(([k, x]) => DB.photoUrl(x.p.path).then(u => { const el = root.querySelector(`[data-igp="${k}"]`); if (el) el.innerHTML = `<img src="${esc(u)}" alt="">`; }).catch(() => {})); };
-    const ks = [...box.querySelectorAll('.ig-k:not(.hl)')]; if (ks.length % 2) ks[ks.length - 1].classList.add('wide');
-    loadPics(box);
-    box.querySelector('[data-igfull]').onclick = () => {
-      const ov = document.createElement('div'); ov.className = 'ig-full'; ov.innerHTML = '<div class="ig-in">' + box.querySelector('[data-igcard]').outerHTML + '<p class="ig-close">Toca para cerrar</p></div>';
-      ov.onclick = () => ov.remove(); document.body.appendChild(ov); loadPics(ov);
+        <div class="np-plans"><small class="muted">Cifras</small>${chip('kg', true, 'Kilos')}${chip('kg', false, 'Solo cambios')}</div>
+        <div class="rs-inc"><small class="muted">Incluir</small>${inc('peso', 'Cambio de peso')}${inc('graf', 'Gráfica de peso')}${inc('tot', 'Entrenos y revisiones')}${inc('cump', 'Cumplimiento')}${inc('ej', `Ejercicios marcados (${sel.length})`)}</div>
+        <div class="row gap wrap"><button type="button" class="btn primary" data-story>📲 Generar historia</button><small class="muted">Imagen 1080 × 1920. Antes de publicarla, pídele permiso a ${esc(first)}.</small></div></section>
+    </div>`;
+    box.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { const v = b.dataset.v; O[b.dataset.o] = v === 'true' ? true : v === 'false' ? false : v; save(); tabResumen(c, box); });
+    box.querySelectorAll('[data-inc]').forEach(x => x.onchange = () => { O.inc[x.dataset.inc] = x.checked; save(); });
+    const saveSel = () => { try { localStorage.setItem(EK, JSON.stringify(sel)); } catch (e) { /* solo esta vez */ } const l = box.querySelector('[data-inc="ej"]'); if (l) l.parentNode.lastChild.textContent = ` Ejercicios marcados (${sel.length})`; };
+    box.querySelectorAll('[data-ex]').forEach(x => x.onchange = () => { const k = x.dataset.ex; sel = sel.filter(y => y !== k); if (x.checked) sel.push(k); x.closest('li').classList.toggle('on', x.checked); saveSel(); });
+    box.querySelector('[data-exbest]').onclick = () => { sel = EXS.filter(x => x.pct > 0.5).slice(0, 4).map(x => x.k); saveSel(); tabResumen(c, box); };
+    box.querySelector('[data-story]').onclick = async () => {
+      const b = box.querySelector('[data-story]'); b.disabled = true;
+      try {
+        const blob = await storyImage({ who, weeks, from, dW, w0, w1, wpts, goal, done: done.length, cks: cks.length, vol, tA, dA, ex: sel.map(k => EXS.find(x => x.k === k)).filter(Boolean).slice(0, 5), O });
+        const name = `progreso-${(who || 'cliente').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${t}.png`;
+        const file = new File([blob], name, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] }) && /iP(hone|ad|od)|Android/.test(navigator.userAgent)) { await navigator.share({ files: [file] }).catch(() => {}); }
+        else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); toast('Historia descargada ✓'); }
+      } catch (e) { toast('No se pudo generar la imagen: ' + e.message, 'err'); }
+      b.disabled = false;
     };
+  }
+  // Dibuja la historia (1080 × 1920) con lo seleccionado
+  async function storyImage(d) {
+    const W = 1080, Hh = 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = Hh; let x = cv.getContext('2d');
+    if (document.fonts && document.fonts.ready) await document.fonts.ready.catch(() => {});
+    const F = (w, s) => `${w} ${s}px Inter, "Inter Display", system-ui, -apple-system, sans-serif`, G = '#d9a94f', TX = '#f4f1ea', MU = 'rgba(244,241,234,.62)';
+    x.fillStyle = '#0b0b0d'; x.fillRect(0, 0, W, Hh);
+    let g = x.createRadialGradient(W * .9, 80, 10, W * .9, 80, 900); g.addColorStop(0, 'rgba(217,169,79,.35)'); g.addColorStop(1, 'rgba(217,169,79,0)'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
+    g = x.createRadialGradient(0, Hh, 10, 0, Hh, 900); g.addColorStop(0, 'rgba(217,169,79,.22)'); g.addColorStop(1, 'rgba(217,169,79,0)'); x.fillStyle = g; x.fillRect(0, 0, W, Hh);
+    const rr = (X, Y, w, h, r) => { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); };
+    const logo = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = 'logo.webp'; });
+    const M = 84; let y = 110;
+    if (logo) { const lw = 260, lh = lw * logo.height / logo.width; x.drawImage(logo, M, y, lw, lh); }
+    x.fillStyle = G; x.font = F(800, 30); x.textAlign = 'right'; x.fillText('P R O G R E S O', W - M, y + 60); x.textAlign = 'left';
+    y += 230;
+    x.fillStyle = '#fff'; x.font = F(900, 104); x.fillText(String(d.who).slice(0, 18), M, y); y += 62;
+    x.fillStyle = MU; x.font = F(500, 36); x.fillText(`${d.weeks} semana${d.weeks === 1 ? '' : 's'} de trabajo · desde ${fmtDate(d.from, { day: 'numeric', month: 'short', year: 'numeric' })}`, M, y); y += 60;
+    // el resto se dibuja aparte y se centra en el hueco que queda hasta el pie
+    const top = y, main = x, bc = document.createElement('canvas'); bc.width = W; bc.height = Hh - 170 - top; const bx = bc.getContext('2d');
+    x = bx; y = 0;
+    const box = (X, Y, w, h, hl) => { rr(X, Y, w, h, 34); if (hl) { const gg = x.createLinearGradient(X, Y, X + w, Y + h); gg.addColorStop(0, 'rgba(217,169,79,.34)'); gg.addColorStop(1, 'rgba(217,169,79,.08)'); x.fillStyle = gg; } else x.fillStyle = 'rgba(255,255,255,.06)'; x.fill(); x.lineWidth = 3; x.strokeStyle = hl ? 'rgba(217,169,79,.6)' : 'rgba(255,255,255,.09)'; x.stroke(); };
+    const O = d.O;
+    if (O.inc.peso && d.dW != null) {
+      const h = O.inc.graf && d.wpts.length > 1 ? 400 : 190; box(M, y, W - 2 * M, h, true);
+      x.fillStyle = G; x.font = F(900, 96); x.fillText(`${d.dW > 0 ? '+' : ''}${fmtKg(d.dW)} kg`, M + 40, y + 120);
+      x.fillStyle = MU; x.font = F(600, 34); x.fillText(O.kg ? `${fmtKg(d.w0.avg)} → ${fmtKg(d.w1.avg)} kg` : 'de peso', M + 40, y + 168);
+      if (O.inc.graf && d.wpts.length > 1) {
+        const cx0 = M + 40, cy0 = y + 210, cw = W - 2 * M - 80, ch = 160, vs = d.wpts.map(p => p.w), lo = Math.min(...vs), hi = Math.max(...vs), sp = hi - lo || 1;
+        const px = i => cx0 + (d.wpts.length === 1 ? cw / 2 : i * cw / (d.wpts.length - 1)), py = v => cy0 + ch - (v - lo) / sp * ch;
+        x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 2; [0, 1].forEach(k => { x.beginPath(); x.moveTo(cx0, cy0 + k * ch); x.lineTo(cx0 + cw, cy0 + k * ch); x.stroke(); });
+        const gr = x.createLinearGradient(0, cy0, 0, cy0 + ch); gr.addColorStop(0, 'rgba(217,169,79,.35)'); gr.addColorStop(1, 'rgba(217,169,79,0)');
+        x.beginPath(); d.wpts.forEach((p, i) => (i ? x.lineTo(px(i), py(p.w)) : x.moveTo(px(i), py(p.w)))); x.lineTo(px(d.wpts.length - 1), cy0 + ch); x.lineTo(px(0), cy0 + ch); x.closePath(); x.fillStyle = gr; x.fill();
+        x.beginPath(); d.wpts.forEach((p, i) => (i ? x.lineTo(px(i), py(p.w)) : x.moveTo(px(i), py(p.w)))); x.strokeStyle = G; x.lineWidth = 7; x.lineJoin = 'round'; x.stroke();
+        x.fillStyle = G; [0, d.wpts.length - 1].forEach(i => { x.beginPath(); x.arc(px(i), py(d.wpts[i].w), 11, 0, 7); x.fill(); });
+      }
+      y += h + 26;
+    }
+    const tiles = [];
+    if (O.inc.tot) { tiles.push([String(d.done), 'entrenos hechos']); tiles.push([String(d.cks), 'revisiones']); }
+    if (O.inc.cump) { if (d.tA != null) tiles.push([fmtKg(Math.round(d.tA * 10) / 10) + '/10', 'cumplimiento entreno']); if (d.dA != null) tiles.push([fmtKg(Math.round(d.dA * 10) / 10) + '/10', 'cumplimiento dieta']); }
+    const tw = (W - 2 * M - 24) / 2;
+    tiles.forEach((tl, i) => { const X = M + (i % 2) * (tw + 24), Y = y + Math.floor(i / 2) * 184, w = i === tiles.length - 1 && tiles.length % 2 ? W - 2 * M : tw; box(X, Y, w, 160);
+      x.fillStyle = '#fff'; x.font = F(800, 64); x.fillText(tl[0], X + 34, Y + 86); x.fillStyle = MU; x.font = F(600, 30); x.fillText(tl[1], X + 34, Y + 130); });
+    y += Math.ceil(tiles.length / 2) * 184 + (tiles.length ? 20 : 0);
+    if (O.inc.ej && d.ex.length) {
+      x.fillStyle = G; x.font = F(800, 34); x.fillText('💪  FUERZA', M, y + 30); y += 64;
+      const room = Math.max(1, Math.min(d.ex.length, Math.floor((bc.height - y) / 92)));
+      d.ex.slice(0, room).forEach(e => {
+        x.fillStyle = TX; x.font = F(600, 40); let n = e.n; while (x.measureText(n).width > (O.kg ? 470 : 700) && n.length > 4) n = n.slice(0, -2); if (n !== e.n) n += '…'; x.fillText(n, M, y + 46);
+        if (O.kg) { x.fillStyle = MU; x.font = F(500, 30); x.textAlign = 'right'; x.fillText(`${fmtKg(e.a.w)}×${e.a.r} → ${fmtKg(e.b.w)}×${e.b.r}`, W - M - 170, y + 46); }
+        x.fillStyle = e.pct >= 0 ? '#7fd18b' : '#ef8a7a'; x.font = F(800, 44); x.textAlign = 'right'; x.fillText((e.pct > 0 ? '+' : '') + Math.round(e.pct) + ' %', W - M, y + 48); x.textAlign = 'left';
+        x.strokeStyle = 'rgba(255,255,255,.1)'; x.lineWidth = 2; x.beginPath(); x.moveTo(M, y + 78); x.lineTo(W - M, y + 78); x.stroke(); y += 92; });
+    }
+    main.drawImage(bc, 0, top + Math.max(0, (bc.height - y) / 2)); x = main;
+    x.textAlign = 'center'; x.fillStyle = 'rgba(244,241,234,.5)'; x.font = F(600, 30); x.fillText('Entrenamiento y nutrición · TEAM JMFIT', W / 2, Hh - 90); x.textAlign = 'left';
+    return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('sin imagen'))), 'image/png'));
   }
 
   // ---------- Diario / bloc de notas del entrenador por cliente (migración 020; solo lo ve el entrenador)
