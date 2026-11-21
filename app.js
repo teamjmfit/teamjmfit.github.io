@@ -3432,49 +3432,72 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     }
     return checkinEditor(host);
   }
+  // Ayudas de serie de cada pregunta (lo que sale en pequeño o dentro de la casilla)
+  const CK_DEF_HINT = key => (CK_SCALES[key] ? CK_SCALES[key][1] : ({ weight: CK_W_HINT, steps: 'Ej: 9000', sleep_h: 'Ej: 7,5', fotos: 'con la misma luz y postura cada semana',
+    fatigue_muscles: 'Si no tienes, déjalo en blanco · Ej: piernas cargadas desde el martes', pains: 'Si no tienes, déjalo en blanco · Dónde y desde cuándo',
+    misses: 'Si no, déjalo en blanco · Comidas, entrenos, descanso…' })[key] || '');
   async function checkinEditor(host) {
     const cfg = JSON.parse(JSON.stringify(await checkinCfg(true)));
     cfg.extra = (cfg.extra || []).filter(q => q && q.id);
+    cfg.order = ckOrder(cfg);
     const kind = key => (CK_SCALES[key] ? 'Escala 1-10' : CK_TEXTS[key] ? 'Texto' : key === 'medidas' ? 'Medidas' : key === 'fotos' ? 'Fotos' : 'Número');
-    const defHint = key => (CK_SCALES[key] ? CK_SCALES[key][1] : '');
+    const noHint = key => key === 'medidas' || key === 'notes';
+    const xOf = k => cfg.extra.find(q => 'x:' + q.id === k);
+    const row = (k, i, n) => {
+      const mv = `<span class="ck-ed-mv"><button type="button" class="icon-btn sm" data-up ${i ? '' : 'disabled'} aria-label="Subir" title="Subir">▲</button><button type="button" class="icon-btn sm" data-dn ${i < n - 1 ? '' : 'disabled'} aria-label="Bajar" title="Bajar">▼</button></span>`;
+      const q = xOf(k);
+      if (q) return `<div class="ck-ed-row new" data-k="${esc(k)}">${mv}<div class="grow"><input data-lab value="${esc(q.label || '')}" placeholder="Escribe la pregunta" maxlength="200" aria-label="Pregunta">
+          <input data-hint class="small" value="${esc(q.hint || '')}" placeholder="Ayuda o ejemplo (opcional)" maxlength="200" aria-label="Ayuda"></div>
+          <div class="ck-ed-side"><select data-xtype aria-label="Tipo">${Object.entries(CK_EXTRA_T).map(([t, l]) => `<option value="${t}" ${q.type === t ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <button type="button" class="icon-btn sm" data-xdel aria-label="Quitar pregunta" title="Quitar pregunta">${ic('trash')}</button></div></div>`;
+      const off = (cfg.hidden || []).includes(k);
+      return `<div class="ck-ed-row ${off ? 'off' : ''}" data-k="${k}">${mv}<div class="grow"><input data-lab value="${esc((cfg.labels || {})[k] || CK_DEF_LABEL(k))}" placeholder="${esc(CK_DEF_LABEL(k))}" maxlength="200" aria-label="Texto de la pregunta">
+          ${noHint(k) ? '' : `<input data-hint class="small" value="${esc((cfg.hints || {})[k] != null && cfg.hints[k] !== '' ? cfg.hints[k] : CK_DEF_HINT(k))}" placeholder="Ayuda o ejemplo (opcional)" maxlength="200" aria-label="Ayuda">`}</div>
+          <div class="ck-ed-side"><small class="muted">${kind(k)}</small><label class="ck-ed-on"><input type="checkbox" data-on ${off ? '' : 'checked'}> Mostrar</label></div></div>`;
+    };
     const draw = () => {
+      const n = cfg.order.length;
       host.innerHTML = `<section class="card ck-ed"><h3>Cuestionario semanal <small class="muted">lo que rellenan tus clientes cada semana</small></h3>
-        <p class="muted small">Cambia el texto de cada pregunta, quita las que no quieras (desmarcando «Mostrar») o añade preguntas nuevas. La fecha y el peso en ayunas son fijos. Los cambios se aplican a los próximos check-ins; los ya enviados no cambian.</p>
+        <p class="muted small">Toca cualquier texto para cambiarlo: la pregunta (arriba) y la ayuda o ejemplo (abajo, en pequeño). Con ▲▼ cambias el orden, con «Mostrar» la quitas o la vuelves a poner, y puedes añadir preguntas nuevas. Los cambios valen para los próximos check-ins; los ya enviados no cambian.</p>
         <label>Texto de arriba<textarea data-intro rows="2">${esc(cfg.intro || CK_INTRO)}</textarea></label>
-        <h4>Preguntas</h4>
-        <div class="ck-ed-list">${CK_ORDER.map(key => { const off = (cfg.hidden || []).includes(key);
-          return `<div class="ck-ed-row ${off ? 'off' : ''}" data-key="${key}"><label class="ck-ed-on"><input type="checkbox" data-on ${off ? '' : 'checked'}> Mostrar</label>
-            <div class="grow"><input data-lab value="${esc((cfg.labels || {})[key] || CK_DEF_LABEL(key))}" placeholder="${esc(CK_DEF_LABEL(key))}" maxlength="200" aria-label="Texto de la pregunta">
-            ${CK_SCALES[key] || ['steps', 'sleep_h', 'fotos'].includes(key) || CK_TEXTS[key] ? `<input data-hint class="small" value="${esc((cfg.hints || {})[key] || '')}" placeholder="${esc(defHint(key) || 'Ayuda o ejemplo (opcional)')}" aria-label="Ayuda">` : ''}</div>
-            <small class="muted">${kind(key)}</small></div>`; }).join('')}</div>
-        <h4>Preguntas añadidas</h4>
-        <div class="ck-ed-list" data-xl>${cfg.extra.length ? cfg.extra.map((q, i) => `<div class="ck-ed-row" data-x="${i}"><div class="grow"><input data-xlab value="${esc(q.label || '')}" placeholder="Pregunta" maxlength="200" aria-label="Pregunta">
-            <input data-xhint class="small" value="${esc(q.hint || '')}" placeholder="Ayuda o ejemplo (opcional)" maxlength="200" aria-label="Ayuda"></div>
-            <select data-xtype aria-label="Tipo">${Object.entries(CK_EXTRA_T).map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            <button type="button" class="icon-btn sm" data-xdel aria-label="Quitar pregunta" title="Quitar pregunta">${ic('trash')}</button></div>`).join('') : '<p class="muted small">Aún no has añadido ninguna. Van antes de «Dudas o comentarios».</p>'}</div>
+        <h4>Siempre al principio</h4>
+        <div class="ck-ed-list"><div class="ck-ed-row" data-k="weight"><div class="grow"><input data-lab value="${esc((cfg.labels || {}).weight || CK_DEF_LABEL('weight'))}" maxlength="200" aria-label="Texto de la pregunta">
+          <input data-hint class="small" value="${esc((cfg.hints || {}).weight || CK_W_HINT)}" maxlength="200" aria-label="Ayuda"></div><div class="ck-ed-side"><small class="muted">Obligatorio · con la fecha</small></div></div></div>
+        <h4>Preguntas <small class="muted">${cfg.order.filter(k => !(cfg.hidden || []).includes(k)).length} visibles</small></h4>
+        <div class="ck-ed-list">${cfg.order.map((k, i) => row(k, i, n)).join('')}</div>
         <button type="button" class="btn small" data-xadd>${ic('plus')} Añadir pregunta</button>
         <div class="row gap wrap ck-ed-acts"><button type="button" class="btn primary" data-save>Guardar cambios</button><button type="button" class="btn ghost" data-prev>👁 Vista previa</button><button type="button" class="btn ghost small" data-reset>Volver al original</button></div>
       </section>`;
       const read = () => {
         cfg.intro = host.querySelector('[data-intro]').value.trim(); if (cfg.intro === CK_INTRO) delete cfg.intro;
         cfg.hidden = []; cfg.labels = {}; cfg.hints = {};
-        host.querySelectorAll('[data-key]').forEach(r => { const k = r.dataset.key, l = r.querySelector('[data-lab]').value.trim(), h = r.querySelector('[data-hint]');
-          if (!r.querySelector('[data-on]').checked) cfg.hidden.push(k);
+        host.querySelectorAll('[data-k]').forEach(r => {
+          const k = r.dataset.k, l = r.querySelector('[data-lab]').value.trim(), h = r.querySelector('[data-hint]'), hv = h ? h.value.trim() : '', q = xOf(k);
+          if (q) { q.label = l.slice(0, 200); q.hint = hv.slice(0, 200); q.type = r.querySelector('[data-xtype]').value; return; }
+          const on = r.querySelector('[data-on]'); if (on && !on.checked) cfg.hidden.push(k);
           if (l && l !== CK_DEF_LABEL(k)) cfg.labels[k] = l.slice(0, 200);
-          if (h && h.value.trim()) cfg.hints[k] = h.value.trim().slice(0, 200); });
-        cfg.extra = [...host.querySelectorAll('[data-x]')].map(r => { const q = cfg.extra[+r.dataset.x];
-          return { id: q.id, label: r.querySelector('[data-xlab]').value.trim().slice(0, 200), hint: r.querySelector('[data-xhint]').value.trim().slice(0, 200), type: r.querySelector('[data-xtype]').value }; });
+          if (h && hv !== CK_DEF_HINT(k)) cfg.hints[k] = hv ? hv.slice(0, 200) : ' ';   // ' ' = sin ayuda
+        });
       };
       host.querySelectorAll('[data-on]').forEach(x => x.onchange = () => x.closest('.ck-ed-row').classList.toggle('off', !x.checked));
-      host.querySelector('[data-xadd]').onclick = () => { read(); cfg.extra.push({ id: Math.random().toString(36).slice(2, 8), label: '', hint: '', type: 'text' }); draw(); const ins = host.querySelectorAll('[data-xlab]'); ins[ins.length - 1].focus(); };
-      host.querySelectorAll('[data-xdel]').forEach(b => b.onclick = () => { read(); cfg.extra.splice(+b.closest('[data-x]').dataset.x, 1); draw(); });
-      host.querySelector('[data-prev]').onclick = () => { read(); const c0 = Object.assign({ id: 'preview', name: 'Cliente' }, { consent_photos: true }); checkinForm(c0, { cfg: Object.assign({}, cfg, { extra: cfg.extra.filter(q => q.label) }), preview: true }); };
-      host.querySelector('[data-reset]').onclick = async () => { if (!(await confirmBox('El cuestionario vuelve a las preguntas y textos originales (se quitan las añadidas).', 'Volver al original'))) return; Object.assign(cfg, { intro: '', hidden: [], labels: {}, hints: {}, extra: [] }); delete cfg.intro; draw(); };
+      host.querySelectorAll('[data-up], [data-dn]').forEach(b => b.onclick = () => {
+        read(); const k = b.closest('[data-k]').dataset.k, i = cfg.order.indexOf(k), j = i + (b.hasAttribute('data-up') ? -1 : 1);
+        if (j < 0 || j >= cfg.order.length) return; [cfg.order[i], cfg.order[j]] = [cfg.order[j], cfg.order[i]]; draw();
+        const nb = host.querySelector(`[data-k="${k}"] ${b.hasAttribute('data-up') ? '[data-up]' : '[data-dn]'}`); if (nb && !nb.disabled) nb.focus();
+      });
+      host.querySelector('[data-xadd]').onclick = () => {
+        read(); const q = { id: Math.random().toString(36).slice(2, 8), label: '', hint: '', type: 'text' }; cfg.extra.push(q);
+        const ni = cfg.order.indexOf('notes'); cfg.order.splice(ni < 0 ? cfg.order.length : ni, 0, 'x:' + q.id); draw();
+        const inp = host.querySelector(`[data-k="x:${q.id}"] [data-lab]`); if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus(); }
+      };
+      host.querySelectorAll('[data-xdel]').forEach(b => b.onclick = () => { read(); const k = b.closest('[data-k]').dataset.k; cfg.extra = cfg.extra.filter(q => 'x:' + q.id !== k); cfg.order = cfg.order.filter(x => x !== k); draw(); });
+      host.querySelector('[data-prev]').onclick = () => { read(); checkinForm({ id: 'preview', name: 'Cliente', consent_photos: true }, { cfg: Object.assign({}, cfg, { extra: cfg.extra.filter(q => q.label) }), preview: true }); };
+      host.querySelector('[data-reset]').onclick = async () => { if (!(await confirmBox('El cuestionario vuelve a las preguntas, textos y orden originales (se quitan las añadidas). No se guarda hasta que pulses «Guardar cambios».', 'Volver al original'))) return; Object.assign(cfg, { hidden: [], labels: {}, hints: {}, extra: [], order: [] }); delete cfg.intro; cfg.order = ckOrder(cfg); draw(); };
       host.querySelector('[data-save]').onclick = async () => {
         read();
         if (cfg.extra.some(q => !q.label)) { toast('Escribe el texto de cada pregunta añadida (o quítala)', 'err'); return; }
         if (CK_ORDER.every(k => cfg.hidden.includes(k)) && !cfg.extra.length) { toast('Deja al menos una pregunta además del peso', 'err'); return; }
-        try { await safe(() => DB.upsert('public_texts', { key: 'checkin_form', value: JSON.stringify(cfg), updated_at: new Date().toISOString() }, 'key'), 'Cuestionario guardado ✓'); S.ckCfg = { t: Date.now(), v: cfg }; } catch (e) { /* avisado */ }
+        try { await safe(() => DB.upsert('public_texts', { key: 'checkin_form', value: JSON.stringify(cfg), updated_at: new Date().toISOString() }, 'key'), 'Cuestionario guardado ✓'); S.ckCfg = { t: Date.now(), v: JSON.parse(JSON.stringify(cfg)) }; } catch (e) { /* avisado */ }
       };
     };
     draw();
@@ -4541,7 +4564,16 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Las respuestas a las preguntas añadidas se guardan en checkins.extra (migración 038) con el texto de la pregunta.
   const CK_OTHER = { steps: 'Media de pasos de la semana', sleep_h: 'Horas de sueño (media por noche)', medidas: 'Medidas (cm, opcional)', fotos: 'Fotos de progreso' };
   const CK_ORDER = ['train_adh', 'diet_adh', 'steps', 'hunger', 'satiety', 'fatigue', 'fatigue_muscles', 'pains', 'misses', 'energy10', 'sleep_h', 'sleep_q', 'stress', 'motivation', 'notes', 'medidas', 'fotos'];
-  const CK_DEF_LABEL = key => (CK_SCALES[key] || [])[0] || CK_TEXTS[key] || CK_OTHER[key] || key;
+  const CK_W_HINT = 'Nada más levantarte, después de hacer pis, sin comer ni beber.';
+  // Orden del cuestionario: el guardado (con las preguntas añadidas como «x:id») y lo que falte, en su sitio de siempre
+  function ckOrder(cfg) {
+    const xs = (cfg.extra || []).filter(q => q && q.id).map(q => 'x:' + q.id);
+    const def = CK_ORDER.slice(0, CK_ORDER.indexOf('notes')).concat(xs, CK_ORDER.slice(CK_ORDER.indexOf('notes')));
+    const all = new Set(def), o = (cfg.order || []).filter(k => all.has(k));
+    def.forEach((k, j) => { if (!o.includes(k)) { const prev = def.slice(0, j).reverse().find(x => o.includes(x)); o.splice(prev ? o.indexOf(prev) + 1 : 0, 0, k); } });
+    return o;
+  }
+  const CK_DEF_LABEL = key => (key === 'weight' ? 'Peso en ayunas (kg)' : '') || (CK_SCALES[key] || [])[0] || CK_TEXTS[key] || CK_OTHER[key] || key;
   const CK_EXTRA_T = { scale: 'Escala 1-10', yesno: 'Sí / No', number: 'Número', text: 'Texto corto', long: 'Texto largo' };
   const CK_INTRO = 'Este formulario es la pieza más importante de nuestro trabajo juntos: sé sincero, así puedo ajustar tu plan.';
   async function checkinCfg(force) {
@@ -4565,29 +4597,39 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       if (q.type === 'number') return `<label>${esc(q.label)}<input name="${nm}" type="number" step="any" inputmode="decimal" placeholder="${h}"></label>`;
       if (q.type === 'long') return `<label>${esc(q.label)}<textarea name="${nm}" rows="3" placeholder="${h}"></textarea></label>`;
       return `<label>${esc(q.label)}<input name="${nm}" maxlength="500" placeholder="${h}"></label>`; };
+    const PART = {
+      train_adh: () => scale('train_adh'),
+      diet_adh: () => scale('diet_adh'),
+      hunger: () => scale('hunger'),
+      satiety: () => scale('satiety'),
+      fatigue: () => scale('fatigue'),
+      energy10: () => scale('energy10'),
+      sleep_q: () => scale('sleep_q'),
+      stress: () => scale('stress'),
+      motivation: () => scale('motivation'),
+      steps: () => on('steps') ? `<label>${lab('steps')}<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="${hint('steps', 'Ej: 9000')}"></label>` : '',
+      sleep_h: () => on('sleep_h') ? `<label>${lab('sleep_h')}<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="${hint('sleep_h', 'Ej: 7,5')}"></label>` : '',
+      fatigue_muscles: () => text('fatigue_muscles', 1, 'Si no tienes, déjalo en blanco · Ej: piernas cargadas desde el martes'),
+      pains: () => text('pains', 1, 'Si no tienes, déjalo en blanco · Dónde y desde cuándo'),
+      misses: () => text('misses', 2, 'Si no, déjalo en blanco · Comidas, entrenos, descanso…'),
+      notes: () => text('notes', 3),
+      medidas: () => on('medidas') ? `<details><summary>${lab('medidas')}</summary><div class="form-grid three">
+        ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
+        <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>` : '',
+      fotos: () => !on('fotos') ? '' : c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (engranaje ⚙️ de arriba → Ajustes).</p>' : `<fieldset class="ck-photos"><legend>${lab('fotos')} <small>${hint('fotos', 'con la misma luz y postura cada semana')}</small></legend>
+        ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
+        <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
+      </fieldset>`
+    };
+    const body = ckOrder(cfg).map(k => (k.startsWith('x:') ? (q => (q ? xq(q) : ''))(extras.find(q => q.id === k.slice(2))) : PART[k] ? PART[k]() : '')).join('\n');
     const f = modal('Valoración semanal', `
       ${opts.preview ? '<p class="note small">👁 Vista previa: así lo verán tus clientes. No se envía nada.</p>' : ''}
       <p class="muted small">${esc(cfg.intro || CK_INTRO)}</p>
       <div class="form-grid">
         <label>Fecha<input name="date" type="date" value="${today()}" required></label>
-        <label>Peso en ayunas (kg)<input name="weight" type="number" step="0.05" inputmode="decimal" required><small class="muted">Nada más levantarte, después de hacer pis, sin comer ni beber.</small></label>
+        <label>${lab('weight')}<input name="weight" type="number" step="0.05" inputmode="decimal" required><small class="muted">${hint('weight', CK_W_HINT)}</small></label>
       </div>
-      ${scale('train_adh')}${scale('diet_adh')}
-      ${on('steps') ? `<label>${lab('steps')}<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="${hint('steps', 'Ej: 9000')}"></label>` : ''}
-      ${scale('hunger')}${scale('satiety')}${scale('fatigue')}
-      ${text('fatigue_muscles', 1, 'Si no tienes, déjalo en blanco · Ej: piernas cargadas desde el martes')}${text('pains', 1, 'Si no tienes, déjalo en blanco · Dónde y desde cuándo')}${text('misses', 2, 'Si no, déjalo en blanco · Comidas, entrenos, descanso…')}
-      ${scale('energy10')}
-      ${on('sleep_h') ? `<label>${lab('sleep_h')}<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="${hint('sleep_h', 'Ej: 7,5')}"></label>` : ''}
-      ${scale('sleep_q')}${scale('stress')}${scale('motivation')}
-      ${extras.map(xq).join('')}
-      ${text('notes', 3)}
-      ${on('medidas') ? `<details><summary>${lab('medidas')}</summary><div class="form-grid three">
-        ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
-        <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>` : ''}
-      ${!on('fotos') ? '' : c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (engranaje ⚙️ de arriba → Ajustes).</p>' : `<fieldset class="ck-photos"><legend>${lab('fotos')} <small>${hint('fotos', 'con la misma luz y postura cada semana')}</small></legend>
-        ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
-        <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
-      </fieldset>`}`, {
+      ${body}`, {
       submitLabel: 'Enviar check-in',
       onSubmit: async (form, fd) => {
         const d = { client_id: c.id, date: fd.get('date') || today() };

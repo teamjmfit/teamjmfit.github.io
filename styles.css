@@ -1873,9 +1873,13 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .ck-ed-row input:not([type="checkbox"]) { width: 100%; }
 .ck-ed-row input.small { font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
 .ck-ed-row.off .grow { opacity: .45; }
-.ck-ed-row > small { flex: none; width: 76px; text-align: right; }
-.ck-ed-on { display: flex; align-items: center; gap: 6px; flex: none; font-size: 13px; margin: 0; }
-.ck-ed-row select { width: auto; flex: none; }
+.ck-ed-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 92px; }
+.ck-ed-on { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 13px; margin: 0; }
+.ck-ed-row select { width: auto; }
+.ck-ed-row.new { border-color: var(--accent); }
+.ck-ed-mv { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.ck-ed-mv .icon-btn { width: 28px; height: 24px; font-size: 11px; }
+.ck-ed-mv .icon-btn:disabled { opacity: .25; }
 .ck-ed-acts { margin-top: 16px; }
-@media (max-width: 600px) { .ck-ed-row { flex-wrap: wrap; } .ck-ed-row > small { width: auto; } }
+@media (max-width: 600px) { .ck-ed-row { flex-wrap: wrap; } .ck-ed-side { flex-direction: row; align-items: center; min-width: 0; width: 100%; justify-content: space-between; padding-left: 38px; } }
 .ck-extra { margin-top: 4px; }
