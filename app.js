@@ -4250,19 +4250,31 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       } else diet = `<a class="card diet-card" href="#/nutricion"><header><span class="dc-ic">${ic('apple')}</span><div class="grow"><b>Dieta</b><small>Tu plan de comidas</small></div><span class="small link-a">Ver ›</span></header></a>`;
     }
 
-    // ---- calendario del mes
-    let mon = S.calMon || t0.slice(0, 7), sel = S.calSel || t0;
+    // ---- calendario: 4 semanas (la pasada, esta y dos más) con lo que toca cada día y si la semana es de carga o de descarga
+    let mon = S.calFromC && /^\d{4}-\d{2}-\d{2}$/.test(S.calFromC) ? S.calFromC : addDays(wkS, -7), sel = S.calSel || t0;
     let evs = [];
-    const monthDays = ym => { const f = ym + '-01', start = addDays(f, 1 - (((new Date(f + 'T12:00:00').getDay()) + 6) % 7 + 1)); const out = []; for (let i = 0; i < 42; i++) out.push(addDays(start, i)); return out.slice(0, out[35].slice(0, 7) === ym ? 42 : 35); };
-    const plannedOn = ds => (ds >= wkS && ds <= wkE ? routines.filter(r => r.day === ((new Date(ds + 'T12:00:00').getDay() + 6) % 7) + 1) : []);
+    const monthDays = a => { const out = []; for (let i = 0; i < 28; i++) out.push(addDays(a, i)); return out; };
+    const actP = new Set(programs.filter(p => p.status === 'active').map(p => p.id)), pw = weeks.filter(w => actP.has(w.program_id));
+    const wkOn = ds => pw.find(w => w.start_date <= ds && ds <= addDays(w.start_date, 6)) || null;
+    const fixedR = allRoutines.filter(r => !r.program_week_id);
+    const plannedOn = ds => { const dow = ((new Date(ds + 'T12:00:00').getDay() + 6) % 7) + 1, w = wkOn(ds);
+      if (w) return allRoutines.filter(r => r.program_week_id === w.id && r.day === dow);
+      return pw.length ? [] : fixedR.filter(r => r.day === dow); };
+    const wkTag = a => { const w = wkOn(a); if (!w) return '';
+      const p = programs.find(x => x.id === w.program_id), k = w.kind || 'normal', tot = p && p.meso_weeks ? Math.max(p.meso_weeks, w.week_no) : null;
+      const txt = k === 'deload' ? '↓ Descarga' : k === 'normal' ? '↑ Carga' : (KINDS[k] ? (KINDS[k][1] || '•') + ' ' + KINDS[k][0] : k);
+      return `<div class="cal-wk ${k === 'deload' ? 'dl' : 'ld'}"><b>${esc(txt)}</b><span>Semana ${w.week_no}${tot ? ' de ' + tot : ''}</span></div>`; };
     const calHtml = () => {
-      const days = monthDays(mon), lab = cap1(new Date(mon + '-15T12:00:00').toLocaleDateString('es-ES', { month: 'long' })) + ' ' + mon.slice(0, 4);
-      return `<header class="cal-h"><span class="cal-ic">${ic('dumbbell')}</span><div class="grow"><b>Rutina</b><small>Resumen del mes</small></div>
-          <div class="cal-nav"><button type="button" class="icon-btn" data-cm="-1" aria-label="Mes anterior">‹</button><span class="cal-m">${esc(lab)}</span><button type="button" class="icon-btn" data-cm="1" aria-label="Mes siguiente">›</button></div></header>
-        <div class="cal-g" role="grid">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<span class="cal-w">${x}</span>`).join('')}
-        ${days.map(ds => { const dn = doneOn(ds).length, pl = plannedOn(ds).filter(r => !doneOn(ds).some(s => s.routine_id === r.id)).length && ds >= t0, ev = evs.some(e => e.date === ds && e.kind !== 'note');
-          return `<button type="button" data-cd="${ds}" class="${ds.slice(0, 7) !== mon ? 'out' : ''} ${ds === t0 ? 'today' : ''} ${ds === sel ? 'sel' : ''}" aria-pressed="${ds === sel}" aria-label="${esc(fmtDate(ds, { weekday: 'long', day: 'numeric', month: 'long' }))}">${+ds.slice(8)}<i>${dn ? '<em class="d-done"></em>' : ''}${pl ? '<em class="d-plan"></em>' : ''}${ev ? '<em class="d-ev"></em>' : ''}</i></button>`; }).join('')}</div>
-        <p class="cal-key"><span><em class="d-done"></em>Entreno hecho</span><span><em class="d-plan"></em>Te toca</span><span><em class="d-ev"></em>En tu calendario</span></p>`;
+      const days = monthDays(mon), lab = `${fmtDate(days[0], { day: 'numeric', month: 'short' })} – ${fmtDate(days[27], { day: 'numeric', month: 'short' })}`;
+      return `<header class="cal-h"><span class="cal-ic">${ic('dumbbell')}</span><div class="grow"><b>Rutina</b><small>Tus próximas semanas</small></div>
+          <div class="cal-nav"><button type="button" class="icon-btn" data-cm="-1" aria-label="4 semanas antes">‹</button><span class="cal-m">${esc(lab)}</span><button type="button" class="icon-btn" data-cm="1" aria-label="4 semanas después">›</button></div></header>
+        <div class="cal-g cal-4" role="grid">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(x => `<span class="cal-w">${x}</span>`).join('')}
+        ${days.map((ds, i) => { const dns = doneOn(ds), pls = plannedOn(ds).filter(r => !dns.some(s => s.routine_id === r.id)), ev = evs.some(e => e.date === ds && e.kind !== 'note');
+          const nm = dns.length ? (byId(allRoutines, dns[0].routine_id) || {}).name || dns[0].routine_name || 'Entreno' : pls.length ? pls[0].name : '';
+          const st = dns.length ? 'done' : pls.length ? (ds < t0 ? 'miss' : 'plan') : '', w = wkOn(ds), dl = w && w.kind === 'deload';
+          return `${i % 7 === 0 ? wkTag(ds) : ''}<button type="button" data-cd="${ds}" class="${ds === t0 ? 'today' : ''} ${ds === sel ? 'sel' : ''} ${ds < t0 ? 'past' : ''} ${w ? (dl ? 'w-dl' : 'w-ld') : ''}" aria-pressed="${ds === sel}" aria-label="${esc(fmtDate(ds, { weekday: 'long', day: 'numeric', month: 'long' }))}${nm ? ': ' + esc(nm) : ''}">
+            <span class="cd-n">${+ds.slice(8)}${+ds.slice(8) === 1 ? `<small>${esc(fmtDate(ds, { month: 'short' }).replace('.', ''))}</small>` : ''}</span>${nm ? `<span class="cd-r ${st}">${dns.length ? '✓ ' : ''}${esc(nm)}</span>` : ''}${ev ? '<em class="d-ev"></em>' : ''}</button>`; }).join('')}</div>
+        <p class="cal-key"><span><em class="k-done"></em>Hecho</span><span><em class="k-plan"></em>Te toca</span>${pw.some(w => w.kind === 'deload') ? '<span><em class="k-dl"></em>Descarga</span>' : ''}<span><em class="d-ev"></em>En tu calendario</span></p>`;
     };
     const dayHtml = () => {
       const ds = sel, dn = doneOn(ds), pl = plannedOn(ds).filter(r => !dn.some(s => s.routine_id === r.id)), ev = evs.filter(e => e.date === ds);
@@ -4298,8 +4310,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const drawCal = () => { box.querySelector('[data-cal]').innerHTML = calHtml(); box.querySelector('[data-cday]').innerHTML = dayHtml(); wireCk(box.querySelector('[data-cday]')); };
     box.querySelector('[data-cal]').addEventListener('click', async e => {
       const b = e.target.closest('[data-cd]'), mv = e.target.closest('[data-cm]');
-      if (b) { sel = S.calSel = b.dataset.cd; if (sel.slice(0, 7) !== mon) { mon = S.calMon = sel.slice(0, 7); await loadMonth(); } drawCal(); }
-      if (mv) { const dt = new Date(mon + '-15T12:00:00'); dt.setMonth(dt.getMonth() + +mv.dataset.cm); mon = S.calMon = ymd(dt).slice(0, 7); await loadMonth(); drawCal(); }
+      if (b) { sel = S.calSel = b.dataset.cd; drawCal(); }
+      if (mv) { mon = S.calFromC = addDays(mon, 28 * +mv.dataset.cm); await loadMonth(); drawCal(); }
     });
     const fm = box.querySelector('[data-dm]');
     fm.onsubmit = async e => {
