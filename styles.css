@@ -1942,3 +1942,27 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .cal2 .wk-dl .cev.pub, .cal2 .wk-dl .cev.auto { background: color-mix(in srgb, #2ec4b6 22%, transparent); }
 .cal2 .cday.today { background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
 @media (max-width: 700px) { .cal2 .cday { min-height: 78px; padding: 3px; } .cal2 .cev { font-size: 10px; padding: 2px 4px; -webkit-line-clamp: 3; } .pb-p { display: none; } }
+
+/* ---------- Calendario del cliente (Inicio): 4 semanas con lo que toca y si es carga o descarga */
+.cal-4 { row-gap: 4px; column-gap: 3px; }
+.cal-4 .cal-wk { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 3px 4px 1px; font-size: 11px; }
+.cal-4 .cal-wk b { padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); }
+.cal-4 .cal-wk.dl b { background: #2ec4b6; color: #fff; }
+.cal-4 .cal-wk span { color: var(--muted); font-weight: 600; }
+.cal-4 button { aspect-ratio: auto; min-height: 62px; justify-content: flex-start; align-items: stretch; gap: 3px; padding: 4px 3px; border-radius: 9px; background: var(--card2); }
+.cal-4 button.w-ld { box-shadow: inset 0 2px 0 color-mix(in srgb, var(--accent) 70%, transparent); }
+.cal-4 button.w-dl { background: color-mix(in srgb, #2ec4b6 10%, var(--card2)); box-shadow: inset 0 2px 0 #2ec4b6; }
+.cal-4 button.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-4 button.sel { background: var(--accent); color: var(--accent-ink); }
+.cal-4 .cd-n { font-size: 12px; font-weight: 700; text-align: left; padding-left: 2px; line-height: 1.1; }
+.cal-4 .cd-n small { font-size: 8.5px; font-weight: 700; text-transform: uppercase; margin-left: 2px; opacity: .7; }
+.cal-4 .cd-r { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 9.5px; font-weight: 700; line-height: 1.2; text-align: left; padding: 2px 3px; border-radius: 5px; word-break: break-word; }
+.cal-4 .cd-r.plan { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cal-4 .w-dl .cd-r.plan { background: color-mix(in srgb, #2ec4b6 24%, transparent); }
+.cal-4 .cd-r.done { background: color-mix(in srgb, var(--green) 24%, transparent); color: var(--green); }
+.cal-4 .cd-r.miss { opacity: .5; text-decoration: line-through; background: transparent; }
+.cal-4 button.sel .cd-r { background: rgba(255,255,255,.22); color: inherit; }
+.cal-4 button .d-ev { margin-top: auto; align-self: center; }
+@media (min-width: 700px) { .cal-4 button { min-height: 72px; } .cal-4 .cd-r { font-size: 11px; } }
+.cal-key em.k-done, .cal-key em.k-plan, .cal-key em.k-dl { width: 10px; height: 10px; border-radius: 3px; }
+.k-done { background: color-mix(in srgb, var(--green) 45%, transparent); } .k-plan { background: color-mix(in srgb, var(--accent) 40%, transparent); } .k-dl { background: #2ec4b6; }
