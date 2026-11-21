@@ -2042,3 +2042,29 @@ body.refreshing [data-refresh] .ic, body.refreshing img[data-refresh] { animatio
 body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite; }
 @keyframes jm-spin { to { transform: rotate(360deg); } }
 @keyframes jm-pulse { 50% { opacity: .45; } }
+
+/* ---------- Resumen → módulo de imagen (sin imagen / 1 imagen / composición) */
+.rs-img .np-plans { margin-bottom: 12px; }
+.rs-single { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.rs-sprev { width: 160px; aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; background: var(--card2); display: grid; place-items: center; flex: none; }
+.rs-sprev img { width: 100%; height: 100%; object-fit: cover; } .rs-sprev span { color: var(--muted); font-size: 12px; }
+.rs-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.rs-th { width: 54px; height: 72px; padding: 0; border: 2px solid transparent; border-radius: 9px; overflow: hidden; background: var(--card2); cursor: pointer; }
+.rs-th.on { border-color: var(--accent); } .rs-th span, .rs-th img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.rs-tpls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.rs-tpl { display: flex; align-items: center; gap: 10px; padding: 10px; border: 2px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.rs-tpl.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.rs-tpl small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.3; }
+.rs-mini { flex: none; width: 40px; height: 64px; border-radius: 6px; background: #0b0b0d; padding: 4px; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: min-content; gap: 2px; align-content: start; }
+.rs-mini.m-post { height: 50px; } .rs-mini.m-trio { grid-template-columns: repeat(3, 1fr); }
+.rs-mini i { display: block; height: 22px; border-radius: 2px; background: #d9a94f; opacity: .85; } .rs-mini.m-trio i { height: 11px; } .rs-mini.m-post i { height: 18px; }
+.rs-mini b { grid-column: 1 / -1; display: block; height: 5px; border-radius: 2px; background: rgba(255,255,255,.35); margin-top: 2px; }
+.rs-pick { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; } .rs-pick label { flex: 1 1 220px; margin: 0; }
+.rs-cprev { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.rs-crow { display: flex; align-items: center; gap: 8px; } .rs-crow > small { width: 64px; color: var(--muted); flex: none; }
+.rs-cph { position: relative; width: 78px; height: 104px; border-radius: 10px; overflow: hidden; background: var(--card2); display: grid; place-items: center; }
+.rs-cph img { width: 100%; height: 100%; object-fit: cover; } .rs-cph > span { width: 100%; height: 100%; } .rs-cph em { font-size: 11px; color: var(--muted); font-style: normal; }
+.rs-cph i { position: absolute; left: 0; right: 0; bottom: 0; font-style: normal; font-size: 10px; text-align: center; color: #fff; background: rgba(0,0,0,.5); padding: 2px 0; }
+.rs-out { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.rs-out img { width: 220px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+@media (max-width: 700px) { .rs-tpls { grid-template-columns: 1fr; } }
