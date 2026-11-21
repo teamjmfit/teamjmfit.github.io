@@ -435,8 +435,9 @@
   function shell(navItems, activeKey, content, { title, back, actions = '', sub = '' } = {}) {
     const nav = navItems.map(n => `<a href="#/${n.href}" class="${n.key === activeKey ? 'on' : ''}">${ic(n.icon)}<span>${n.label}</span>${n.badge ? `<i class="badge">${n.badge}</i>` : ''}</a>`).join('');
     $app.innerHTML = `
-      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
+      <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219" data-refresh role="button" tabindex="0" title="Actualizar la app"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
         <nav>${nav}</nav>
+        <button class="side-out" data-refresh title="Actualizar la app (cargar lo último)">${ic('refresh')} Actualizar</button>
         <button class="side-out" data-theme-btn>${ic('sun')} Apariencia</button>
         <button class="side-out" data-logout>${ic('out')} Salir</button>
         ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
@@ -444,16 +445,24 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
-          ${(S.profile.role === 'client' || S.viewAs) && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219">
-          <button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
+          ${(S.profile.role === 'client' || S.viewAs) && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219" data-refresh role="button" tabindex="0" title="Actualizar la app">
+          <button class="icon-btn only-mobile" data-refresh aria-label="Actualizar la app" title="Actualizar la app">${ic('refresh')}</button><button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
         <div class="content">${content}</div>
       </div>
       <nav class="tabbar">${nav}</nav>`;
     $app.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => themeModal());
+    $app.querySelectorAll('[data-refresh]').forEach(b => { b.onclick = refreshApp; b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); refreshApp(); } }; });
     $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; render(); } });
     $app.querySelectorAll('[data-priv]').forEach(b => b.onclick = () => privacyModal());
   }
   const loading = () => '<div class="loading"><span></span><span></span><span></span></div>';
+  // Actualizar: busca la última versión de la app y vuelve a cargar (como recargar la página, también instalada en el ordenador)
+  async function refreshApp() {
+    document.body.classList.add('refreshing');
+    try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await Promise.race([reg.update(), new Promise(r => setTimeout(r, 2500))]); } catch (e) { /* sin service worker */ }
+    if (DB.clearCache) try { DB.clearCache(); } catch (e) { /* nada */ }
+    location.reload();
+  }
 
   // ================================================================ ENTRENADOR
   const COACH_NAV = [

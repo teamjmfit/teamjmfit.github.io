@@ -2035,3 +2035,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .rs-ex input[type="checkbox"] { width: 18px; height: 18px; flex: none; margin: 0; }
 .rs-ex .grow { flex: 1 1 auto; display: block; }
 .rs-inc input[type="checkbox"] { width: 18px; height: 18px; }
+
+/* ---------- Actualizar la app */
+[data-refresh].brand-logo { cursor: pointer; }
+body.refreshing [data-refresh] .ic, body.refreshing img[data-refresh] { animation: jm-spin .8s linear infinite; }
+body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite; }
+@keyframes jm-spin { to { transform: rotate(360deg); } }
+@keyframes jm-pulse { 50% { opacity: .45; } }
