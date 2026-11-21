@@ -3260,6 +3260,62 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     return m;
   }
 
+  // ---------- Visor de fotos de revisión: dentro de la app (encima), las 3 juntas o una sola, y comparar con otra revisión
+  // postura con postura (frente con frente, perfil con perfil, espalda con espalda).
+  const PH_URL = {};
+  const phUrl = path => (PH_URL[path] = PH_URL[path] || DB.photoUrl(path).catch(() => { delete PH_URL[path]; return ''; }));
+  const phOrder = p => { const i = CK_POSES.findIndex(x => x[0] === p); return i < 0 ? 10 + (parseInt(String(p).replace(/\D/g, ''), 10) || 0) : i; };
+  const phLabel = p => (CK_POSES.find(x => x[0] === p) || [, ''])[1] || (/^extra/.test(String(p)) ? 'Extra ' + String(p).replace(/\D/g, '') : 'Foto');
+  const ckPics = (k, list) => { const ps = (list || []).filter(p => !p.archived_at && p.path).sort((a, b) => phOrder(a.pose) - phOrder(b.pose));
+    if (k.photo_path && !ps.some(p => p.path === k.photo_path)) ps.unshift({ path: k.photo_path, pose: 'front' }); return ps; };
+  async function photoViewer(k, pics, { start = null } = {}) {
+    let pose = start, cmp = null, cmpPics = [], others = null;
+    const ov = document.createElement('div'); ov.className = 'pv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
+    document.body.appendChild(ov); document.body.classList.add('noscroll');
+    const close = () => { ov.remove(); document.body.classList.remove('noscroll'); removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    addEventListener('keydown', onKey);
+    const dLab = x => `${fmtDate(x.date, { day: 'numeric', month: 'short', year: 'numeric' })}${x.weight ? ' · ' + fmtKg(x.weight) + ' kg' : ''}`;
+    const poses = () => { const ks = pics.map(p => p.pose || 'front'); return ks.filter((x, i) => ks.indexOf(x) === i); };
+    const byPose = (list, ps) => list.find(p => (p.pose || 'front') === ps);
+    const img = p => (p ? `<div class="pv-img" data-path="${esc(p.path)}"><span class="pv-load">…</span></div>` : '<div class="pv-img pv-none"><span>Sin esta foto</span></div>');
+    const draw = () => {
+      const ps = poses(), shown = pose ? [pose] : ps;
+      const body = cmp && !pose
+        ? `<div class="pv-cmpg" style="--n:${shown.length}">${(String(cmp.date) <= String(k.date) ? [[cmp, cmpPics, 'Antes'], [k, pics, 'Después']] : [[k, pics, 'Antes'], [cmp, cmpPics, 'Después']]).map(([x, list, l]) => `<p class="pv-rl">${l} · ${esc(dLab(x))}</p>${shown.map(ps => `<figure data-pose="${esc(ps)}">${img(byPose(list, ps))}<figcaption>${esc(phLabel(ps))}</figcaption></figure>`).join('')}`).join('')}</div>`
+        : cmp
+        ? `<div class="pv-cmp ${pose ? 'one' : ''}">${shown.map(x => `<div class="pv-pair">${(String(cmp.date) <= String(k.date) ? [[cmp, cmpPics], [k, pics]] : [[k, pics], [cmp, cmpPics]]).map(([x0, l0]) => `<figure>${img(byPose(l0, x))}<figcaption>${esc(phLabel(x))} · ${esc(dLab(x0))}</figcaption></figure>`).join('')}</div>`).join('')}</div>`
+        : `<div class="pv-row ${pose ? 'one' : ''}">${shown.map(x => `<figure>${img(byPose(pics, x))}<figcaption>${esc(phLabel(x))}</figcaption></figure>`).join('')}</div>`;
+      const dw = cmp && cmp.weight && k.weight ? Number(k.weight) - Number(cmp.weight) : null;
+      ov.innerHTML = `<div class="pv-bar"><div class="pv-t"><b>${esc(cap1(fmtDate(k.date, { weekday: 'long', day: 'numeric', month: 'long' })))}</b><small>${cmp ? `Comparando con el ${esc(fmtDate(cmp.date, { day: 'numeric', month: 'long' }))}${dw != null ? ` · ${dw > 0 ? '+' : ''}${fmtKg(dw)} kg` : ''}` : k.weight ? fmtKg(k.weight) + ' kg' : ''}</small></div>
+          <button type="button" class="pv-x" data-pvx aria-label="Cerrar">✕</button></div>
+        <div class="pv-tabs"><button type="button" class="chip ${pose ? '' : 'on'}" data-pvp="">Todas</button>${poses().map(x => `<button type="button" class="chip ${pose === x ? 'on' : ''}" data-pvp="${esc(x)}">${esc(phLabel(x))}</button>`).join('')}
+          <span class="grow"></span>${cmp ? `<button type="button" class="chip" data-pvc>Cambiar revisión</button><button type="button" class="chip" data-pvcx>Quitar comparación</button>` : `<button type="button" class="chip pv-cbtn" data-pvc>⇆ Comparar</button>`}</div>
+        <div class="pv-body">${body}</div><div class="pv-pick" data-pick hidden></div>`;
+      ov.querySelectorAll('.pv-img[data-path]').forEach(el => phUrl(el.dataset.path).then(u => { if (u) el.innerHTML = `<img src="${esc(u)}" alt="">`; else el.innerHTML = '<span>No se pudo cargar</span>'; }));
+      ov.querySelector('[data-pvx]').onclick = close;
+      ov.querySelectorAll('[data-pvp]').forEach(b => b.onclick = () => { pose = b.dataset.pvp || null; draw(); });
+      ov.querySelectorAll('.pv-row figure').forEach((f, i) => f.onclick = () => { if (!pose) { pose = poses()[i]; draw(); } });
+      ov.querySelectorAll('.pv-cmpg figure').forEach(f => f.onclick = () => { pose = f.dataset.pose; draw(); });
+      const cx = ov.querySelector('[data-pvcx]'); if (cx) cx.onclick = () => { cmp = null; cmpPics = []; draw(); };
+      ov.querySelector('[data-pvc]').onclick = pick;
+    };
+    // Elegir la otra revisión: todas las del cliente que tengan fotos (la más antigua primero, para el «antes»)
+    async function pick() {
+      const box = ov.querySelector('[data-pick]'); box.hidden = false; box.innerHTML = `<div class="pv-pk"><p>${loading()}</p></div>`;
+      if (!others) {
+        const [cks, phs] = await Promise.all([DB.list('checkins', { eq: { client_id: k.client_id }, order: ['date', 'asc'] }).catch(() => []), DB.list('checkin_photos', { eq: { client_id: k.client_id } }).catch(() => [])]);
+        others = cks.filter(x => x.id !== k.id).map(x => ({ k: x, ps: ckPics(x, phs.filter(p => p.checkin_id === x.id)) })).filter(x => x.ps.length);
+      }
+      box.innerHTML = `<div class="pv-pk"><header><b>Comparar con otra revisión</b><button type="button" class="pv-x" data-pkx aria-label="Cerrar">✕</button></header>
+        ${others.length ? `<ul>${others.map((o, i) => `<li><button type="button" data-pko="${i}"><span class="pv-th" data-path="${esc(o.ps[0].path)}"></span><span class="grow"><b>${esc(cap1(fmtDate(o.k.date, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })))}</b><small>${o.k.weight ? fmtKg(o.k.weight) + ' kg · ' : ''}${o.ps.length} foto${o.ps.length > 1 ? 's' : ''}${i === 0 ? ' · la primera' : ''}</small></span>›</button></li>`).join('')}</ul>` : '<p class="muted">No hay otras revisiones con fotos.</p>'}</div>`;
+      box.querySelectorAll('.pv-th').forEach(el => phUrl(el.dataset.path).then(u => { if (u) el.innerHTML = `<img src="${esc(u)}" alt="">`; }));
+      box.querySelector('[data-pkx]').onclick = () => { box.hidden = true; };
+      box.querySelectorAll('[data-pko]').forEach(b => b.onclick = () => { const o = others[+b.dataset.pko]; cmp = o.k; cmpPics = o.ps; draw(); });
+    }
+    draw();
+  }
+
   function checkinCard(k, asCoach, { who, prev, photos } = {}) {
     const el = document.createElement('article'); el.className = 'checkin' + (asCoach && !k.coach_seen ? ' unseen' : '');
     const meas = [['Cintura', k.waist], ['Cadera', k.hip], ['Pecho', k.chest], ['Brazo', k.arm], ['Muslo', k.thigh], ['Gemelo', k.calf], ['Cuello', k.neck], ['Hombros', k.shoulders], ['% grasa', k.body_fat]].filter(m => m[1]);
@@ -3296,7 +3352,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       // archivadas (más de 3 meses): están en el Drive del entrenador, no en la app
       pics.forEach((p, i) => { if (!p.archived_at) return; const ph = box.querySelector(`[data-pi="${i}"] .ph`); ph.classList.add('ph-drive');
         ph.innerHTML = asCoach && p.drive_file_id ? `<a href="https://drive.google.com/file/d/${esc(p.drive_file_id)}/view" target="_blank" rel="noopener">📁<small>Ver en Drive</small></a>` : '<span>📁<small>Archivada</small></span>'; });
-      pics.forEach((p, i) => !p.archived_at && DB.photoUrl(p.path).then(u => { box.querySelector(`[data-pi="${i}"] .ph`).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto ${esc(label(p.pose) || 'de progreso')}" loading="lazy"></a>`; }).catch(() => {}));
+      // al tocar una foto se abre el visor dentro de la app (no en otra pestaña)
+      const vis = ckPics(k, list);
+      pics.forEach((p, i) => !p.archived_at && phUrl(p.path).then(u => { if (!u) return; const ph = box.querySelector(`[data-pi="${i}"] .ph`);
+        ph.innerHTML = `<button type="button" class="ph-open" aria-label="Ver foto ${esc(label(p.pose) || 'de progreso')}"><img src="${esc(u)}" alt="Foto ${esc(label(p.pose) || 'de progreso')}" loading="lazy"></button>`;
+        ph.querySelector('button').onclick = e => { e.stopPropagation(); photoViewer(k, vis, { start: p.pose || 'front' }); }; }));
+      if (vis.length) { const ab = document.createElement('div'); ab.className = 'ph-acts'; ab.innerHTML = `<button type="button" class="btn small ghost" data-pvall>🖼 Ver ${vis.length > 1 ? 'las ' + vis.length + ' juntas' : 'en grande'}</button><button type="button" class="btn small ghost" data-pvcmp>⇆ Comparar con otra revisión</button>`;
+        box.after(ab); ab.querySelector('[data-pvall]').onclick = () => photoViewer(k, vis);
+        ab.querySelector('[data-pvcmp]').onclick = () => photoViewer(k, vis).then(() => { const b = document.querySelector('.pv [data-pvc]'); if (b) b.click(); }); }
       el._paths = pics.map(p => p.path);
     };
     if (photos) showPhotos(photos); else DB.list('checkin_photos', { eq: { checkin_id: k.id } }).then(showPhotos).catch(() => showPhotos([]));
