@@ -1817,3 +1817,65 @@ body:has(.va-bar) .main { padding-top: 78px; }
 .rir-pair label { display: flex; flex-direction: column; gap: 3px; margin: 0; font-weight: 400; }
 .rir-pair small { color: var(--muted); font-size: .78rem; }
 .rir-pair select { width: 100%; min-width: 0; }
+
+/* ---------- Entrenador en ordenador: menú arriba y la pantalla a todo lo ancho */
+@media (min-width: 900px) {
+  body[data-role=coach] #app { display: block; }
+  body[data-role=coach] .side { position: sticky; top: 0; z-index: 40; height: auto; flex-direction: row; align-items: center; gap: 10px; padding: 8px 20px;
+    border-right: 0; border-bottom: 1px solid var(--line); box-shadow: none; background: color-mix(in srgb, var(--bg2) 92%, transparent); backdrop-filter: blur(12px); }
+  body[data-role=coach] .side .brand { flex-direction: row; align-items: center; padding: 0 10px 0 0; gap: 10px; }
+  body[data-role=coach] .side .brand-logo { width: 96px; max-width: 96px; }
+  body[data-role=coach] .side .brand small { display: none; }
+  body[data-role=coach] .side nav { flex-direction: row; flex: 1; gap: 2px; overflow-x: auto; }
+  body[data-role=coach] .side nav a { padding: 9px 14px; gap: 8px; white-space: nowrap; }
+  body[data-role=coach] .side nav a .badge { position: static; transform: none; margin-left: 4px; }
+  body[data-role=coach] .side-out { padding: 9px 12px; white-space: nowrap; }
+  body[data-role=coach] .side .demo-tag { margin: 0 0 0 6px; }
+  body[data-role=coach] .content { max-width: 1600px; }
+  body[data-role=coach] .top { max-width: 1600px; margin: 0 auto; }
+}
+
+/* ---------- Entrenador en ordenador: menú arriba y todo el ancho para la pantalla */
+@media (min-width: 900px) {
+  body[data-role="coach"] #app { display: block; }
+  body[data-role="coach"] .side { position: sticky; top: 0; z-index: 25; height: auto; flex-direction: row; align-items: center; gap: 14px; padding: 8px 24px; border-right: 0; border-bottom: 1px solid var(--line); }
+  body[data-role="coach"] .side .brand { padding: 0; flex-direction: row; align-items: center; gap: 10px; }
+  body[data-role="coach"] .side .brand-logo { width: 96px; max-width: 96px; }
+  body[data-role="coach"] .side .brand small { display: none; }
+  body[data-role="coach"] .side nav { flex-direction: row; flex: 1; gap: 4px; flex-wrap: wrap; }
+  body[data-role="coach"] .side nav a { padding: 8px 12px; gap: 8px; font-size: 14px; }
+  body[data-role="coach"] .side nav a .badge { position: static; transform: none; margin-left: 4px; }
+  body[data-role="coach"] .side-out { padding: 8px 10px; font-size: 13px; }
+  body[data-role="coach"] .side .demo-tag { margin: 0; }
+  body[data-role="coach"] .top { top: 59px; z-index: 20; }
+  body[data-role="coach"] .content { max-width: 1600px; }
+}
+
+/* ---------- Progreso del entrenador: de dos en dos y orden propio arrastrando ⋮⋮ */
+.dragh { border: 0; background: none; color: var(--muted); cursor: grab; touch-action: none; padding: 0 6px 0 0; font: inherit; font-weight: 700; letter-spacing: -2px; line-height: 1; vertical-align: baseline; }
+.dragh:hover { color: var(--accent); }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
+.pg2 > [data-po].dragging { opacity: .55; outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 14px; }
+.pg2 > [data-po][hidden] { display: none; }
+@media (min-width: 1000px) {
+  /* dos columnas que se rellenan sin huecos (cada apartado entero en una columna) */
+  .pg2 { columns: 2; column-gap: 16px; }
+  .pg2 > [data-po] { break-inside: avoid; display: flow-root; }
+  .pg2 > :not([data-po]), .pg2 > [data-po="kpis"], .pg2 > [data-po="semanas"] { column-span: all; }
+}
+.r-ses { margin-top: 18px; }
+
+/* ---------- Revisiones → Cuestionario semanal */
+.ck-ed h4 { margin: 18px 0 8px; font-size: 14px; }
+.ck-ed-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.ck-ed-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }
+.ck-ed-row .grow { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ck-ed-row input:not([type="checkbox"]) { width: 100%; }
+.ck-ed-row input.small { font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+.ck-ed-row.off .grow { opacity: .45; }
+.ck-ed-row > small { flex: none; width: 76px; text-align: right; }
+.ck-ed-on { display: flex; align-items: center; gap: 6px; flex: none; font-size: 13px; margin: 0; }
+.ck-ed-row select { width: auto; flex: none; }
+.ck-ed-acts { margin-top: 16px; }
+@media (max-width: 600px) { .ck-ed-row { flex-wrap: wrap; } .ck-ed-row > small { width: auto; } }
+.ck-extra { margin-top: 4px; }

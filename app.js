@@ -610,7 +610,7 @@
       pills: [c.weight ? pill(`⚖️ ${fmtKg(c.weight)} kg`) : '', c.adherence ? pill(`✅ adherencia ${c.adherence}/10`) : '', c.energy ? pill(`⚡ energía ${c.energy}/10`) : ''].join(''),
       href: `#/cliente/${c.client_id}/revisiones`, unseen: !c.coach_seen }));
     forms.filter(f => f.submitted_at >= since || !f.seen).forEach(f => out.push({ k: 'form', t: f.submitted_at, cid: f.client_id, who: f.client_id ? nm(f.client_id) : (f.name || 'Sin nombre'),
-      what: `rellenó <b>${f.form === 'plan' ? 'Plan 1:1' : f.form === 'salud' ? 'Datos Base y Salud' : esc(f.form)}</b>`, pills: '', href: '#/formularios', unseen: !f.seen }));
+      what: `rellenó <b>${f.form === 'plan' ? 'Plan 1:1' : f.form === 'salud' ? 'Datos Base y Salud' : esc(f.form)}</b>`, pills: '', href: '#/revisiones/formularios', unseen: !f.seen }));
     return out.sort((a, b) => (a.t < b.t ? 1 : -1));
   }
   function drawActivity(card, feed) {
@@ -1342,6 +1342,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         await safe(() => DB.remove('program_weeks', view.id), 'Semana eliminada'); S.weekSel[c.id] = null; tabRoutines(c, box);
       };
     }
+    // Entrenos realizados (antes en Progreso): para comparar con lo pautado desde aquí
+    const es = document.createElement('div'); es.className = 'r-ses'; box.appendChild(es);
+    tabProgress(c, es, true, false, 'entrenos').catch(e => { console.warn(e); es.remove(); });
   }
 
   function newProgram(c, n, start) {
@@ -2560,7 +2563,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     root.querySelectorAll(':scope > section.card, :scope > div > section.card, :scope > [data-po] > div > section.card').forEach(sec => {
       const h = [...sec.children].find(x => x.matches('h3, header')), t = h && (h.matches('h3') ? h : h.querySelector('h3'));
       if (!t || sec.classList.contains('fold')) return;
-      const name = (t.childNodes[0] && t.childNodes[0].textContent || '').trim(), key = scope + ':' + name;
+      const n0 = [...t.childNodes].find(n => !(n.nodeType === 1 && n.classList.contains('dragh')));
+      const name = (n0 && n0.textContent || '').trim(), key = scope + ':' + name;
       sec.classList.add('fold'); h.classList.add('fold-h'); h.setAttribute('role', 'button'); h.tabIndex = 0;
       const set = open => { sec.classList.toggle('shut', !open); h.setAttribute('aria-expanded', String(open)); };
       set(key in st ? !!st[key] : openByDefault.some(k => name.startsWith(k)));
@@ -2573,7 +2577,54 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       h.addEventListener('click', tog); h.addEventListener('keydown', tog);
     });
   }
-  async function tabProgress(c, box, asCoach, preview = false) {
+  // Progreso del entrenador: dos columnas en ordenador y orden propio arrastrando ⋮⋮ junto al nombre de cada apartado.
+  // El orden se guarda en public_texts.coach_prog_order (solo lo ve el entrenador; no cambia lo que ve el cliente).
+  const CPO_KEY = 'jmfit-coach-prog-order';
+  async function coachProgOrder() {
+    if (S.cpo) return S.cpo;
+    let o = null;
+    try { const r = await DB.get('public_texts', 'coach_prog_order', 'key'); o = r && r.value ? JSON.parse(r.value) : null; } catch (e) { o = null; }
+    if (!Array.isArray(o)) { try { o = JSON.parse(localStorage.getItem(CPO_KEY) || 'null'); } catch (e) { o = null; } }
+    S.cpo = Array.isArray(o) ? o : []; return S.cpo;
+  }
+  async function saveCoachProgOrder(o) {
+    S.cpo = o; try { localStorage.setItem(CPO_KEY, JSON.stringify(o)); } catch (e) { /* sin almacenamiento */ }
+    try { await DB.upsert('public_texts', { key: 'coach_prog_order', value: JSON.stringify(o), updated_at: new Date().toISOString() }, 'key'); } catch (e) { console.warn('orden de progreso', e); }
+  }
+  async function coachProgLayout(box) {
+    box.classList.add('pg2');
+    const blocks = () => [...box.querySelectorAll(':scope > [data-po]')];
+    blocks().forEach(el => { el.hidden = !el.querySelector('section, .kpis, .card, canvas, svg'); });
+    const o = await coachProgOrder();
+    o.forEach(k => { const el = box.querySelector(`:scope > [data-po="${k}"]`); if (el) box.appendChild(el); });
+    blocks().forEach(el => {
+      const h = el.querySelector('h3'); if (!h || h.querySelector('.dragh')) return;
+      const g = document.createElement('button'); g.type = 'button'; g.className = 'dragh'; g.textContent = '⋮⋮';
+      g.title = 'Arrastra para cambiar el orden'; g.setAttribute('aria-label', 'Arrastra para cambiar el orden');
+      h.prepend(g);
+      g.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+      g.addEventListener('pointerdown', e => {
+        e.preventDefault(); e.stopPropagation();
+        el.classList.add('dragging'); document.body.classList.add('is-dragging');
+        const mv = ev => {
+          if (ev.clientY < 70) scrollBy(0, -24); else if (ev.clientY > innerHeight - 50) scrollBy(0, 24);
+          const t = document.elementFromPoint(ev.clientX, ev.clientY), over = t && t.closest('.pg2 > [data-po]');
+          if (!over || over === el || over.parentNode !== box) return;
+          const r = over.getBoundingClientRect(), two = getComputedStyle(box).gridTemplateColumns.split(' ').length > 1 && over.offsetWidth < box.offsetWidth * 0.8;
+          const after = two ? ev.clientX > r.left + r.width / 2 || ev.clientY > r.bottom - 10 : ev.clientY > r.top + r.height / 2;
+          box.insertBefore(el, after ? over.nextSibling : over);
+        };
+        const up = () => {
+          removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+          el.classList.remove('dragging'); document.body.classList.remove('is-dragging');
+          saveCoachProgOrder(blocks().map(x => x.dataset.po));
+        };
+        // en la ventana (no en el asa): al mover el apartado en la página el navegador soltaría la captura
+        addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+      });
+    });
+  }
+  async function tabProgress(c, box, asCoach, preview = false, only = '') {
     const see = k => asCoach || canSee(c, k);
     // gráficas (analitica.js, carga.js, objetivos.js) se cargan después de app.js: si se abre Progreso al arrancar, se esperan
     if ((!window.JMViz || !window.JMLoad) && document.readyState !== 'complete') await new Promise(r => { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
@@ -2661,9 +2712,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <div data-po="marcas">${prs.length && !asCoach && see('marcas') ? `<section class="card"><h3>Mejores marcas</h3><ul class="prs">${prs.map(([n, b]) => `<li><span>${esc(n)}</span><b>${fmtKg(b.w)} kg × ${b.r}</b><small>1RM est. ${Math.round(b.e1)} kg</small></li>`).join('')}</ul></section>` : ''}
       </div>
       <div data-po="entrenos">
-        <section class="card"><h3>Entrenos <small class="muted">${done.length}</small></h3><div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
+        <section class="card"><h3>${only ? 'Entrenos realizados' : 'Entrenos'} <small class="muted">${done.length}</small></h3>${only ? '<p class="muted small">Toca uno para ver lo que hizo frente a lo pautado (series, reps, carga y RIR).</p>' : ''}<div data-ses>${done.length ? '' : '<p class="empty">Aún no hay entrenos registrados.</p>'}</div></section>
       </div>`;
     if (!asCoach || preview) await applyLayout('progreso', box);
+    const coachV = asCoach && !preview && !only;
+    // En Rutinas (entrenador) solo se muestra la lista de entrenos; en su Progreso ya no aparece
+    if (only) { const keep = box.querySelector('[data-po="entrenos"]'); box.replaceChildren(keep); }
+    else if (coachV) { const e0 = box.querySelector('[data-po="entrenos"]'); if (e0) e0.remove(); }
     const ckBtn = box.querySelector('[data-ck]'); if (ckBtn) ckBtn.onclick = () => checkinForm(c);
     const wcBox = box.querySelector('[data-wchart]');
     const drawW = () => {
@@ -2672,12 +2727,16 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       wcBox.querySelectorAll('[data-wr]').forEach(b => b.classList.toggle('on', b.dataset.wr === wr));
     };
     if (wcBox) { drawW(); wcBox.querySelectorAll('[data-wr]').forEach(b => b.onclick = () => { wr = b.dataset.wr; try { localStorage.setItem('jmfit-wrange', wr); } catch (e) { /* solo esta vez */ } drawW(); }); }
-    foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso', 'Mis check-ins']);
-    VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
-    if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
+    if (!only) foldify(box, asCoach ? 'progc' : 'prog', asCoach ? ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos'] : ['Peso', 'Mis check-ins']);
+    if (!only) {
+      VZ.forEach(v => v.wire(box)); if (EX) EX.wire(box);
+      if (see('objetivos')) goalsSection(c, box, { checkins, daily, logs, sessions }, goals, () => tabProgress(c, box, asCoach, preview), mesoOf(progs, pweeks));
+      if (asCoach) foldify(box, 'progc', ['Peso', 'Carga', 'Estrés y fatiga', 'Objetivos']);   // otra vez: los objetivos se pintan después
+      if (coachV) await coachProgLayout(box);
+    }
     const unp = box.querySelector('[data-unpreview]'); if (unp) unp.onclick = () => tabProgress(c, box, true);
     const pvb = box.querySelector('[data-preview]'); if (pvb) pvb.onclick = () => tabProgress(c, box, false, true);
-    if (LP) LP.wire(box, async wid => {
+    if (LP && !only) LP.wire(box, async wid => {
       const w = pweeks.find(x => x.id === wid);
       if (!(await confirmBox(`${weekLabel(w)} → descarga: baja al 60 % las series, mantiene las cargas y pone RIR 2. Puedes volver atrás en Rutinas.`, 'Aplicar'))) return;
       await safe(() => DB.rpc('set_week_kind', { p_week: wid, p_kind: 'deload' }), `Semana ${w.week_no}: descarga`);
@@ -2717,7 +2776,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       sBox.querySelectorAll('[data-s]').forEach(b => b.onclick = () => sessionModal(byId(done, b.dataset.s), b.closest('li')));
       const mb = sBox.querySelector('[data-smore]'); if (mb) mb.onclick = () => { sShown += 10; drawSes(); };
     };
-    if (done.length) drawSes();
+    if (done.length && sBox) drawSes();
     async function sessionModal(s, li) {
       const sets0 = logs.filter(l => l.session_id === s.id);
       const ord = await orderedSets([...sets0].reverse(), s.routine_id);   // logs viene del más nuevo al más viejo
@@ -2741,7 +2800,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         m0.querySelector('[data-sdel]').onclick = async () => {
           if (!(await confirmBox(`Se borrará «${s.routine_name || 'Entreno'}» del ${fmtDate(s.started_at, { day: 'numeric', month: 'long' })} con sus ${sets.length} series. No se puede deshacer.`, 'Borrar'))) return;
           await safe(() => DB.remove('sessions', s.id), 'Entreno borrado');
-          tabProgress(c, box, asCoach);
+          tabProgress(c, box, asCoach, false, only);
         };
       }
       if (asCoach && !s.coach_seen) { s.coach_seen = true; li && li.classList.remove('unseen'); DB.update('sessions', s.id, { coach_seen: true }).catch(() => {}); }
@@ -2785,7 +2844,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             }
             await DB.update('sessions', s.id, { routine_name: String(fd.get('rn') || '').trim() || s.routine_name, started_at: at.toISOString(), finished_at: new Date(at.getTime() + dur * 6e4).toISOString(), rpe: num(fd.get('rpe')), notes: fd.get('notes') || null, volume: Math.round(vol) });
           }, 'Entreno corregido');
-          tabProgress(c, box, asCoach);
+          tabProgress(c, box, asCoach, false, only);
         }
       });
       const host = m.querySelector('[data-sets]');
@@ -3131,6 +3190,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${old.length ? `<div class="scores">${old.map(m => `<span>${m[0]} <b>${'●'.repeat(m[1])}${'○'.repeat(Math.max(0, 5 - m[1]))}</b></span>`).join('')}</div>` : ''}
       ${meas.length ? `<p class="small">${meas.map(m => `${m[0]} ${fmtKg(m[1])}${m[0] === "% grasa" ? " %" : " cm"}`).join(' · ')}</p>` : ''}
       ${texts.map(([key, l]) => `<p class="ck-txt ${key === 'pains' && !k.pain_ok ? 'pain' : ''}"><small>${esc(l)}${key === 'pains' && k.pain_ok ? ' · aviso quitado' : ''}</small>${nl2br(k[key])}</p>`).join('')}
+      ${Array.isArray(k.extra) && k.extra.length ? `<div class="ck-extra">${k.extra.map(x => `<p class="ck-txt"><small>${esc(x.label)}</small>${x.type === 'scale' ? `<b>${esc(x.value)}</b>/10` : nl2br(String(x.value))}</p>`).join('')}</div>` : ''}
       ${asCoach && 'pain_ok' in k && realTxt(k.pains) ? `<button type="button" class="btn small ghost" data-painok>${k.pain_ok ? '⚠️ Volver a marcar como molestia' : '✓ No es una molestia: quitar el aviso'}</button>` : ''}
       <div class="ck-pics" data-photos hidden></div>
       ${window.JMAnalysis && (asCoach || canSee(who || S.client, 'mejoras')) ? `<button type="button" class="btn small an-btn" data-analyze>${asCoach ? '📊 Análisis de la semana' : '💪 Mis mejoras de la semana'}</button>` : ''}
@@ -3329,14 +3389,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- Revisiones: bandeja de check-ins
+  const rvTabs = (on, nPend, nForms) => `<div class="tabs rv-tabs"><a href="#/revisiones" class="${on === 'pend' ? 'on' : ''}">Pendientes${nPend ? ` (${nPend})` : ''}</a><a href="#/revisiones/todas" class="${on === 'todas' ? 'on' : ''}">Todas</a>
+    <a href="#/revisiones/formularios" class="${on === 'formularios' ? 'on' : ''}">Formularios${nForms ? ` (${nForms})` : ''}</a><a href="#/revisiones/cuestionario" class="${on === 'cuestionario' ? 'on' : ''}">Cuestionario semanal</a></div>`;
+  const newForms = () => DB.list('form_responses', { eq: { seen: false } }).then(r => r.length).catch(() => 0);
   async function coachReviews(filter) {
+    if (filter === 'formularios' || filter === 'cuestionario') return reviewsExtra(filter);
     const all = filter === 'todas';
     shell(COACH_NAV, 'revisiones', loading(), { title: 'Revisiones' });
-    const [clients, checkins] = await Promise.all([loadClients(), DB.list('checkins', { order: ['created_at', 'desc'], limit: 200 })]);
+    const [clients, checkins, nF] = await Promise.all([loadClients(), DB.list('checkins', { order: ['created_at', 'desc'], limit: 200 }), newForms()]);
     const pend = checkins.filter(k => !k.coach_seen);
     const list = all ? checkins : pend;
     const box = $app.querySelector('.content');
-    box.innerHTML = `<div class="tabs"><a href="#/revisiones" class="${all ? '' : 'on'}">Pendientes${pend.length ? ` (${pend.length})` : ''}</a><a href="#/revisiones/todas" class="${all ? 'on' : ''}">Todas</a></div>
+    box.innerHTML = `${rvTabs(all ? 'todas' : 'pend', pend.length, nF)}
       ${list.length ? '<section class="card" data-list></section>' : `<div class="hero-empty">${ic('inbox', 'xl')}<h2>${all ? 'Aún no hay check-ins' : 'Todo revisado'}</h2><p>${all ? 'Cuando tus clientes envíen su check-in semanal aparecerá aquí.' : 'No tienes check-ins pendientes. Buen trabajo.'}</p>${all ? '' : '<a class="btn" href="#/revisiones/todas">Ver todos</a>'}</div>`}`;
     const wrap = box.querySelector('[data-list]');
     if (wrap) {
@@ -3351,6 +3415,69 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <span class="right">${painTxt(k) ? '⚠️' : ''}${k.photo_path ? '📷' : ''}${k.coach_reply ? '💬' : ''}${!k.coach_seen ? '<i class="dot"></i>' : ''}${ic('next')}</span></a></li>`; }).join('')}${lastG >= 0 ? '</ul></details>' : ''}`;
     }
     refreshReviewBadge();
+  }
+
+  // Revisiones → Formularios (respuestas de Google: Plan 1:1 y Datos Base y Salud) y → Cuestionario semanal (editor)
+  async function reviewsExtra(tab) {
+    shell(COACH_NAV, 'revisiones', loading(), { title: 'Revisiones' });
+    const box = $app.querySelector('.content');
+    const [pend, nF] = await Promise.all([DB.list('checkins', { eq: { coach_seen: false } }).then(r => r.length).catch(() => 0), newForms()]);
+    box.innerHTML = rvTabs(tab, pend, nF) + '<div data-rvx></div>';
+    const host = box.querySelector('[data-rvx]');
+    if (tab === 'formularios') {
+      host.innerHTML = loading();
+      const run = () => window.JMForms ? window.JMForms.page(host) : (host.innerHTML = '<p class="empty">No se pudo cargar.</p>');
+      if (window.JMForms || document.readyState === 'complete') return run();
+      window.addEventListener('load', run, { once: true }); return;
+    }
+    return checkinEditor(host);
+  }
+  async function checkinEditor(host) {
+    const cfg = JSON.parse(JSON.stringify(await checkinCfg(true)));
+    cfg.extra = (cfg.extra || []).filter(q => q && q.id);
+    const kind = key => (CK_SCALES[key] ? 'Escala 1-10' : CK_TEXTS[key] ? 'Texto' : key === 'medidas' ? 'Medidas' : key === 'fotos' ? 'Fotos' : 'Número');
+    const defHint = key => (CK_SCALES[key] ? CK_SCALES[key][1] : '');
+    const draw = () => {
+      host.innerHTML = `<section class="card ck-ed"><h3>Cuestionario semanal <small class="muted">lo que rellenan tus clientes cada semana</small></h3>
+        <p class="muted small">Cambia el texto de cada pregunta, quita las que no quieras (desmarcando «Mostrar») o añade preguntas nuevas. La fecha y el peso en ayunas son fijos. Los cambios se aplican a los próximos check-ins; los ya enviados no cambian.</p>
+        <label>Texto de arriba<textarea data-intro rows="2">${esc(cfg.intro || CK_INTRO)}</textarea></label>
+        <h4>Preguntas</h4>
+        <div class="ck-ed-list">${CK_ORDER.map(key => { const off = (cfg.hidden || []).includes(key);
+          return `<div class="ck-ed-row ${off ? 'off' : ''}" data-key="${key}"><label class="ck-ed-on"><input type="checkbox" data-on ${off ? '' : 'checked'}> Mostrar</label>
+            <div class="grow"><input data-lab value="${esc((cfg.labels || {})[key] || CK_DEF_LABEL(key))}" placeholder="${esc(CK_DEF_LABEL(key))}" maxlength="200" aria-label="Texto de la pregunta">
+            ${CK_SCALES[key] || ['steps', 'sleep_h', 'fotos'].includes(key) || CK_TEXTS[key] ? `<input data-hint class="small" value="${esc((cfg.hints || {})[key] || '')}" placeholder="${esc(defHint(key) || 'Ayuda o ejemplo (opcional)')}" aria-label="Ayuda">` : ''}</div>
+            <small class="muted">${kind(key)}</small></div>`; }).join('')}</div>
+        <h4>Preguntas añadidas</h4>
+        <div class="ck-ed-list" data-xl>${cfg.extra.length ? cfg.extra.map((q, i) => `<div class="ck-ed-row" data-x="${i}"><div class="grow"><input data-xlab value="${esc(q.label || '')}" placeholder="Pregunta" maxlength="200" aria-label="Pregunta">
+            <input data-xhint class="small" value="${esc(q.hint || '')}" placeholder="Ayuda o ejemplo (opcional)" maxlength="200" aria-label="Ayuda"></div>
+            <select data-xtype aria-label="Tipo">${Object.entries(CK_EXTRA_T).map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <button type="button" class="icon-btn sm" data-xdel aria-label="Quitar pregunta" title="Quitar pregunta">${ic('trash')}</button></div>`).join('') : '<p class="muted small">Aún no has añadido ninguna. Van antes de «Dudas o comentarios».</p>'}</div>
+        <button type="button" class="btn small" data-xadd>${ic('plus')} Añadir pregunta</button>
+        <div class="row gap wrap ck-ed-acts"><button type="button" class="btn primary" data-save>Guardar cambios</button><button type="button" class="btn ghost" data-prev>👁 Vista previa</button><button type="button" class="btn ghost small" data-reset>Volver al original</button></div>
+      </section>`;
+      const read = () => {
+        cfg.intro = host.querySelector('[data-intro]').value.trim(); if (cfg.intro === CK_INTRO) delete cfg.intro;
+        cfg.hidden = []; cfg.labels = {}; cfg.hints = {};
+        host.querySelectorAll('[data-key]').forEach(r => { const k = r.dataset.key, l = r.querySelector('[data-lab]').value.trim(), h = r.querySelector('[data-hint]');
+          if (!r.querySelector('[data-on]').checked) cfg.hidden.push(k);
+          if (l && l !== CK_DEF_LABEL(k)) cfg.labels[k] = l.slice(0, 200);
+          if (h && h.value.trim()) cfg.hints[k] = h.value.trim().slice(0, 200); });
+        cfg.extra = [...host.querySelectorAll('[data-x]')].map(r => { const q = cfg.extra[+r.dataset.x];
+          return { id: q.id, label: r.querySelector('[data-xlab]').value.trim().slice(0, 200), hint: r.querySelector('[data-xhint]').value.trim().slice(0, 200), type: r.querySelector('[data-xtype]').value }; });
+      };
+      host.querySelectorAll('[data-on]').forEach(x => x.onchange = () => x.closest('.ck-ed-row').classList.toggle('off', !x.checked));
+      host.querySelector('[data-xadd]').onclick = () => { read(); cfg.extra.push({ id: Math.random().toString(36).slice(2, 8), label: '', hint: '', type: 'text' }); draw(); const ins = host.querySelectorAll('[data-xlab]'); ins[ins.length - 1].focus(); };
+      host.querySelectorAll('[data-xdel]').forEach(b => b.onclick = () => { read(); cfg.extra.splice(+b.closest('[data-x]').dataset.x, 1); draw(); });
+      host.querySelector('[data-prev]').onclick = () => { read(); const c0 = Object.assign({ id: 'preview', name: 'Cliente' }, { consent_photos: true }); checkinForm(c0, { cfg: Object.assign({}, cfg, { extra: cfg.extra.filter(q => q.label) }), preview: true }); };
+      host.querySelector('[data-reset]').onclick = async () => { if (!(await confirmBox('El cuestionario vuelve a las preguntas y textos originales (se quitan las añadidas).', 'Volver al original'))) return; Object.assign(cfg, { intro: '', hidden: [], labels: {}, hints: {}, extra: [] }); delete cfg.intro; draw(); };
+      host.querySelector('[data-save]').onclick = async () => {
+        read();
+        if (cfg.extra.some(q => !q.label)) { toast('Escribe el texto de cada pregunta añadida (o quítala)', 'err'); return; }
+        if (CK_ORDER.every(k => cfg.hidden.includes(k)) && !cfg.extra.length) { toast('Deja al menos una pregunta además del peso', 'err'); return; }
+        try { await safe(() => DB.upsert('public_texts', { key: 'checkin_form', value: JSON.stringify(cfg), updated_at: new Date().toISOString() }, 'key'), 'Cuestionario guardado ✓'); S.ckCfg = { t: Date.now(), v: cfg }; } catch (e) { /* avisado */ }
+      };
+    };
+    draw();
   }
 
   // ---------- Centro de revisión: el check-in, sus datos y los ajustes (nutrición, ejercicios, notas) en una sola pantalla
@@ -4409,27 +4536,55 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   const painTxt = k => (k && !k.pain_ok ? realTxt(k.pains) : '');
   window.JMRealTxt = realTxt;
   const CK_TEXTS = { fatigue_muscles: 'Fatiga periférica (músculos sin recuperar)', pains: 'Molestias o dolores', misses: '¿Has fallado en algo esta semana?', notes: 'Dudas o comentarios para Jorge' };
-  function checkinForm(c) {
-    const scale = n => `<fieldset class="scale ten"><legend>${CK_SCALES[n][0]} <small>${CK_SCALES[n][1]}</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
-    const text = (n, rows = 1, ph = '') => `<label>${CK_TEXTS[n]}${rows > 1 ? `<textarea name="${n}" rows="${rows}" placeholder="${ph}"></textarea>` : `<input name="${n}" placeholder="${ph}">`}</label>`;
+  // Cuestionario semanal editable por el entrenador (Revisiones → Cuestionario semanal): public_texts.checkin_form =
+  // { intro, hidden: [claves], labels: {clave: texto}, hints: {clave: texto}, extra: [{ id, label, type, hint }] }.
+  // Las respuestas a las preguntas añadidas se guardan en checkins.extra (migración 038) con el texto de la pregunta.
+  const CK_OTHER = { steps: 'Media de pasos de la semana', sleep_h: 'Horas de sueño (media por noche)', medidas: 'Medidas (cm, opcional)', fotos: 'Fotos de progreso' };
+  const CK_ORDER = ['train_adh', 'diet_adh', 'steps', 'hunger', 'satiety', 'fatigue', 'fatigue_muscles', 'pains', 'misses', 'energy10', 'sleep_h', 'sleep_q', 'stress', 'motivation', 'notes', 'medidas', 'fotos'];
+  const CK_DEF_LABEL = key => (CK_SCALES[key] || [])[0] || CK_TEXTS[key] || CK_OTHER[key] || key;
+  const CK_EXTRA_T = { scale: 'Escala 1-10', yesno: 'Sí / No', number: 'Número', text: 'Texto corto', long: 'Texto largo' };
+  const CK_INTRO = 'Este formulario es la pieza más importante de nuestro trabajo juntos: sé sincero, así puedo ajustar tu plan.';
+  async function checkinCfg(force) {
+    if (!force && S.ckCfg && Date.now() - S.ckCfg.t < 300e3) return S.ckCfg.v;
+    let v = {};
+    try { const r = await DB.get('public_texts', 'checkin_form', 'key'); v = r && r.value ? JSON.parse(r.value) : {}; } catch (e) { v = {}; }
+    v = Object.assign({ hidden: [], labels: {}, hints: {}, extra: [] }, v || {});
+    S.ckCfg = { t: Date.now(), v }; return v;
+  }
+  async function checkinForm(c, opts = {}) {
+    const cfg = opts.cfg || await checkinCfg().catch(() => ({ hidden: [], labels: {}, hints: {}, extra: [] }));
+    const hid = new Set(cfg.hidden || []), on = key => !hid.has(key);
+    const lab = key => esc((cfg.labels || {})[key] || CK_DEF_LABEL(key));
+    const hint = (key, def) => esc((cfg.hints || {})[key] != null && (cfg.hints || {})[key] !== '' ? cfg.hints[key] : def);
+    const scale = n => (on(n) ? `<fieldset class="scale ten"><legend>${lab(n)} <small>${hint(n, CK_SCALES[n][1])}</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="${n}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>` : '');
+    const text = (n, rows = 1, ph = '') => (on(n) ? `<label>${lab(n)}${rows > 1 ? `<textarea name="${n}" rows="${rows}" placeholder="${hint(n, ph)}"></textarea>` : `<input name="${n}" placeholder="${hint(n, ph)}">`}</label>` : '');
+    const extras = (cfg.extra || []).filter(q => q && q.id && q.label);
+    const xq = q => { const nm = 'x_' + q.id, h = q.hint ? esc(q.hint) : '';
+      if (q.type === 'scale') return `<fieldset class="scale ten"><legend>${esc(q.label)} <small>${h || '1 · 10'}</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="${nm}" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>`;
+      if (q.type === 'yesno') return `<fieldset class="scale"><legend>${esc(q.label)}${h ? ` <small>${h}</small>` : ''}</legend><label><input type="radio" name="${nm}" value="Sí"><span>Sí</span></label><label><input type="radio" name="${nm}" value="No"><span>No</span></label></fieldset>`;
+      if (q.type === 'number') return `<label>${esc(q.label)}<input name="${nm}" type="number" step="any" inputmode="decimal" placeholder="${h}"></label>`;
+      if (q.type === 'long') return `<label>${esc(q.label)}<textarea name="${nm}" rows="3" placeholder="${h}"></textarea></label>`;
+      return `<label>${esc(q.label)}<input name="${nm}" maxlength="500" placeholder="${h}"></label>`; };
     const f = modal('Valoración semanal', `
-      <p class="muted small">Este formulario es la pieza más importante de nuestro trabajo juntos: sé sincero, así puedo ajustar tu plan.</p>
+      ${opts.preview ? '<p class="note small">👁 Vista previa: así lo verán tus clientes. No se envía nada.</p>' : ''}
+      <p class="muted small">${esc(cfg.intro || CK_INTRO)}</p>
       <div class="form-grid">
         <label>Fecha<input name="date" type="date" value="${today()}" required></label>
         <label>Peso en ayunas (kg)<input name="weight" type="number" step="0.05" inputmode="decimal" required><small class="muted">Nada más levantarte, después de hacer pis, sin comer ni beber.</small></label>
       </div>
       ${scale('train_adh')}${scale('diet_adh')}
-      <label>Media de pasos de la semana<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="Ej: 9000"></label>
+      ${on('steps') ? `<label>${lab('steps')}<input name="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="${hint('steps', 'Ej: 9000')}"></label>` : ''}
       ${scale('hunger')}${scale('satiety')}${scale('fatigue')}
       ${text('fatigue_muscles', 1, 'Si no tienes, déjalo en blanco · Ej: piernas cargadas desde el martes')}${text('pains', 1, 'Si no tienes, déjalo en blanco · Dónde y desde cuándo')}${text('misses', 2, 'Si no, déjalo en blanco · Comidas, entrenos, descanso…')}
       ${scale('energy10')}
-      <label>Horas de sueño (media por noche)<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="Ej: 7,5"></label>
+      ${on('sleep_h') ? `<label>${lab('sleep_h')}<input name="sleep_h" type="number" step="0.5" min="0" max="24" inputmode="decimal" placeholder="${hint('sleep_h', 'Ej: 7,5')}"></label>` : ''}
       ${scale('sleep_q')}${scale('stress')}${scale('motivation')}
+      ${extras.map(xq).join('')}
       ${text('notes', 3)}
-      <details><summary>Medidas (cm, opcional)</summary><div class="form-grid three">
+      ${on('medidas') ? `<details><summary>${lab('medidas')}</summary><div class="form-grid three">
         ${[['waist', 'Cintura'], ['hip', 'Cadera'], ['chest', 'Pecho'], ['arm', 'Brazo'], ['thigh', 'Muslo'], ['calf', 'Gemelo'], ['neck', 'Cuello'], ['shoulders', 'Hombros']].map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="0.1" inputmode="decimal"></label>`).join('')}
-        <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>
-      ${c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (engranaje ⚙️ de arriba → Ajustes).</p>' : `<fieldset class="ck-photos"><legend>Fotos de progreso <small>con la misma luz y postura cada semana</small></legend>
+        <label>% de grasa <small class="muted">si lo mides</small><input name="body_fat" type="number" step="0.1" min="2" max="70" inputmode="decimal"></label></div></details>` : ''}
+      ${!on('fotos') ? '' : c.consent_photos === false ? '<p class="muted small">Has desactivado las fotos de progreso (engranaje ⚙️ de arriba → Ajustes).</p>' : `<fieldset class="ck-photos"><legend>${lab('fotos')} <small>${hint('fotos', 'con la misma luz y postura cada semana')}</small></legend>
         ${CK_POSES.map(([p, l]) => `<label class="ck-ph" data-pose="${p}"><input type="file" accept="image/*" name="ph_${p}" hidden><span class="ck-prev">${ic('camera')}</span><b>${l}</b></label>`).join('')}
         <label class="ck-ph more"><input type="file" accept="image/*" name="ph_extra" multiple hidden><span class="ck-prev">${ic('plus')}</span><b data-extra>Más fotos</b></label>
       </fieldset>`}`, {
@@ -4441,6 +4596,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         if (d.steps != null) d.steps = Math.round(d.steps);
         Object.keys(CK_TEXTS).forEach(k => { const v = String(fd.get(k) || '').trim(); if (v && (k === 'notes' || realTxt(v))) d[k] = v; });
         if (!d.weight) { toast('Pon tu peso en ayunas', 'err'); return false; }
+        const xa = extras.map(q => ({ id: q.id, label: q.label, type: q.type || 'text', value: String(fd.get('x_' + q.id) || '').trim() })).filter(x => x.value !== '');
+        if (opts.preview) { toast('Vista previa: no se ha enviado nada'); return; }
+        if (xa.length) d.extra = xa;
         const files = CK_POSES.map(([p]) => [p, form['ph_' + p] && form['ph_' + p].files[0]]).filter(x => x[1]);
         [...(form.ph_extra ? form.ph_extra.files : [])].slice(0, 6).forEach((file, i) => files.push(['extra' + (i + 1), file]));
         try { await safe(async () => {
@@ -4448,7 +4606,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             const [cks, sks] = await Promise.all([DB.list('checkins', { eq: { client_id: c.id }, order: ['date', 'desc'], limit: 40 }).catch(() => []), loadSkips(c.id)]);
             Object.assign(d, JMCk.cover(c, cks, sks, d.date));
           }
-          const [k] = await DB.insert('checkins', d);
+          let k;
+          try { [k] = await DB.insert('checkins', d); }
+          catch (er) {
+            // sin la migración 038 (columna extra): las respuestas añadidas van a «Dudas o comentarios»
+            if (!d.extra || !/extra/i.test(String(er && er.message))) throw er;
+            const t = d.extra.map(x => `${x.label}: ${x.value}`).join('\n'); delete d.extra;
+            d.notes = (d.notes ? d.notes + '\n\n' : '') + t; [k] = await DB.insert('checkins', d);
+          }
           const rows = [];
           for (const [pose, file] of files) rows.push({ checkin_id: k.id, client_id: c.id, pose, path: await DB.uploadPhoto(c.id, await shrink(file)) });
           if (rows.length) { await DB.insert('checkin_photos', rows); await DB.update('checkins', k.id, { photo_path: rows[0].path }); }
