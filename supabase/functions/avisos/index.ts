@@ -206,7 +206,6 @@ async function checkin(db: any, id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return { ok: false };
   const { data: k } = await db.from("checkins").select("id, client_id, created_at").eq("id", id).maybeSingle();
   if (!k || Date.now() - new Date(k.created_at).getTime() > 3600e3) return { ok: false };
-  if (![6, 7].includes(dow(local(new Date(k.created_at)).date))) return { ok: false };
   if (!(await once(db, `ck:${k.id}`))) return { ok: false };
   const { data: c } = await db.from("clients").select("name").eq("id", k.client_id).maybeSingle();
   const sent = await sendTo(db, await coachIds(db), { title: `📥 Revisión de ${c ? c.name : "un cliente"}`, body: "La acaba de enviar. Tócala para verla.", url: APP + "#/revision/" + k.id, tag: "ck-" + k.id });
@@ -232,6 +231,25 @@ async function reviewed(db: any, id: string) {
   return { ok: true, sent: await sendTo(db, [c.user_id], msg) };
 }
 
+// Píldora o novedad publicada → aviso a todos los clientes activos con avisos (una vez por publicación)
+const plain = (t: string) => String(t || "").replace(/\*\*/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
+// deno-lint-ignore no-explicit-any
+async function post(db: any, id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(id || ""))) return { ok: false };
+  const { data: p } = await db.from("posts").select("id, kind, title, body, published").eq("id", id).maybeSingle();
+  if (!p || !p.published) return { ok: false };
+  if (!(await once(db, `post:${p.id}`))) return { ok: false };
+  const { data: subs } = await db.from("push_subs").select("user_id");
+  const uids = [...new Set((subs || []).map((s: Row) => s.user_id))];
+  if (!uids.length) return { ok: true, sent: 0 };
+  const { data: cs } = await db.from("clients").select("user_id, ui_prefs").eq("active", true).in("user_id", uids);
+  const to = (cs || []).filter((c: Row) => !(c.ui_prefs && c.ui_prefs.avisos === false)).map((c: Row) => c.user_id);
+  const b = plain(p.body);
+  const msg = { title: `${p.kind === "novedad" ? "📣 Novedad" : "💊 Nueva píldora"}: ${String(p.title).slice(0, 80)}`,
+    body: b ? (b.length > 140 ? b.slice(0, 137) + "…" : b) : "Tócala para leerla en la app.", url: APP + "#/pildoras", tag: "post-" + p.id };
+  return { ok: true, sent: await sendTo(db, to, msg) };
+}
+
 // deno-lint-ignore no-explicit-any
 async function test(db: any, req: Request) {
   const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -241,7 +259,7 @@ async function test(db: any, req: Request) {
   const { data: c } = await db.from("clients").select("*").eq("user_id", u.id).eq("active", true).maybeSingle();
   if (c) { const k0 = await loadDay(db, c, local().date); if (!worth(k0)) return { ok: true, sent: 0, none: true }; }
   const msg = c ? dailyMessage(c, await loadDay(db, c, local().date), local().date)
-    : { title: "📥 Así te llegará cada revisión del finde", body: "Cuando un cliente envíe su revisión en sábado o domingo te aviso al momento.", url: APP + "#/", tag: "prueba" };
+    : { title: "📥 Así te llegará cada revisión", body: "Cuando un cliente envíe su revisión te aviso al momento.", url: APP + "#/", tag: "prueba" };
   return { ok: true, sent: await sendTo(db, [u.id], msg) };
 }
 
@@ -256,6 +274,7 @@ if (import.meta.main !== false) Deno.serve(async req => {
     if (body.job === "daily") return out(await daily(db));
     if (body.job === "checkin") return out(await checkin(db, body.id));
     if (body.job === "reviewed") return out(await reviewed(db, body.id));
+    if (body.job === "post") return out(await post(db, body.id));
     if (body.job === "test") return out(await test(db, req));
     return out({ error: "trabajo desconocido" }, 400);
   } catch (e) { return out({ error: String((e as Error).message || e) }, 500); }

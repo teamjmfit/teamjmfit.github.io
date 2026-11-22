@@ -233,6 +233,8 @@
     });
   }
 
+  const MFA_DEV = () => { try { return localStorage.getItem('jmfit-mfa-dev') || ''; } catch (e) { return ''; } };
+  const devLabel = () => { const u = navigator.userAgent; return (/Macintosh/.test(u) ? 'Mac' : /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : 'Dispositivo') + ' · ' + new Date().toLocaleDateString('es-ES'); };
   // ------------------------------------------------------------ arranque
   const BOOT_KEY = 'jmfit-boot';
   const bootSig = () => JSON.stringify([S.profile && S.profile.id, S.profile && S.profile.role, S.client && S.client.id, S.client && S.client.name]);
@@ -242,7 +244,11 @@
     if (DB.mode === 'live' && !location.hash.includes('type=recovery')) {
       try {
         const s0 = await DB.session();
-        if (s0) { const lv = await DB.mfa.level(); if (lv && lv.nextLevel === 'aal2' && lv.currentLevel !== 'aal2') { S.profile = null; return renderMfa(); } }
+        if (s0) { const lv = await DB.mfa.level(); if (lv && lv.nextLevel === 'aal2' && lv.currentLevel !== 'aal2') {
+          // dispositivo recordado (040): no se vuelve a pedir el código
+          const tr = MFA_DEV() && await DB.rpc('mfa_device_ok', {}).catch(() => false);
+          if (!tr) { S.profile = null; return renderMfa(); }
+        } }
       } catch (e) { console.error(e); }
     }
     // 1) si ya entraste antes en este móvil, pinta al momento con lo guardado
@@ -370,6 +376,7 @@
         <form id="mfa" class="stack">
           <p class="muted">Abre tu app de códigos (Google Authenticator, Authy…) y escribe el código de 6 cifras de TEAM JMFIT.</p>
           <label>Código<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus></label>
+          <label class="check"><input type="checkbox" name="trust"> Recordar este dispositivo (no volverá a pedir el código aquí durante 90 días)</label>
           <button class="btn primary block" type="submit">Verificar</button>
           <button type="button" class="link" data-out>Salir</button>
         </form></div></main>`;
@@ -381,6 +388,10 @@
         const fac = (await DB.mfa.factors()).find(x => x.status === 'verified');
         if (!fac) throw new Error('No hay ningún factor activado');
         await DB.mfa.verify(fac.id, f.code.value.trim());
+        if (f.trust.checked) {
+          try { const tok = await DB.rpc('mfa_trust_device', { p_label: devLabel() }); if (tok) { localStorage.setItem('jmfit-mfa-dev', tok); location.reload(); return; } }
+          catch (er) { toast('No se pudo recordar este dispositivo (¿falta la migración 040?)', 'err'); }
+        }
         boot();
       } catch (err) { toast(/invalid|expired/i.test(err.message) ? 'Código incorrecto o caducado' : err.message, 'err'); f.code.value = ''; f.code.focus(); }
       finally { btn.disabled = false; }
@@ -391,9 +402,14 @@
     if (DB.mode !== 'live') { toast('La verificación en dos pasos solo funciona con la app real', 'err'); return; }
     const facs = (await DB.mfa.factors()).filter(x => x.status === 'verified');
     if (facs.length) {
-      modal('Verificación en dos pasos', `<p>✅ <b>Activada.</b> Cada vez que entres en un dispositivo nuevo te pedirá el código de tu app de autenticación.</p>
+      const nTr = await DB.rpc('mfa_trusted_count', {}).catch(() => null);
+      const m = modal('Verificación en dos pasos', `<p>✅ <b>Activada.</b> Cada vez que entres en un dispositivo nuevo te pedirá el código de tu app de autenticación.</p>
+        ${nTr != null ? `<p><b>Dispositivos recordados:</b> ${nTr}${MFA_DEV() ? ' · este es uno de ellos' : ''}. En ellos no se pide el código.</p>${nTr ? '<p><button type="button" class="btn small ghost" data-untrust>Olvidar todos los dispositivos</button></p>' : ''}` : ''}
         <p class="muted small">Si cambias de móvil, desactívala aquí y vuelve a activarla con el nuevo. Si pierdes el móvil: Supabase → Authentication → Users → tu usuario → borra el factor.</p>`,
         { danger: { label: 'Desactivar', run: async () => { if (await confirmBox('¿Desactivar la verificación en dos pasos? Tu cuenta quedará protegida solo con la contraseña.', 'Desactivar')) { await safe(async () => { for (const f of facs) await DB.mfa.unenroll(f.id); }, 'Verificación desactivada'); } } } });
+      const ub = m && m.querySelector ? m.querySelector('[data-untrust]') : document.querySelector('[data-untrust]');
+      if (ub) ub.onclick = async () => { if (!(await confirmBox('Todos los dispositivos (también este) volverán a pedir el código la próxima vez.', 'Olvidar'))) return;
+        await safe(() => DB.rpc('mfa_untrust_all', {}), 'Dispositivos olvidados'); try { localStorage.removeItem('jmfit-mfa-dev'); } catch (e) { /* nada */ } closeModal(); };
       return;
     }
     let en;
