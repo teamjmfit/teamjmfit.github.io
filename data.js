@@ -13,7 +13,9 @@
 
   // ---------------------------------------------------------------- LIVE
   function liveBackend() {
-    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    // «Recordar este dispositivo» (migración 040): la clave de este ordenador va en cada petición
+    let devTok = ''; try { devTok = localStorage.getItem('jmfit-mfa-dev') || ''; } catch (e) { devTok = ''; }
+    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, devTok ? { global: { headers: { 'x-jm-device': devTok } } } : undefined);
     const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
     const applyFilters = (q, opts = {}) => {
       Object.entries(opts.eq || {}).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
