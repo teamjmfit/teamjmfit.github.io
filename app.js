@@ -45,15 +45,27 @@
   const progVal = k => { const [t, v] = String(k || 'none').split(':'); return t === 'reps' ? { type: 'reps', inc: Number(v) || 1 } : t === 'load' ? { type: 'load', inc_kg: Number(v) || 2.5 } : { type: 'none' }; };
   // Tipo de serie de cada ejercicio (se guarda en progression.scheme para que viaje con las semanas y los mesociclos)
   const SET_SCHEMES = [['straight', 'Lineal (series iguales)'], ['topset:10', 'Top set + back-off −10 %'], ['topset:15', 'Top set + back-off −15 %'], ['topset:20', 'Top set + back-off −20 %'],
-    ['drop:1', 'Dropset: 1 bajada en la última serie'], ['drop:2', 'Dropset: 2 bajadas en la última serie'], ['drop:3', 'Dropset: 3 bajadas en la última serie'], ['dropall:1', 'Dropset en todas las series']];
-  const schemeKey = p => { const x = p && p.scheme; return !x || !x.type ? 'straight' : x.type === 'topset' ? 'topset:' + (x.pct || 10) : x.type === 'drop' ? (x.all ? 'dropall:' : 'drop:') + (x.n || 1) : 'straight'; };
-  const schemeVal = k => { const [t, v] = String(k || 'straight').split(':'); return t === 'topset' ? { type: 'topset', pct: +v || 10 } : t === 'drop' ? { type: 'drop', n: +v || 1, pct: 20 } : t === 'dropall' ? { type: 'drop', n: +v || 1, pct: 20, all: true } : null; };
+    ['drop:1', 'Dropset: 1 bajada en la última serie'], ['drop:2', 'Dropset: 2 bajadas en la última serie'], ['drop:3', 'Dropset: 3 bajadas en la última serie'], ['dropall:1', 'Dropset en todas las series'],
+    ['approach:2', 'Aproximación: 2 series previas (~50 % y 75 %)'], ['approach:3', 'Aproximación: 3 series previas (~40, 60 y 80 %)'],
+    ['cluster:15', 'Cluster: bloques con 15 s de pausa'], ['cluster:30', 'Cluster: bloques con 30 s de pausa'],
+    ['iso', 'Isométrico (segundos en lugar de reps)'], ['amrap', 'AMRAP en la última serie (máx. reps)'], ['amrapall', 'AMRAP en todas las series']];
+  const APPROACH = { 2: [50, 75], 3: [40, 60, 80] };
+  const schemeKey = p => { const x = p && p.scheme; if (!x || !x.type) return 'straight';
+    return x.type === 'topset' ? 'topset:' + (x.pct || 10) : x.type === 'drop' ? (x.all ? 'dropall:' : 'drop:') + (x.n || 1) : x.type === 'approach' ? 'approach:' + (x.n || 2)
+      : x.type === 'cluster' ? 'cluster:' + (x.rest || 15) : x.type === 'iso' ? 'iso' : x.type === 'amrap' ? (x.all ? 'amrapall' : 'amrap') : 'straight'; };
+  const schemeVal = k => { const [t, v] = String(k || 'straight').split(':');
+    return t === 'topset' ? { type: 'topset', pct: +v || 10 } : t === 'drop' ? { type: 'drop', n: +v || 1, pct: 20 } : t === 'dropall' ? { type: 'drop', n: +v || 1, pct: 20, all: true }
+      : t === 'approach' ? { type: 'approach', n: +v === 3 ? 3 : 2 } : t === 'cluster' ? { type: 'cluster', rest: +v || 15 } : t === 'iso' ? { type: 'iso' }
+      : t === 'amrap' ? { type: 'amrap' } : t === 'amrapall' ? { type: 'amrap', all: true } : null; };
   const schemeLabel = p => { const k = schemeKey(p); return k === 'straight' ? '' : (SET_SCHEMES.find(x => x[0] === k) || [0, ''])[1]; };
-  // Filas de series del entreno según el tipo: TOP / BO (back-off) / ↓ (bajadas del dropset)
+  // Filas de series del entreno según el tipo: TOP / BO (back-off) / ↓ (bajadas del dropset) / A (aproximación, no cuenta)
+  // CL (cluster) / ISO (segundos) / AMRAP (máximas reps)
   const schemeSets = (n, p) => {
     const x = (p && p.scheme) || {}, out = [];
+    if (x.type === 'approach') (APPROACH[x.n] || APPROACH[2]).forEach(pc => out.push({ w: '', r: '', x: '', done: false, tag: 'A', ap: pc }));
     for (let k = 0; k < n; k++) {
-      out.push({ w: '', r: '', x: '', done: false, tag: x.type === 'topset' ? (k ? 'BO' : 'TOP') : '', pct: x.type === 'topset' && k ? x.pct || 10 : null });
+      const tg = x.type === 'topset' ? (k ? 'BO' : 'TOP') : x.type === 'cluster' ? 'CL' : x.type === 'iso' ? 'ISO' : x.type === 'amrap' && (x.all || k === n - 1) ? 'AMRAP' : '';
+      out.push({ w: '', r: '', x: '', done: false, tag: tg, pct: x.type === 'topset' && k ? x.pct || 10 : null });
       if (x.type === 'drop' && (x.all || k === n - 1)) for (let d = 0; d < (x.n || 1); d++) out.push({ w: '', r: '', x: '', done: false, tag: 'D', pct: x.pct || 20 });
     }
     return out;
@@ -67,7 +79,7 @@
     const sd = {}; (sessions || []).forEach(x => { sd[x.id] = x.started_at; });
     const by = {};
     logs.forEach(l => {
-      if (!l.weight || !l.reps) return;
+      if (!l.weight || !l.reps || l.kind === 'iso') return;   // isométricos: son segundos, no reps
       const k = String(l.exercise_name || '').trim().toLowerCase(); if (!k) return;
       const h = (by[k] = by[k] || {}); const ss = (h[l.session_id] = h[l.session_id] || { sid: l.session_id, date: sd[l.session_id] || l.created_at, e1: 0, w: 0, r: 0, n: 0, sets: [] });
       ss.n++; const e = e1rm(Number(l.weight), Number(l.reps));
@@ -4333,7 +4345,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Se guarda en public_texts.client_layout = { página: { order: [...], hidden: [...] } }. La edita el entrenador desde
   // «Vista como cliente» (ruedita → Ajustes). Cada apartado de cada página lleva data-po="<clave>".
   const LAYOUT_PAGES = {
-    inicio: { label: 'Inicio', parts: [['coach', 'Tu entrenador'], ['cal', 'Calendario del mes'], ['avisos', 'Avisos e instalar la app'], ['registro', 'Registro de hoy'], ['dieta', 'Dieta'], ['objetivo', 'Mi objetivo'], ['novedades', 'Píldoras y novedades'], ['ventajas', 'Ventajas (descuentos)'], ['referidos', 'Invita a un amigo']] },
+    inicio: { label: 'Inicio', parts: [['coach', 'Tu entrenador'], ['logros', 'Tu progreso (adherencia y mejoras)'], ['cal', 'Calendario'], ['avisos', 'Avisos e instalar la app'], ['registro', 'Registro de hoy'], ['dieta', 'Dieta'], ['objetivo', 'Mi objetivo'], ['novedades', 'Píldoras y novedades'], ['ventajas', 'Ventajas (descuentos)'], ['referidos', 'Invita a un amigo']] },
     rutina: { label: 'Rutina', parts: [['semana', 'Esta semana'], ['dia', 'Entreno del día'], ['rutinas', 'Mis rutinas'], ['proximos', 'Próximos días'], ['libre', 'Mis rutinas (modo libre)']] },
     dieta: { label: 'Dieta', parts: [['macros', 'Kcal y macros'], ['comidas', 'Mis comidas'], ['notas', 'Recomendaciones']] },
     progreso: { label: 'Progreso', parts: null },
@@ -4347,7 +4359,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (!v.progreso) { const po = await progOrder().catch(() => null); if (po) v.progreso = { order: po, hidden: [] }; }   // orden antiguo (prog_order)
     S.layout = { t: Date.now(), v }; return v;
   }
-  const pageOrder = (pg, L) => { const ks = lyParts(pg).map(x => x[0]), o = ((L[pg] || {}).order || []).filter(k => ks.includes(k)); return o.concat(ks.filter(k => !o.includes(k))); };
+  // Orden guardado; los apartados nuevos entran en su sitio de siempre (detrás del que les precede) y «Invita a un amigo» va al final
+  const pageOrder = (pg, L) => {
+    const ks = lyParts(pg).map(x => x[0]), o = ((L[pg] || {}).order || []).filter(k => ks.includes(k));
+    ks.forEach((k, j) => { if (o.includes(k)) return; const prev = ks.slice(0, j).reverse().find(x => o.includes(x)); o.splice(prev ? o.indexOf(prev) + 1 : 0, 0, k); });
+    if (pg === 'inicio' && o.includes('referidos')) { o.splice(o.indexOf('referidos'), 1); o.push('referidos'); }
+    return o;
+  };
   async function saveLayout(L) {
     S.layout = { t: Date.now(), v: L };
     await DB.upsert('public_texts', { key: 'client_layout', value: JSON.stringify(L), updated_at: new Date().toISOString() }, 'key', true);
@@ -4565,6 +4583,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       ${ck.map(nt => `<section class="notice n-ck ck-pin ${nt.late ? 'late' : ''}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span><button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button></section>`).join('')}
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
       <div data-po="coach">${coachCard(links)}</div>
+      <div data-po="logros" data-logros></div>
       <section class="card cal-card" data-po="cal"><div data-cal>${calHtml()}</div><div class="cal-day" data-cday>${loading()}</div></section>
       <div data-po="avisos">${installCardHtml()}<div data-pushcard></div>
       ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></section>`).join('')}</div>
@@ -4598,6 +4617,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       btn.disabled = false; btn.textContent = 'Actualizar';
     };
     wireInstall(box); wirePushCard(box, false);
+    homeWins(c, home.querySelector('[data-logros]'), { allRoutines, sessions: done, weeks, programs, ckins }).catch(er => console.warn('logros', er));
     home.insertAdjacentHTML('beforeend', '<div data-po="novedades" data-posts></div><div data-po="ventajas" data-perks></div>');
     await homePosts(home).catch(er => console.warn('píldoras', er));
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
@@ -4606,6 +4626,51 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     }
     await applyLayout('inicio', home);
     await loadMonth(); drawCal();
+  }
+
+  // ---------- Inicio del cliente: «Tu progreso» (adherencia al plan, cumplimiento y 3 mejoras de fuerza), muy visual
+  async function homeWins(c, host, { allRoutines, sessions, weeks, programs, ckins }) {
+    if (!host) return;
+    const t0 = today(), mon = addDays(t0, 1 - isoDay()), W = k => addDays(mon, -7 * k);   // W(1) = lunes de la semana pasada
+    const act = new Set(programs.filter(p => p.status === 'active').map(p => p.id)), pw = weeks.filter(w => act.has(w.program_id));
+    const planned = a => { const w = pw.find(x => x.start_date === a);
+      return allRoutines.filter(r => r.day && (w ? r.program_week_id === w.id : !r.program_week_id && !pw.some(x => x.start_date <= a && a <= addDays(x.start_date, 6)))).length; };
+    const doneIn = (a, b) => sessions.filter(x => { const d = String(x.started_at).slice(0, 10); return d >= a && d <= b; }).length;
+    const adh = (k0, n) => { let p = 0, d = 0; for (let k = k0; k < k0 + n; k++) { const a = W(k), pl = planned(a); if (!pl) continue; p += pl; d += Math.min(pl, doneIn(a, addDays(a, 6))); } return p ? Math.round(d / p * 100) : null; };
+    const aW = adh(1, 1), aWp = adh(2, 1), aM = adh(1, 4), aMp = adh(5, 4);
+    const ckIn = (a, b) => ckins.filter(k => k.date >= a && k.date <= b);
+    const cAvg = list => { const v = list.flatMap(k => [k.train_adh, k.diet_adh]).filter(x => x != null && x !== '').map(Number); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+    const lastCk = ckins[0], prevCk = ckins[1];
+    const cW = lastCk ? cAvg([lastCk]) : null, cWp = prevCk ? cAvg([prevCk]) : null;
+    const cM = cAvg(ckIn(addDays(t0, -30), t0)), cMp = cAvg(ckIn(addDays(t0, -60), addDays(t0, -31)));
+    // fuerza: mejor serie de las últimas 4 semanas frente a la mejor de las 8 anteriores
+    let ex = [];
+    try {
+      const logs = await clientLogs(c.id), cut = addDays(t0, -28), from = addDays(t0, -84), sd = {}; sessions.forEach(x => { sd[x.id] = String(x.started_at).slice(0, 10); });
+      const by = {};
+      logs.forEach(l => { if (!l.weight || !l.reps || l.kind === 'iso') return; const d = sd[l.session_id] || String(l.created_at).slice(0, 10); if (d < from) return;
+        const k = String(l.exercise_name).trim().toLowerCase(), e = e1rm(+l.weight, +l.reps), b = by[k] = by[k] || { n: l.exercise_name, now: null, before: null };
+        const slot = d >= cut ? 'now' : 'before'; if (!b[slot] || e > b[slot].e) b[slot] = { e, w: +l.weight, r: +l.reps }; });
+      ex = Object.values(by).filter(b => b.now && b.before && b.now.e > b.before.e * 1.005).map(b => Object.assign(b, { pct: (b.now.e - b.before.e) / b.before.e * 100 })).sort((a, b) => b.pct - a.pct).slice(0, 3);
+    } catch (e) { ex = []; }
+    if (aW == null && aM == null && cW == null && !ex.length) { host.innerHTML = ''; return; }
+    const delta = (v, p, unit, dec) => (v == null || p == null ? '' : (() => { const d = v - p, z = Math.abs(d) < (dec ? .05 : .5);
+      return `<em class="${z ? 'eq' : d > 0 ? 'up' : 'dn'}">${z ? '= igual' : (d > 0 ? '▲ +' : '▼ ') + (dec ? fmtKg(Math.round(d * 10) / 10) : Math.round(d)) + unit}</em>`; })());
+    const ring = (v, max) => { const R = 26, L = 2 * Math.PI * R, f = v == null ? 0 : Math.max(0, Math.min(1, v / max));
+      return `<svg viewBox="0 0 64 64" class="hw-ring" aria-hidden="true"><circle r="${R}" cx="32" cy="32" class="bg"/><circle r="${R}" cx="32" cy="32" class="fg" stroke-dasharray="${(f * L).toFixed(1)} ${L.toFixed(1)}"/></svg>`; };
+    const tile = (lab, sub, v, p, max, fmt, unit, dec) => `<div class="hw-t"><div class="hw-rw">${ring(v, max)}<b>${v == null ? '–' : fmt(v)}</b></div><div class="hw-tx"><small>${lab}</small><span>${sub}</span>${delta(v, p, unit, dec)}</div></div>`;
+    const pctF = v => Math.round(v) + '%', tenF = v => fmtKg(Math.round(v * 10) / 10);
+    const up = [aW != null && aWp != null && aW > aWp, aM != null && aMp != null && aM > aMp, cW != null && cWp != null && cW > cWp, cM != null && cMp != null && cM > cMp].filter(Boolean).length;
+    const first = String(c.name || '').split(' ')[0];
+    const head = ex.length || up ? `🔥 ${up >= 2 ? `¡Vas a más, ${esc(first)}!` : ex.length ? `¡Estás más fuerte, ${esc(first)}!` : 'Sigue así'}` : `💪 Tu progreso`;
+    host.innerHTML = `<section class="card hw">
+      <header><b>${head}</b><a class="small" href="#/progreso">Ver todo ›</a></header>
+      <div class="hw-grid">
+        ${aW != null || aM != null ? `<div class="hw-blk"><h4>Adherencia al plan <small>entrenos hechos / pautados</small></h4><div class="hw-two">${tile('Semana pasada', '', aW, aWp, 100, pctF, ' pts')}${tile('Último mes', '4 semanas', aM, aMp, 100, pctF, ' pts')}</div></div>` : ''}
+        ${cW != null || cM != null ? `<div class="hw-blk"><h4>Cumplimiento <small>entreno y dieta, de 10</small></h4><div class="hw-two">${tile('Última revisión', lastCk ? fmtDate(lastCk.date, { day: 'numeric', month: 'short' }) : '', cW, cWp, 10, tenF, '', true)}${tile('Último mes', '30 días', cM, cMp, 10, tenF, '', true)}</div></div>` : ''}
+      </div>
+      ${ex.length ? `<div class="hw-ex"><h4>🏋️ Mejoras este mes</h4>${ex.map((x, i) => `<div class="hw-exr"><span class="hw-md">${['🥇', '🥈', '🥉'][i]}</span><span class="grow"><b>${esc(x.n)}</b><small>${fmtKg(x.before.w)}×${x.before.r} → ${fmtKg(x.now.w)}×${x.now.r}</small></span><strong>+${Math.round(x.pct)}%</strong></div>`).join('')}</div>` : ''}
+    </section>`;
   }
 
   // ================================================================ PÍLDORAS Y NOVEDADES (migración 039) + VENTAJAS
@@ -5213,18 +5278,22 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <header class="wk-top"><button class="icon-btn" data-exit aria-label="Salir">${ic('back')}</button><div class="grow"><b>${esc(w.routine_name)}</b><small data-elapsed></small></div><button class="btn primary small" data-finish>Terminar</button></header>
       <div class="wk-progress"><i style="width:${total ? (done / total * 100) : 0}%"></i></div>
       ${w.notes ? `<p class="note wk-note">${nl2br(w.notes)}</p>` : ''}
+      ${w.ex.length > 1 ? `<div class="wk-foldall"><button type="button" class="link" data-foldall="1">Plegar todos</button><button type="button" class="link" data-foldall="0">Desplegar todos</button></div>` : ''}
       <div class="wk-list">${w.ex.map((e, ei) => `
-        <section class="card wk-ex ${e.sets.every(s => s.done) ? 'complete' : ''} ${e.ss ? 'ss ss-' + esc(e.ss) : ''}" data-ei="${ei}">${e.ss ? `<span class="ss-tag">Superserie ${esc(e.ss)}${(() => { const g = w.ex.filter(x => x.ss === e.ss); return g.length > 1 ? ' · ' + (g.indexOf(e) + 1) + '/' + g.length + ' · sin descanso entre ellos' : ''; })()}</span>` : ''}
-          <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b>${e.orig ? `<small class="wk-swapped">Cambiado · antes: ${esc(e.orig)} <button type="button" class="link" data-unswap>Deshacer</button></small>` : ''}<small>${e.sets.filter(x => x.tag !== 'D').length} × ${esc(e.reps)}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small>${e.scheme ? `<small class="wk-scheme">${esc(e.scheme)}</small>` : ''}</div>
-            ${mediaInfo(e.media) ? `<button type="button" class="icon-btn ${openMedia.has(ei) ? 'on' : ''}" data-media title="Ver técnica" aria-label="Ver técnica">${ic('video')}</button>` : ''}</header>
+        <section class="card wk-ex ${e.sets.every(s => s.done) ? 'complete' : ''} ${e.ss ? 'ss ss-' + esc(e.ss) : ''} ${w.fold && w.fold[ei] ? 'shut' : ''}" data-ei="${ei}">${e.ss ? `<span class="ss-tag">Superserie ${esc(e.ss)}${(() => { const g = w.ex.filter(x => x.ss === e.ss); return g.length > 1 ? ' · ' + (g.indexOf(e) + 1) + '/' + g.length + ' · sin descanso entre ellos' : ''; })()}</span>` : ''}
+          <header><span class="num">${ei + 1}</span><div class="grow"><b>${esc(e.name)}</b>${e.orig ? `<small class="wk-swapped">Cambiado · antes: ${esc(e.orig)} <button type="button" class="link" data-unswap>Deshacer</button></small>` : ''}<small>${e.sets.filter(x => x.tag !== 'D' && x.tag !== 'A').length} × ${esc(e.reps)}${e.sets.some(x => x.tag === 'ISO') ? ' s' : ''}${e.load ? ' · ' + esc(e.load) : ''} · ${ic('clock', 'xs')} ${e.rest}"</small>${e.scheme ? `<small class="wk-scheme">${esc(e.scheme)}</small>` : ''}</div>
+            ${mediaInfo(e.media) ? `<button type="button" class="icon-btn ${openMedia.has(ei) ? 'on' : ''}" data-media title="Ver técnica" aria-label="Ver técnica">${ic('video')}</button>` : ''}
+            <span class="wk-sum">${e.sets.filter(x => x.done).length}/${e.sets.length}${e.sets.every(x => x.done) ? ' ✓' : ''}</span>
+            <button type="button" class="icon-btn wk-fold" data-fold aria-expanded="${!(w.fold && w.fold[ei])}" title="${w.fold && w.fold[ei] ? 'Desplegar' : 'Plegar'}" aria-label="${w.fold && w.fold[ei] ? 'Desplegar' : 'Plegar'} ${esc(e.name)}">${ic('next')}</button></header>
+          <div class="wk-body">
           ${openMedia.has(ei) ? mediaFacade(e.media) : ''}
           ${e.prevAt ? `<p class="muted small last">Última vez ${esc(ago(e.prevAt))}: ${e.prev.map(p => `${p.w != null ? fmtKg(p.w) + ' kg' : '–'} × ${p.r ?? '–'} reps`).join(' · ')}</p>` : ''}
           ${e.notes ? `<p class="note">${esc(e.notes)}</p>` : ''}
-          <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>Reps</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
-          ${(() => { let n = 0; return e.sets.map(s => (s.tag === 'D' ? '' : String(++n))); })().map((lbl, si) => [lbl, e.sets[si], si]).map(([lbl, s, si]) => `<div class="set ${s.done ? 'done' : ''} ${s.tag ? 'tag-' + s.tag : ''}" data-si="${si}"><span class="sn">${s.tag === 'TOP' ? 'TOP' : s.tag === 'BO' ? 'BO' : s.tag === 'D' ? '↓' : lbl}</span>
-            <span class="prev">${e.prev[si] ? `${e.prev[si].w != null ? fmtKg(e.prev[si].w) : '–'}×${e.prev[si].r ?? '–'}${e.prev[si].x != null ? `<small> @${e.prev[si].x === 'F' ? 'Fallo' : fmtKg(e.prev[si].x)}</small>` : ''}` : '–'}</span>
-            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="${s.pct ? '−' + s.pct + ' %' : '–'}" aria-label="Kilos serie ${si + 1}${s.tag === 'D' ? ' (bajada)' : s.tag === 'BO' ? ' (back-off)' : s.tag === 'TOP' ? ' (top set)' : ''}">
-            <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="–" aria-label="Repeticiones serie ${si + 1}">
+          <div class="sets ${e.it ? 'with-x' : ''}"><div class="sets-h"><span>Serie</span><span>Anterior</span><span>kg</span><span>${e.sets.some(x => x.tag === 'ISO') ? 'Seg' : 'Reps'}</span>${e.it ? `<span>${e.it.toUpperCase()}</span>` : ''}<span></span></div>
+          ${(() => { let n = 0; return e.sets.map(s => (s.tag === 'D' || s.tag === 'A' ? '' : String(++n))); })().map((lbl, si) => [lbl, e.sets[si], si]).map(([lbl, s, si]) => `<div class="set ${s.done ? 'done' : ''} ${s.tag ? 'tag-' + s.tag : ''}" data-si="${si}"><span class="sn">${s.tag === 'TOP' ? 'TOP' : s.tag === 'BO' ? 'BO' : s.tag === 'D' ? '↓' : s.tag === 'A' ? 'Apr' : s.tag === 'AMRAP' ? 'MAX' : s.tag === 'CL' ? lbl + '<i>CL</i>' : lbl}</span>
+            <span class="prev">${(pv => pv ? `${pv.w != null ? fmtKg(pv.w) : '–'}×${pv.r ?? '–'}${pv.x != null ? `<small> @${pv.x === 'F' ? 'Fallo' : fmtKg(pv.x)}</small>` : ''}` : '–')(s.tag === 'A' ? null : e.prev[si - e.sets.slice(0, si).filter(x => x.tag === 'A').length])}</span>
+            <input inputmode="decimal" data-f="w" value="${esc(s.w)}" placeholder="${s.pct ? '−' + s.pct + ' %' : s.ap ? '~' + s.ap + ' %' : '–'}" aria-label="Kilos serie ${si + 1}${s.tag === 'D' ? ' (bajada)' : s.tag === 'BO' ? ' (back-off)' : s.tag === 'TOP' ? ' (top set)' : s.tag === 'A' ? ' (aproximación)' : ''}">
+            <input inputmode="numeric" data-f="r" value="${esc(s.r)}" placeholder="${s.tag === 'AMRAP' ? 'máx' : s.tag === 'ISO' ? 'seg' : '–'}" aria-label="${s.tag === 'ISO' ? 'Segundos' : 'Repeticiones'} serie ${si + 1}">
             ${e.it === 'rir' ? `<select data-f="x" class="rir-sel ${s.x === 'F' ? 'fail' : ''}" aria-label="RIR serie ${si + 1}"><option value="">${e.tFail ? 'Fallo' : e.target != null ? esc(fmtKg(e.target)) : '–'}</option>${RIR_OPTS.map(v => `<option value="${v}" ${String(s.x) === v ? 'selected' : ''}>${v === 'F' ? 'Fallo' : v}</option>`).join('')}</select>`
               : e.it ? `<input inputmode="decimal" data-f="x" value="${esc(s.x || '')}" placeholder="${e.target != null ? esc(fmtKg(e.target)) : ''}" aria-label="${e.it.toUpperCase()} serie ${si + 1}">` : ''}
             <button class="tick" data-tick aria-label="Serie hecha">${ic('check')}</button></div>${s.hint ? `<p class="set-hint ${s.hint[0]}">${esc(s.hint[1])}</p>` : ''}`).join('')}</div>
@@ -5232,6 +5301,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <div class="row gap wrap wk-acts"><button class="btn ghost small" data-addset>${ic('plus')} Serie</button>${e.sets.length > 1 ? '<button class="btn ghost small" data-delset>Quitar serie</button>' : ''}<span class="grow"></span>
             <button class="icon-btn ${e.fb ? 'on' : ''}" data-cmt title="Dejar un comentario a tu entrenador" aria-label="Comentario para tu entrenador">${ic('msg')}</button>
             <button class="btn ghost small" data-swap title="Cambiar por otro ejercicio parecido">${ic('swap')} Cambiar</button></div>
+          </div>
         </section>`).join('')}</div>
       <div class="rest-done" data-restdone hidden></div>
       <div class="rest" data-rest hidden><div class="rest-in"><small>Descanso</small><b data-rt>0:00</b><div class="row gap"><button class="btn small" data-rminus>−15 s</button><button class="btn small" data-rplus>+15 s</button><button class="btn small primary" data-rskip>Saltar</button></div></div><i class="rest-bar"></i></div>
@@ -5242,12 +5312,18 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     requestWakeLock();
 
     bindMedia($app);
+    // plegar / desplegar ejercicios (se guarda con el entreno en curso)
+    const setFold = (ei, v) => { w.fold = w.fold || {}; w.fold[ei] = v; const sec = $app.querySelector(`.wk-ex[data-ei="${ei}"]`); if (!sec) return;
+      sec.classList.toggle('shut', v); const fb = sec.querySelector('[data-fold]'); fb.setAttribute('aria-expanded', String(!v)); fb.title = v ? 'Desplegar' : 'Plegar'; };
+    $app.querySelectorAll('[data-foldall]').forEach(b => b.onclick = () => { w.ex.forEach((_, ei) => setFold(ei, b.dataset.foldall === '1')); saveWorkout(w); });
     $app.querySelectorAll('.wk-ex').forEach(sec => {
       const ei = +sec.dataset.ei, e = w.ex[ei];
+      sec.querySelector('[data-fold]').onclick = ev => { ev.stopPropagation(); setFold(ei, !sec.classList.contains('shut')); saveWorkout(w); };
+      sec.querySelector('header').addEventListener('click', ev => { if (ev.target.closest('button, a, input, select')) return; setFold(ei, !sec.classList.contains('shut')); saveWorkout(w); });
       const mb = sec.querySelector('[data-media]');
       if (mb) mb.onclick = () => {
         if (openMedia.has(ei)) { openMedia.delete(ei); sec.querySelector('.vmedia')?.remove(); mb.classList.remove('on'); return; }
-        openMedia.add(ei); mb.classList.add('on'); sec.querySelector('header').insertAdjacentHTML('afterend', mediaFacade(e.media)); bindMedia(sec);
+        openMedia.add(ei); mb.classList.add('on'); sec.querySelector('.wk-body').insertAdjacentHTML('afterbegin', mediaFacade(e.media)); bindMedia(sec);
         const pb = sec.querySelector('.vmedia .vplay'); if (pb) pb.click();
       };
       sec.querySelectorAll('.set').forEach(row => {
@@ -5257,9 +5333,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         row.querySelector('[data-tick]').onclick = () => {
           s.done = !s.done;
           if (s.done) {
-            if (s.r === '' || s.r == null) { const def = parseInt(String(e.reps).split(/[-–]/).pop(), 10); if (!isNaN(def)) s.r = String(def); }
-            // propaga el peso a las series siguientes vacías: back-off = top set − %, bajadas del dropset en cadena
-            if (s.w !== '' && !isNaN(+s.w)) {
+            if ((s.r === '' || s.r == null) && s.tag !== 'AMRAP') { const def = parseInt(String(e.reps).split(/[-–]/).pop(), 10); if (!isNaN(def)) s.r = String(def); }
+            // propaga el peso a las series siguientes vacías: back-off = top set − %, bajadas del dropset en cadena (las de aproximación no)
+            if (s.w !== '' && !isNaN(+s.w) && s.tag !== 'A') {
               const r05 = x => String(Math.round(x * 2) / 2);
               let chain = true, ref = +s.w;
               e.sets.slice(si + 1).forEach(n => {
@@ -5277,12 +5353,14 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
             const nx = grp.length > 1 ? grp.slice(grp.indexOf(ei) + 1).find(k => w.ex[k].sets.some(x => !x.done)) : undefined;
             if (nx != null) { toast(`Superserie ${e.ss}: ahora ${w.ex[nx].name}`, 'ok'); setTimeout(() => { const t = $app.querySelector(`[data-ei="${nx}"]`); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80); }
             else if (grp.length > 1) { const rs = Math.max(...grp.map(k => Number(w.ex[k].rest) || 0)); const f0 = grp.find(k => w.ex[k].sets.some(x => !x.done)); if (rs > 0) startRest(rs, f0 != null ? `Superserie ${e.ss}: ${w.ex[f0].name}` : nextSetLabel(w, ei, si)); }
-            else if (e.rest > 0) startRest(e.rest, nextSetLabel(w, ei, si));
+            else if (e.rest > 0) startRest(s.tag === 'A' ? Math.min(e.rest, 60) : e.rest, nextSetLabel(w, ei, si));
+            // ejercicio terminado → se pliega solo para dejar la pantalla limpia (se vuelve a abrir tocándolo)
+            if (e.sets.every(x => x.done)) { w.fold = w.fold || {}; w.fold[ei] = true; }
           } else s.hint = null;
           saveWorkout(w); drawWorkout(w);
         };
       });
-      sec.querySelector('[data-addset]').onclick = () => { const l = [...e.sets].reverse().find(x => x.tag !== 'D'); e.sets.push({ w: l ? l.w : '', r: '', done: false, tag: l && l.tag === 'TOP' ? 'BO' : (l && l.tag) || '', pct: l && (l.tag === 'BO' || l.tag === 'TOP') ? (l.pct || 10) : null }); saveWorkout(w); drawWorkout(w); };
+      sec.querySelector('[data-addset]').onclick = () => { const l = [...e.sets].reverse().find(x => x.tag !== 'D' && x.tag !== 'A'); e.sets.push({ w: l ? l.w : '', r: '', done: false, tag: l && l.tag === 'TOP' ? 'BO' : (l && l.tag) || '', pct: l && (l.tag === 'BO' || l.tag === 'TOP') ? (l.pct || 10) : null }); saveWorkout(w); drawWorkout(w); };
       const ds = sec.querySelector('[data-delset]'); if (ds) ds.onclick = () => { e.sets.pop(); saveWorkout(w); drawWorkout(w); };
       sec.querySelector('[data-cmt]').onclick = () => modal(`Comentario · ${e.name}`, `<p class="muted small">Le llega a tu entrenador al terminar el entreno.</p>
         <div class="np-opts">${['Molestia en la articulación', 'Muy fácil', 'Muy duro', 'Máquina ocupada', 'No noto el músculo'].map(t => `<button type="button" class="chip" data-qc="${esc(t)}">${esc(t)}</button>`).join('')}</div>
@@ -5319,7 +5397,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   function nextSetLabel(w, ei, si) {
     for (let i = ei; i < w.ex.length; i++) {
       const e = w.ex[i], k = e.sets.findIndex((x, j) => !x.done && (i > ei || j > si));
-      if (k >= 0) { const n = e.sets.slice(0, k + 1).filter(x => x.tag !== 'D').length; return `${e.name} · serie ${n}`; }
+      if (k >= 0) { if (e.sets[k].tag === 'A') return `${e.name} · aproximación`; const n = e.sets.slice(0, k + 1).filter(x => x.tag !== 'D' && x.tag !== 'A').length; return `${e.name} · serie ${n}`; }
     }
     return null;
   }
@@ -5429,17 +5507,22 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         const logs = []; let vol = 0;
         const inRange = (v, a, b) => (v != null && v >= a && v <= b ? Math.round(v * 2) / 2 : null);
         w.ex.forEach(e => { let n = 0; e.sets.forEach(s => {
-          if (!s.done) return; n++; const kg = num(s.w), r = parseInt(s.r, 10), x = num(s.x);
+          if (!s.done || s.tag === 'A') return; n++; const kg = num(s.w), r = parseInt(s.r, 10), x = num(s.x);   // las de aproximación no se guardan
           const l = { exercise_name: e.name, set_no: n, weight: kg, reps: isNaN(r) ? null : r };
+          const kd = { CL: 'cluster', ISO: 'iso', AMRAP: 'amrap' }[s.tag]; if (kd) l.kind = kd;
           if (e.id) l.routine_item_id = e.id; if (e.lin) l.lineage_id = e.lin;
           if (e.it === 'rir') { if (s.x === 'F') { l.rir = 0; l.failure = true; } else l.rir = inRange(x, 0, 10); } if (e.it === 'rpe') l.rpe = inRange(x, 1, 10);
-          logs.push(l); if (kg && !isNaN(r)) vol += kg * r; }); });
+          logs.push(l); if (kg && !isNaN(r) && s.tag !== 'ISO') vol += kg * r; }); });
         await safe(async () => {
           const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: finished, rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
           const rows = logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l));
           if (rows.length) {
             try { await DB.insert('set_logs', rows); }
-            catch (er) { if (!/failure/i.test(er.message || '')) throw er; rows.forEach(r => { delete r.failure; }); await DB.insert('set_logs', rows); }   // sin la migración 020
+            catch (er) {   // sin la migración 020 (failure) o la 041 (kind)
+              if (!/failure|kind/i.test(er.message || '')) throw er;
+              rows.forEach(r => { if (/kind/i.test(er.message)) delete r.kind; else delete r.failure; });
+              try { await DB.insert('set_logs', rows); } catch (er2) { if (!/failure|kind/i.test(er2.message || '')) throw er2; rows.forEach(r => { delete r.failure; delete r.kind; }); await DB.insert('set_logs', rows); }
+            }
           }
           const fb = [];
           w.ex.forEach(e => {
