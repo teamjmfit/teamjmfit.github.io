@@ -2121,3 +2121,16 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 .hw-exr { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: rgba(127,209,139,.08); margin-bottom: 6px; }
 .hw-md { font-size: 20px; } .hw-exr .grow { min-width: 0; } .hw-exr b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .hw-exr small { color: rgba(244,241,234,.6); font-size: 12px; }
 .hw-exr strong { color: #7fd18b; font-size: 20px; font-weight: 900; }
+
+/* ---------- Fin del entreno: mensaje y mejoras */
+.post-cheer { margin: 4px 0 10px; font-size: 22px; line-height: 1.2; text-align: center; text-transform: none; }
+.post-tabs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.post-ul { list-style: none; margin: 0 0 8px; padding: 0; text-align: left; }
+.post-ul li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 6px; border-radius: 12px; background: color-mix(in srgb, var(--green) 12%, transparent); }
+.post-ul li .grow { min-width: 0; } .post-ul li b { display: block; } .post-ul li small { color: var(--muted); font-size: 12px; }
+.post-ul li strong { color: var(--green); font-size: 18px; font-weight: 900; }
+/* ---------- Perfil: pasos automáticos */
+.hs-copy { display: flex; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 8px; border-radius: 10px; background: var(--card2); }
+.hs-copy small { flex: none; width: 52px; color: var(--muted); font-weight: 700; }
+.hs-copy code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.hs-steps ol { padding-left: 18px; line-height: 1.5; } .hs-steps ol li { margin-bottom: 6px; } .hs-steps details { margin: 8px 0; }
