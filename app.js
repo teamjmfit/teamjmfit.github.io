@@ -635,7 +635,7 @@
     sessions.filter(x => x.finished_at && x.finished_at >= since).forEach(x => {
       const min = Math.max(1, Math.round((new Date(x.finished_at) - new Date(x.started_at)) / 6e4));
       out.push({ k: 'train', t: x.finished_at, cid: x.client_id, who: nm(x.client_id), what: `completó <b>${esc(x.routine_name || 'entreno')}</b>`,
-        pills: [min < 600 ? pill(`⏱ ${min} min`) : '', x.volume ? pill(`🏋️ ${Math.round(x.volume).toLocaleString('es-ES')} kg`) : '', x.rpe ? pill(`RPE ${x.rpe}`) : ''].join(''),
+        pills: [min < 600 ? pill(`⏱ ${min} min`) : '', x.volume ? pill(`🏋️ ${Math.round(x.volume).toLocaleString('es-ES')} kg`) : '', x.rpe ? pill(`RPE ${x.rpe}`) : '', x.feel ? pill(`😊 Sensaciones ${x.feel}/10`) : '', x.motivation ? pill(`🔥 Motivación ${x.motivation}/10`) : ''].join(''),
         href: `#/cliente/${x.client_id}/progreso`, unseen: !x.coach_seen });
     });
     metrics.filter(m => m.weight != null || m.steps != null || m.sleep_h != null).forEach(m => {
@@ -2305,7 +2305,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const dl = !!(wk && wk.kind === 'deload') || weeks.some(x => x.kind === 'deload' && d0 >= x.start_date && d0 <= addDays(x.start_date, 6));
       const missing = (g.items || []).filter(i => !g.some(([, xs]) => plannedOf(g.items, xs) === i));
       modal(`✓ ${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE ' + s.rpe : ''}${s.feel ? ' · Sensaciones ' + s.feel + '/10' : ''}${s.motivation ? ' · Motivación ' + s.motivation + '/10' : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>
         ${g.map(([n, xs]) => `<div class="sx2"><b>${esc(n)}</b>${setsVsPlan(xs, plannedOf(g.items, xs), dl)}</div>`).join('') || '<p class="empty">Sin series registradas.</p>'}
         ${missing.length ? `<p class="note small">No hizo: ${missing.map(i => esc(i.exercise_name)).join(', ')}</p>` : ''}${g.length ? SX_KEY : ''}
         ${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
@@ -3101,7 +3101,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           ${dl ? '<small class="muted">Semana de descarga: es normal mover menos carga, no cuenta como bajada de rendimiento.</small>' : tp ? `<small class="muted">La vez anterior (${fmtDate(prevS.started_at, { day: 'numeric', month: 'short' })}): ${fmtKg(tp.weight)} × ${tp.reps} → hoy ${fmtKg(t.weight)} × ${t.reps} <b class="${d > 0.5 ? 'dn' : d < -0.5 ? 'up' : ''}">${d > 0.5 ? '▲ mejor' : d < -0.5 ? '▼ peor' : '= igual'}</b></small>` : ''}</div>`;
       }).join('') || '<p class="empty">Sin series registradas</p>';
       const m0 = modal(`${s.routine_name || 'Entreno'} · ${fmtDate(s.started_at, { weekday: 'long', day: 'numeric', month: 'long' })}`,
-        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>${body}${sets.length ? SX_KEY : ''}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
+        `<p class="muted small">${Math.max(1, Math.round((new Date(s.finished_at) - new Date(s.started_at)) / 6e4))} min${s.volume ? ' · ' + Math.round(s.volume).toLocaleString('es-ES') + ' kg de volumen' : ''}${s.rpe ? ' · RPE de la sesión ' + s.rpe : ''}${s.feel ? ' · Sensaciones ' + s.feel + '/10' : ''}${s.motivation ? ' · Motivación ' + s.motivation + '/10' : ''}${dl ? ' · <span class="pill blue">Semana de descarga</span>' : ''}</p>${body}${sets.length ? SX_KEY : ''}${s.notes ? `<p class="note">${nl2br(s.notes)}</p>` : ''}
         ${asCoach ? `<div class="row gap wrap sx-acts"><button type="button" class="btn small" data-sedit>${ic('edit')} Editar entreno</button><button type="button" class="btn small ghost danger" data-sdel>${ic('trash')} Borrar entreno</button></div>` : ''}`, { wide: true });
       if (asCoach) {
         m0.querySelector('[data-sedit]').onclick = () => editSession(s, sets);
@@ -4349,7 +4349,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     rutina: { label: 'Rutina', parts: [['semana', 'Esta semana'], ['dia', 'Entreno del día'], ['rutinas', 'Mis rutinas'], ['proximos', 'Próximos días'], ['libre', 'Mis rutinas (modo libre)']] },
     dieta: { label: 'Dieta', parts: [['macros', 'Kcal y macros'], ['comidas', 'Mis comidas'], ['notas', 'Recomendaciones']] },
     progreso: { label: 'Progreso', parts: null },
-    perfil: { label: 'Perfil', parts: [['yo', 'Mi foto y datos'], ['coach', 'Tu entrenador'], ['notif', 'Notificaciones'], ['tema', 'Apariencia'], ['instalar', 'Instalar la app'], ['acciones', 'Privacidad, bienvenida y salir']] }
+    perfil: { label: 'Perfil', parts: [['yo', 'Mi foto y datos'], ['coach', 'Tu entrenador'], ['notif', 'Notificaciones'], ['salud', 'Pasos automáticos desde Salud'], ['tema', 'Apariencia'], ['instalar', 'Instalar la app'], ['acciones', 'Privacidad, bienvenida y salir']] }
   };
   const lyParts = pg => (pg === 'progreso' ? PROG_PARTS : LAYOUT_PAGES[pg].parts);
   async function clientLayout(force) {
@@ -4402,7 +4402,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- «Vista como cliente»: el entrenador ve la app de un cliente tal cual (solo lectura) y edita la maqueta
-  const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage)$/;
+  const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage|health_status)$/;
   function enterViewAs(c, general = false) {
     S.viewAs = c; S.vaGeneral = general; S.lyEdit = true;
     if (!S.dbReal) {
@@ -4776,6 +4776,37 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ================================================================ CLIENTE · PERFIL (foto, datos, notificaciones, apariencia, privacidad)
+  // ---------- Pasos automáticos desde Salud (migración 042): el móvil manda los pasos del día a las 23:00
+  // iPhone: app Atajos (automatización a una hora); Android: app de automatización que lea Health Connect.
+  async function healthCard(host) {
+    if (!host) return;
+    const live = DB.mode !== 'demo', url = (window.JMFIT_CONFIG || {}).SUPABASE_URL + '/rest/v1/rpc/health_steps', key = (window.JMFIT_CONFIG || {}).SUPABASE_ANON_KEY || '';
+    let st = null; try { st = live ? ((await DB.rpc('health_status', {})) || [])[0] || null : null; } catch (e) { st = undefined; }
+    const tok = S.healthTok || null;
+    const copy = (lab, v) => `<div class="hs-copy"><small>${lab}</small><code>${esc(v)}</code><button type="button" class="btn small" data-cp="${esc(v)}">Copiar</button></div>`;
+    host.innerHTML = `<h3>👟 Pasos automáticos desde Salud</h3>
+      <p class="muted small">Tu móvil puede mandar a la app tus pasos de cada día (por ejemplo a las 23:00) sin que tengas que apuntarlos.</p>
+      ${st === undefined ? '<p class="note small">Tu entrenador aún tiene que activar esta función.</p>'
+        : st ? `<p><span class="pill green">Activado</span> ${st.last_used ? `Último envío: <b>${Number(st.last_steps || 0).toLocaleString('es-ES')} pasos</b> · ${esc(ago(st.last_used))}` : 'Aún no ha llegado ningún envío.'}</p>` : ''}
+      ${tok ? `<div class="hs-steps">
+          <p><b>Tu clave personal</b> (no la compartas):</p>${copy('Clave', tok)}
+          <details open><summary><b>📱 iPhone</b> (app «Atajos»)</summary><ol class="small">
+            <li>Abre <b>Atajos</b> → pestaña <b>Automatización</b> → <b>+</b> → <b>Hora del día</b> → 23:00, <b>Diariamente</b> → <b>Ejecutar inmediatamente</b> → Siguiente → <b>Nuevo atajo en blanco</b>.</li>
+            <li>Añade <b>«Buscar muestras de salud»</b>: Tipo <b>Pasos</b>, Fecha de inicio <b>es hoy</b>.</li>
+            <li>Añade <b>«Calcular estadísticas»</b>: <b>Suma</b> de las muestras de salud.</li>
+            <li>Añade <b>«Obtener contenido de URL»</b> con esta URL:${copy('URL', url)}Pulsa la flecha → Método <b>POST</b> → Cabeceras: añade <b>apikey</b> con:${copy('apikey', key)}Cuerpo de la solicitud <b>JSON</b>: campo <b>t</b> (Texto) = tu clave, campo <b>steps</b> (Número) = el resultado de «Estadísticas».</li>
+            <li>Listo. La primera vez el iPhone te pedirá permiso para leer tus pasos: acepta. Puedes probarlo pulsando ▶︎ en el atajo.</li></ol></details>
+          <details><summary><b>🤖 Android</b></summary><p class="small">Android no deja a las páginas web leer los pasos. Con una app de automatización que lea <b>Health Connect</b> (p. ej. MacroDroid o Tasker) crea una tarea diaria a las 23:00 que haga una petición <b>POST</b> a la URL de arriba, con la cabecera <b>apikey</b> y el cuerpo JSON <code>{"t": "tu clave", "steps": PASOS}</code>. Si no te aclaras, sigue apuntándolos en «Registro de hoy».</p></details>
+        </div>` : ''}
+      ${live && st !== undefined ? `<div class="row gap wrap"><button type="button" class="btn ${st ? 'ghost' : 'primary'} small" data-hson>${st ? '🔑 Crear clave nueva' : '⚡ Activar'}</button>${st ? '<button type="button" class="btn ghost small" data-hsoff>Desactivar</button>' : ''}</div>`
+        : !live ? '<p class="muted small">En el modo demo no se puede activar.</p>' : ''}
+      ${st && !tok ? '<p class="muted small">Por seguridad la clave solo se ve al crearla. Si cambias de móvil, crea una nueva (la anterior deja de valer).</p>' : ''}`;
+    host.querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.cp); toast('Copiado ✓'); } catch (e) { toast('Mantén pulsado el texto para copiarlo'); } });
+    const on = host.querySelector('[data-hson]'); if (on) on.onclick = async () => {
+      if (st && !(await confirmBox('La clave anterior dejará de funcionar y tendrás que poner la nueva en tu atajo.', 'Crear nueva'))) return;
+      try { S.healthTok = await DB.rpc('health_token', {}); healthCard(host); } catch (e) { toast('No se pudo activar: ' + (e.message || e), 'err'); } };
+    const off = host.querySelector('[data-hsoff]'); if (off) off.onclick = async () => { if (!(await confirmBox('Tu móvil dejará de mandar los pasos a la app.', 'Desactivar'))) return; await safe(() => DB.rpc('health_off', {}), 'Desactivado'); S.healthTok = null; healthCard(host); };
+  }
   async function clientProfile() {
     const c = S.client;
     shell(clientNav(), 'perfil', loading(), { title: 'Mi perfil' });
@@ -4787,6 +4818,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         ${hasAva ? `<label class="btn small prof-ph">${ic('camera')} ${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</section>
       <div data-po="coach">${coachCard(links)}</div>
       <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
+      <section class="card hs-card" data-po="salud" data-salud></section>
       <section class="card" data-po="tema"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
       <div data-po="instalar">${installCardHtml()}</div>
       <section class="card prof-acts" data-po="acciones">
@@ -4796,6 +4828,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     fillAvatars(box); fillAvatars($app);
     await applyLayout('perfil', box.querySelector('.cprof'));
     pushSettings(box.querySelector('[data-pushset]'));
+    healthCard(box.querySelector('[data-salud]')).catch(er => console.warn('salud', er));
     wireInstall(box);
     box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     box.querySelector('[data-priv]').onclick = () => privacyModal();
@@ -5497,6 +5530,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <label><input name="dur_m" type="number" inputmode="numeric" min="0" max="59" step="1" value="${longMin ? '' : realMin % 60}" placeholder="15"><span>min</span></label></fieldset>
       <p class="small ${longMin ? 'note' : 'muted'}" data-durhint>${longMin ? `⏱️ El contador marca ${Math.floor(realMin / 60)} h ${realMin % 60} min: si se te olvidó pararlo, pon lo que duró de verdad.` : 'Se rellena con el tiempo del contador. Si se te olvidó pararlo, corrígelo.'}</p>
       <fieldset class="scale wide"><legend>¿Qué tan duro fue? (RPE 1–10)</legend>${[5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="rpe" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
+      <fieldset class="scale ten"><legend>Sensaciones entrenando <small>1 fatal · 10 genial</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="feel" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
+      <fieldset class="scale ten"><legend>¿Cuánto te ha motivado la sesión? <small>1 nada · 10 muchísimo</small></legend>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<label><input type="radio" name="motiv" value="${v}"><span>${v}</span></label>`).join('')}</fieldset>
       <label>Comentario para tu entrenador (opcional)<textarea name="notes" rows="3" placeholder="Molestias, sensaciones, cambios…"></textarea></label>`, {
       submitLabel: 'Guardar entreno',
       onSubmit: async (f, fd) => {
@@ -5514,7 +5549,12 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           if (e.it === 'rir') { if (s.x === 'F') { l.rir = 0; l.failure = true; } else l.rir = inRange(x, 0, 10); } if (e.it === 'rpe') l.rpe = inRange(x, 1, 10);
           logs.push(l); if (kg && !isNaN(r) && s.tag !== 'ISO') vol += kg * r; }); });
         await safe(async () => {
-          const [s] = await DB.insert('sessions', { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: finished, rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol });
+          const srow = { client_id: c.id, routine_id: w.routine_id, routine_name: w.routine_name, started_at: w.started_at, finished_at: finished, rpe: num(fd.get('rpe')), notes: fd.get('notes'), volume: vol };
+          const feel = num(fd.get('feel')), motiv = num(fd.get('motiv'));
+          if (feel) srow.feel = feel; if (motiv) srow.motivation = motiv;
+          let s;
+          try { [s] = await DB.insert('sessions', srow); }
+          catch (er) { if (!/feel|motivation/i.test(er.message || '')) throw er; delete srow.feel; delete srow.motivation; [s] = await DB.insert('sessions', srow); }   // sin la migración 042
           const rows = logs.map(l => Object.assign({ session_id: s.id, client_id: c.id }, l));
           if (rows.length) {
             try { await DB.insert('set_logs', rows); }
@@ -5534,7 +5574,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         }, 'Entreno guardado 💪');
         clearWorkout(); stopRest(); openMedia.clear(); if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
         // Pantalla de felicitación (resumen + foto opcional para redes); al cerrarla, a Progreso
-        if (window.JMPost) setTimeout(() => JMPost.show(w, { onClose: () => { location.hash = '#/progreso'; } }), 0);
+        if (window.JMPost) setTimeout(() => JMPost.show(w, { sex: c.sex, name: c.name, onClose: () => { location.hash = '#/progreso'; } }), 0);
         else location.hash = '#/progreso';
       }
     });
