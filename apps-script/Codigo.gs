@@ -18,6 +18,8 @@ const HOJA_TARIFAS = 'Tarifas Oficiales';
 const FILA_INICIO_CLIENTES = 5;  // primera fila con datos
 const FILA_INICIO_PAGOS = 5;
 const FILA_INICIO_TARIFAS = 5;
+const HOJA_AVISOS = 'Clientes & Avisos';
+const FILA_TARIFA_1 = 6;   // la fila 5 de Tarifas es «Inactivo / Pausa» (lista auxiliar)
 
 function doGet(e) {
   return responder_({ ok: true, mensaje: 'TEAM JMFIT conectado. Usa la app para leer o registrar cobros.' });
@@ -31,6 +33,7 @@ function doPost(e) {
     if (accion === 'resumen') return responder_({ ok: true, data: resumen_() });
     if (accion === 'registrarPago') return responder_({ ok: true, data: registrarPago_(body.pago || {}) });
     if (accion === 'altaCliente') return responder_({ ok: true, data: altaCliente_(body.cliente || {}) });
+    if (accion === 'volcar') return responder_({ ok: true, data: volcar_(body) });
     return responder_({ ok: false, error: 'Acción desconocida: ' + accion });
   } catch (err) {
     return responder_({ ok: false, error: String(err && err.message || err) });
@@ -156,4 +159,61 @@ function altaCliente_(c) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Copia completa desde la app (los cobros viven en la app; la hoja se rellena sola para sus gráficos).
+// Escribe solo las celdas que rellenabas a mano (amarillas); las fórmulas se quedan como están.
+function fechaD_(s) { const p = String(s || '').split('-'); return p.length === 3 ? new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])) : ''; }
+function asegurarFormulas_(h, fila0, filaFin, cols) {
+  for (let f = fila0 + 1; f <= filaFin; f++) cols.forEach(function (col) {
+    const c = h.getRange(col + f); if (c.getFormula() === '') h.getRange(col + fila0).copyTo(c, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+  });
+}
+function escribirCol_(h, fila0, col, vals, total) {
+  const datos = []; for (let i = 0; i < total; i++) datos.push([i < vals.length && vals[i] != null ? vals[i] : '']);
+  if (total) h.getRange(col + fila0 + ':' + col + (fila0 + total - 1)).setValues(datos);
+}
+function volcar_(d) {
+  const ss = SpreadsheetApp.getActive();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const tar = d.tarifas || [], cli = d.clientes || [], pag = d.pagos || [];
+    // Tarifas (A plan · B servicio · C precio · D meses), filas 6–25
+    const ht = ss.getSheetByName(HOJA_TARIFAS), nT = 20;
+    const filasT = []; for (let i = 0; i < nT; i++) { const t = tar[i]; filasT.push(t ? [t.plan, t.servicio || '', Number(t.precio), Number(t.meses) || 1] : ['', '', '', '']); }
+    ht.getRange(FILA_TARIFA_1, 1, nT, 4).setValues(filasT);
+    // Base de Clientes: B nombre · D plan · F precio pactado · I método · J alta · P pendiente · Q notas
+    const hc = ss.getSheetByName(HOJA_CLIENTES), nCv = Math.max(hc.getLastRow() - FILA_INICIO_CLIENTES + 1, 0), nC = Math.max(nCv, cli.length);
+    if (cli.length > nCv && nCv > 0) {
+      const arriba = hc.getRange(FILA_INICIO_CLIENTES, 1, 1, 19), aqui = hc.getRange(FILA_INICIO_CLIENTES + nCv, 1, cli.length - nCv, 19);
+      arriba.copyTo(aqui, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); arriba.copyTo(aqui, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    }
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'B', cli.map(c => c.nombre), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'D', cli.map(c => c.plan || 'Inactivo / Pausa'), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'F', cli.map(c => c.precio === '' || c.precio == null ? '' : Number(c.precio)), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'I', cli.map(c => c.metodo || ''), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'J', cli.map(c => fechaD_(c.alta)), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'P', cli.map(c => c.pendiente ? Number(c.pendiente) : ''), nC);
+    escribirCol_(hc, FILA_INICIO_CLIENTES, 'Q', cli.map(c => c.notas || ''), nC);
+    if (cli.length) asegurarFormulas_(hc, FILA_INICIO_CLIENTES, FILA_INICIO_CLIENTES + cli.length - 1, ['A', 'C', 'E', 'G', 'H', 'K', 'L', 'M', 'N', 'O', 'R', 'S']);
+    // Clientes & Avisos: K correo · L teléfono (misma fila que en la Base)
+    const ha = ss.getSheetByName(HOJA_AVISOS);
+    if (ha) {
+      escribirCol_(ha, FILA_INICIO_CLIENTES, 'K', cli.map(c => c.correo || ''), nC);
+      escribirCol_(ha, FILA_INICIO_CLIENTES, 'L', cli.map(c => c.telefono ? String(c.telefono) : ''), nC);
+      if (cli.length) asegurarFormulas_(ha, FILA_INICIO_CLIENTES, FILA_INICIO_CLIENTES + cli.length - 1, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'M', 'N']);
+    }
+    // Registro de Pagos: B fecha · C cliente · E plan · F importe · G método · I notas
+    const hp = ss.getSheetByName(HOJA_PAGOS), nPv = Math.max(hp.getLastRow() - FILA_INICIO_PAGOS + 1, 0), nP = Math.max(nPv, pag.length);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'B', pag.map(p => fechaD_(p.fecha)), nP);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'C', pag.map(p => p.cliente), nP);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'E', pag.map(p => p.plan || ''), nP);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'F', pag.map(p => p.importe === '' || p.importe == null ? '' : Number(p.importe)), nP);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'G', pag.map(p => p.metodo || ''), nP);
+    escribirCol_(hp, FILA_INICIO_PAGOS, 'I', pag.map(p => p.notas || ''), nP);
+    if (pag.length) asegurarFormulas_(hp, FILA_INICIO_PAGOS, FILA_INICIO_PAGOS + pag.length - 1, ['A', 'D', 'H', 'J']);
+    SpreadsheetApp.flush();
+    return { clientes: cli.length, pagos: pag.length, tarifas: tar.length };
+  } finally { lock.releaseLock(); }
 }
