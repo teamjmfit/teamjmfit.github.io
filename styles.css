@@ -2263,3 +2263,5 @@ button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; w
   .cb-btns { margin-left: auto; }
 }
 .cb-pays li { flex-wrap: nowrap !important; }
+.sec-t { margin: 18px 2px 8px; font-size: 15px; }
+@media (max-width: 600px) { .hide-m { display: none; } }
