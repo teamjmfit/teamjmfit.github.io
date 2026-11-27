@@ -131,7 +131,7 @@
       : `Te recuerdo que tu plan ${b.plan} se renueva el ${dmy(b.vence)}.`;
     return `¡Hola ${first}! 👋\n\n${body}\nCuota: ${eur(b.cuota)}${b.method ? ` · ${b.method}` : ''}.\n\nSi ya lo has pagado, ignora este mensaje. ¡Gracias! 💪\nJorge · TEAM JMFIT`;
   }
-  const waUrl = (b, clients) => { const ph = phoneOf(b, clients); return ph ? `https://wa.me/${ph}?text=${encodeURIComponent(waText(b))}` : ''; };
+  const waUrl = (b, clients) => { const ph = phoneOf(b, clients); return ph ? U().waHref(ph, waText(b)) : ''; };
 
   function bars(vals, labels, { h = 170 } = {}) {
     const W = 600, H = h, P = 30, n = vals.length, mx = Math.max(1, ...vals), bw = (W - P * 2) / n;

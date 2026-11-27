@@ -31,7 +31,7 @@
     modal('Invita a un amigo', `<div class="ref">
       <p class="ref-code"><small>Tu código</small><b>${esc(code)}</b></p>
       <div class="ref-link"><input readonly value="${esc(link)}" aria-label="Tu enlace"><button type="button" class="btn small" data-copy>${ic('copy')} Copiar</button></div>
-      <a class="btn primary block" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">${ic('wa')} Compartir por WhatsApp</a>
+      <a class="btn primary block" target="_blank" rel="noopener" href="${esc(U().waHref('', msg))}">${ic('wa')} Compartir por WhatsApp</a>
       ${navigator.share ? `<button type="button" class="btn block" data-share>${ic('send')} Compartir…</button>` : ''}
       ${t.me || t.friend ? `<div class="ref-rw">${t.me ? `<p>🏆 <b>Tú:</b> ${esc(t.me)}</p>` : ''}${t.friend ? `<p>🎉 <b>Tu amigo:</b> ${esc(t.friend)}</p>` : ''}</div>` : ''}
       <h4>Tus invitados</h4>

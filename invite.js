@@ -58,7 +58,7 @@
             '<p class="small muted">' + i.uses + (i.max_uses != null ? ' de ' + i.max_uses : '') + ' altas · ' + (i.expires_at ? 'caduca el ' + new Date(i.expires_at).toLocaleDateString('es-ES') : 'sin caducidad') + '</p>' +
             '<input readonly data-sel value="' + esc(link) + '" style="margin:6px 0 10px">' +
             '<div class="row gap wrap"><button type="button" class="btn small" data-copy="' + esc(link) + '">Copiar enlace</button>' +
-            '<a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">Enviar por WhatsApp</a>' +
+            '<a class="btn small primary" target="_blank" rel="noopener" href="' + esc(window.JMUI.waHref('', msg)) + '">Enviar por WhatsApp</a>' +
             '<button type="button" class="btn small ghost" data-toggle="' + esc(i.code) + '" data-on="' + (i.active ? '1' : '0') + '">' + (i.active ? 'Desactivar' : 'Activar') + '</button></div></section>';
         }).join('') || '<p class="empty">Aún no hay enlaces.</p>') +
         '<form class="card" data-new style="margin:0"><h4 style="margin-top:0">Crear enlace nuevo</h4><div class="form-grid three">' +
