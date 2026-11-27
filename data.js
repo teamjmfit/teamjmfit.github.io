@@ -357,6 +357,7 @@
         }
         if (fn === 'set_my_avatar') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me) { me.avatar_path = a.p_path; save(); } return null; }
         if (fn === 'set_my_basics') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me) { if (a.p_birth) me.birth_date = a.p_birth; if (a.p_sex) me.sex = a.p_sex; if (a.p_height != null) me.height_cm = a.p_height; save(); } return null; }
+        if (fn === 'log_pay_notice') { const me = T('clients').find(c => c.user_id === 'demo-client'), bc = me && T('billing_clients').find(b => b.client_id === me.id); const day = new Date().toISOString().slice(0, 10); if (bc && !T('pay_notices').some(n => n.billing_client_id === bc.id && n.day === day && n.channel === 'app')) { T('pay_notices').push({ id: uuid(), billing_client_id: bc.id, day, channel: 'app', kind: a.p_kind, created_at: now() }); save(); } return null; }
         if (fn === 'mark_onboarded') { const me = T('clients').find(c => c.user_id === 'demo-client'); if (me && !me.onboarded_at) { me.onboarded_at = now(); save(); } return null; }
         if (fn === 'clear_data_request') { const c = T('clients').find(x => x.id === a.p_client); if (c) Object.assign(c, { data_request: null, data_request_at: null }); save(); return null; }
         if (fn === 'delete_mesocycle') {

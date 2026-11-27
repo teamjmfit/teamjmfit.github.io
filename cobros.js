@@ -35,7 +35,9 @@
     const DB = window.DB;
     const [T, B, P] = await Promise.all([DB.list('tariffs', { order: ['position', 'asc'] }), DB.list('billing_clients', { order: ['position', 'asc'] }), DB.list('payments', { order: ['paid_on', 'desc'] })]);
     if (DB.mode === 'demo' && !T.length && !B.length) { await seedDemo(); const r = await raw(true); syncAll(); return r; }
-    cache = { at: Date.now(), T, B, P };
+    // Avisos de renovación (046): notificación, visto en su app o WhatsApp tuyo. Opcional si la tabla aún no existe.
+    const N = await DB.list('pay_notices', { gte: { day: addDays(today(), -60) }, order: ['created_at', 'desc'] }).catch(() => []);
+    cache = { at: Date.now(), T, B, P, N };
     return cache;
   }
   // ¿Están los cobros en la app? (tablas creadas y con datos). Si no, la app sigue con el Excel.
@@ -57,7 +59,9 @@
       const estado = paused ? 'BAJA / PAUSA' : !vence ? 'SIN PAGOS' : dias < 0 ? 'VENCIDO' : dias <= 5 ? 'AVISAR / PRÓXIMO' : 'AL DÍA';
       const pagadoMes = paused ? null : pays.some(p => p.paid_on < nextM && p.covers_until && p.covers_until > cut);
       return Object.assign({}, b, { code: 'CLI-' + String(i + 1).padStart(3, '0'), t, service: t ? t.service : null, months: t ? t.months : null, cuota, paused, pays, last, vence, dias, estado, pagadoMes,
-        total: pays.reduce((s, p) => s + Number(p.amount || 0), 0) });
+        total: pays.reduce((s, p) => s + Number(p.amount || 0), 0),
+        // avisos de este ciclo: los posteriores a su último pago
+        notices: (r.N || []).filter(n => n.billing_client_id === b.id && (!last || String(n.created_at) > String(last.created_at))) });
     });
     return { tar, list, byId: Object.fromEntries(list.map(x => [x.id, x])), T: r.T, P: r.P };
   }
@@ -108,6 +112,17 @@
   const pillOf = b => b.paused ? '<span class="pill">En pausa</span>'
     : b.estado === 'SIN PAGOS' ? '<span class="pill amber">Sin pagos</span>'
       : `<span class="pill ${b.dias < 0 ? 'red' : b.dias <= 5 ? 'amber' : 'green'}">${b.dias < 0 ? `Vencido hace ${-b.dias} d` : b.dias === 0 ? 'Vence hoy' : `${b.dias} d`}</span>`;
+  const CH = { push: ['🔔', 'Avisado'], app: ['👁', 'Lo vio en la app'], whatsapp: ['💬', 'WhatsApp'] };
+  const whenTxt = d => { const n = days(today(), d); return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : `hace ${n} días`; };
+  function noticeTxt(b) {
+    if (b.paused || !b.notices || !b.notices.length) return '';
+    const seen = new Set(), parts = [];
+    b.notices.forEach(n => { if (seen.has(n.channel) || !CH[n.channel]) return; seen.add(n.channel); parts.push(`${CH[n.channel][0]} ${CH[n.channel][1]} ${whenTxt(n.day)}`); });
+    return parts.join(' · ');
+  }
+  async function logWa(b) {
+    try { await window.DB.upsert('pay_notices', { billing_client_id: b.id, day: today(), channel: 'whatsapp', kind: b.estado === 'VENCIDO' ? 'vencido' : 'recordatorio' }, 'billing_client_id,day,channel'); drop(); } catch (e) { /* tabla aún no creada */ }
+  }
   function phoneOf(b, clients) { const cl = b.client_id && (clients || []).find(x => x.id === b.client_id); return String(b.phone || (cl && cl.phone) || '').replace(/\D/g, ''); }
   function waText(b) {
     const first = String(b.name).split(' ')[0];
@@ -337,9 +352,9 @@
         <section class="card flush"><ul class="cb-list">${rows.map(b => `<li class="${b.paused ? 'off' : ''}">
           <div class="grow cb-main" data-edit="${b.id}" role="button" tabindex="0"><b>${esc(b.name)}</b>${b.client_id ? '' : ' <span class="muted" style="font-size:12.5px">· sin app</span>'}
             <small>${b.paused ? 'Inactivo / Pausa' : `${esc(b.plan)} · ${eur(b.cuota)}${b.price_custom != null && b.t && Number(b.price_custom) !== Number(b.t.price) ? ' <i>pactado</i>' : ''}`}${b.vence && !b.paused ? ` · vence ${fd(b.vence, { day: 'numeric', month: 'short' })}` : ''}</small>
-            ${Number(b.split_pending) > 0 ? `<small class="cb-frac">Pendiente fraccionado: ${eur(b.split_pending)}</small>` : ''}${b.pagadoMes === false ? '<small class="cb-frac">✘ Sin pagar este mes</small>' : ''}</div>
+            ${Number(b.split_pending) > 0 ? `<small class="cb-frac">Pendiente fraccionado: ${eur(b.split_pending)}</small>` : ''}${b.pagadoMes === false ? '<small class="cb-frac">✘ Sin pagar este mes</small>' : ''}${noticeTxt(b) ? `<small class="cb-av">${noticeTxt(b)}</small>` : ''}</div>
           ${pillOf(b)}
-          <div class="cb-btns">${!b.paused && waUrl(b, clients) ? `<a class="icon-btn" target="_blank" rel="noopener" href="${esc(waUrl(b, clients))}" title="Recordatorio por WhatsApp" aria-label="WhatsApp">${ic('wa')}</a>` : ''}
+          <div class="cb-btns">${!b.paused && waUrl(b, clients) ? `<a class="icon-btn" target="_blank" rel="noopener" data-wa="${b.id}" href="${esc(waUrl(b, clients))}" title="Recordatorio por WhatsApp" aria-label="WhatsApp">${ic('wa')}</a>` : ''}
             ${linkOf(b) ? `<a class="icon-btn" href="${linkOf(b)}" title="Su ficha" aria-label="Su ficha">${ic('users')}</a>` : ''}<button class="btn small" data-payfor="${b.id}">Cobrar</button></div></li>`).join('') || '<li class="muted">Nadie en esta lista.</li>'}</ul></section>
       </div>
       <div data-cpane="pagos" ${st.tab === 'pagos' ? '' : 'hidden'}>
@@ -374,6 +389,7 @@
     box.querySelectorAll('[data-filt]').forEach(b => b.onclick = () => { st.filt = b.dataset.filt; re(); });
     box.querySelectorAll('[data-year]').forEach(b => b.onclick = () => { st.year = b.dataset.year; re(); });
     box.querySelectorAll('[data-payfor]').forEach(b => b.onclick = () => payForm({ bcId: b.dataset.payfor, onDone: re }));
+    box.querySelectorAll('[data-wa]').forEach(a => a.addEventListener('click', () => { logWa(c.byId[a.dataset.wa]).then(() => setTimeout(re, 400)); }));
     box.querySelectorAll('[data-edit]').forEach(el => { const go = () => bcForm(c.byId[el.dataset.edit], { onDone: re }); el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); }; });
     box.querySelectorAll('[data-pedit]').forEach(el => { const go = () => payForm({ payment: c.P.find(p => p.id === el.dataset.pedit), onDone: re }); el.onclick = go; el.onkeydown = e => { if (e.key === 'Enter') go(); }; });
     { const cur = box.querySelector('.cb-mx th.cur'), sc = cur && cur.closest('.tscroll'); if (sc) sc.scrollLeft = Math.max(0, cur.offsetLeft - 160); }
@@ -404,11 +420,13 @@
       </div>
       ${b.notes ? `<p class="note small">📝 ${esc(b.notes)}</p>` : ''}
       <div class="row gap wrap"><button class="btn primary" data-pay>${ic('plus')} Registrar pago</button><button class="btn" data-edit>${ic('edit')} Plan y datos</button>
-        ${wa && !b.paused ? `<a class="btn ghost" target="_blank" rel="noopener" href="${esc(wa)}">${ic('wa')} Recordatorio</a>` : ''}</div>
+        ${wa && !b.paused ? `<a class="btn ghost" target="_blank" rel="noopener" data-wa="${b.id}" href="${esc(wa)}">${ic('wa')} Recordatorio</a>` : ''}</div>
+      ${noticeTxt(b) ? `<p class="note small cb-avp">${noticeTxt(b)}</p>` : ''}
       <section class="card flush"><h3 class="pad">Pagos</h3><ul class="cb-list cb-pays">${b.pays.map(p => `<li data-pedit="${p.id}" role="button" tabindex="0"><span class="cb-d">${fd(p.paid_on)}</span>
         <span class="grow"><b>${esc(p.plan || '')}</b><small>${p.method ? esc(p.method) + ' · ' : ''}cubre hasta ${fd(p.covers_until)}${p.notes ? ' · ' + esc(p.notes) : ''}</small></span><b class="cb-amt">${eur(p.amount)}</b></li>`).join('') || '<li class="muted">Aún sin pagos.</li>'}</ul></section>`;
     box.querySelector('[data-pay]').onclick = () => payForm({ bcId: b.id, onDone: re });
     box.querySelector('[data-edit]').onclick = () => bcForm(b, { onDone: re });
+    box.querySelectorAll('[data-wa]').forEach(a => a.addEventListener('click', () => { logWa(b).then(() => setTimeout(re, 400)); }));
     box.querySelectorAll('[data-pedit]').forEach(el => el.onclick = () => payForm({ payment: b.pays.find(p => p.id === el.dataset.pedit), onDone: re }));
   }
 
