@@ -4385,15 +4385,12 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function privacyModal() {
     const c = S.client; if (!c) return;
     const req = c.data_request === 'delete';
-    modal('Ajustes', `<div class="push-box" data-pushset></div>
-      <p>${c.consent_at ? `Aceptaste el uso de tus datos el <b>${fmtDate(c.consent_at.slice(0, 10), { day: 'numeric', month: 'long', year: 'numeric' })}</b>.` : 'Uso de datos aceptado.'} <a href="privacidad.html" target="_blank" rel="noopener">Ver la política de privacidad</a></p>
+    modal('Privacidad y mis datos', `<p>${c.consent_at ? `Aceptaste el uso de tus datos el <b>${fmtDate(c.consent_at.slice(0, 10), { day: 'numeric', month: 'long', year: 'numeric' })}</b>.` : 'Uso de datos aceptado.'} <a href="privacidad.html" target="_blank" rel="noopener">Ver la política de privacidad</a></p>
       <label class="check"><input type="checkbox" name="photos" ${c.consent_photos !== false ? 'checked' : ''}> Permitir fotos de progreso en los check-ins</label>
       <div class="priv-acts">
         <button type="button" class="btn block" data-exp>${ic('download')} Descargar mis datos</button>
         <button type="button" class="btn block ${req ? '' : 'ghost'}" data-del ${req ? 'disabled' : ''}>${ic('trash')} ${req ? 'Borrado solicitado' : 'Pedir que se borren mis datos'}</button>
         <button type="button" class="btn ghost block danger" data-wd>Retirar mi consentimiento</button>
-        <button type="button" class="btn ghost block" data-theme-btn>${ic('sun')} Apariencia</button>
-        <button type="button" class="btn ghost block" data-ob-again>${ic('play')} Ver la bienvenida otra vez</button>
       </div>
       <p class="muted small">Si retiras el consentimiento, no podrás usar la app hasta volver a aceptarlo. Para cualquier duda sobre tus datos, habla con tu entrenador.</p>`, {
       submitLabel: 'Guardar',
@@ -4409,9 +4406,6 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       if (!await confirmBox('Tu entrenador recibirá la petición y borrará tus datos y tu cuenta. ¿Quieres pedirlo?', 'Pedir borrado')) return;
       await safe(() => DB.rpc('request_data_deletion', {}), 'Petición enviada a tu entrenador'); await refreshClient(); closeModal();
     };
-    m.querySelector('[data-theme-btn]').onclick = () => { closeModal(); setTimeout(themeModal, 80); };
-    pushSettings(m.querySelector('[data-pushset]'));
-    m.querySelector('[data-ob-again]').onclick = () => { closeModal(); setTimeout(() => onboarding(true), 80); };
     m.querySelector('[data-wd]').onclick = async () => {
       if (!await confirmBox('Dejarás de poder usar la app hasta que vuelvas a aceptar. Tu entrenador lo verá. ¿Retirar el consentimiento?', 'Retirar')) return;
       await safe(() => DB.rpc('withdraw_consent', {}), 'Consentimiento retirado'); await refreshClient(); closeModal(); render();
@@ -4539,7 +4533,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     rutina: { label: 'Rutina', parts: [['semana', 'Esta semana'], ['dia', 'Entreno del día'], ['rutinas', 'Mis rutinas'], ['proximos', 'Próximos días'], ['libre', 'Mis rutinas (modo libre)']] },
     dieta: { label: 'Dieta', parts: [['macros', 'Kcal y macros'], ['comidas', 'Mis comidas'], ['notas', 'Recomendaciones']] },
     progreso: { label: 'Progreso', parts: null },
-    perfil: { label: 'Perfil', parts: [['yo', 'Mi foto y datos'], ['coach', 'Tu entrenador'], ['notif', 'Notificaciones'], ['salud', 'Pasos automáticos desde Salud'], ['tema', 'Apariencia'], ['instalar', 'Instalar la app'], ['acciones', 'Privacidad, bienvenida y salir']] }
+    perfil: { label: 'Perfil', parts: [['yo', 'Mi foto y nombre'], ['datos', 'Mis datos (edad, sexo, altura, peso)'], ['notif', 'Notificaciones'], ['tema', 'Apariencia'], ['instalar', 'Instalar la app'], ['acciones', 'Privacidad, bienvenida y salir']] }
   };
   const lyParts = pg => (pg === 'progreso' ? PROG_PARTS : LAYOUT_PAGES[pg].parts);
   async function clientLayout(force) {
@@ -5106,14 +5100,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function clientProfile() {
     const c = S.client;
     shell(clientNav(), 'perfil', loading(), { title: 'Mi perfil' });
-    const links = await coachLinks(), hasAva = 'avatar_path' in c;
+    const hasAva = 'avatar_path' in c;
     const box = $app.querySelector('.content');
     box.innerHTML = `<div class="cprof">
       <section class="card prof-top" data-po="yo"><div class="prof-avw"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
         ${hasAva ? `<label class="prof-ph" title="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}" aria-label="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}">${ic('camera')}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</div>
         <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.viewAs ? (c.email || '') : (S.profile.email || ''))}</small></div></section>
       <div data-po="datos" data-bsbox>${basicsCard(c, null)}</div>
-      <div data-po="coach">${coachCard(links)}</div>
       <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
       ${HEALTH_ON ? '<section class="card hs-card" data-po="salud" data-salud></section>' : ''}
       <section class="card" data-po="tema"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
