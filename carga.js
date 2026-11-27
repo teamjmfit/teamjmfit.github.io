@@ -47,7 +47,7 @@
   const acwrZone = r => (r == null ? ['', 'Faltan datos'] : r > 1.5 ? ['red', 'Pico de carga'] : r > 1.3 ? ['amber', 'Subida rápida'] : r < 0.8 ? ['blue', 'Carga baja'] : ['green', 'En rango']);
 
   function loadChart(weeks) {
-    const W = 600, H = 220, P = 44, n = weeks.length;
+    const W = (window.jmChartW || (x => x))(600), H = 220, P = 44, n = weeks.length;
     const maxT = Math.max(...weeks.map(w => w.tot), 1), rMax = 2;
     const bw = (W - P * 2) / n, x = i => P + bw * i + bw / 2;
     const yT = v => H - P - (v * (H - P * 2)) / maxT, yR = v => H - P - (Math.min(v, rMax) * (H - P * 2)) / rMax;
@@ -87,7 +87,7 @@
   const zZone = z => (z == null ? ['', '–'] : z <= -2 ? ['red', 'Muy por debajo de lo normal'] : z <= -1 ? ['amber', 'Por debajo de lo normal'] : z >= 1 ? ['green', 'Mejor de lo normal'] : ['', 'Normal']);
 
   function wellChart(rows) {
-    const W = 600, H = 200, P = 44, n = rows.length, lo = -3, hi = 2;
+    const W = (window.jmChartW || (x => x))(600), H = 200, P = 44, n = rows.length, lo = -3, hi = 2;
     const x = i => P + (i * (W - P * 2)) / Math.max(1, n - 1), y = v => H - P - ((Math.max(lo, Math.min(hi, v)) - lo) * (H - P * 2)) / (hi - lo);
     const fd = k => new Date(String(k).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
     const d = rows.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.z).toFixed(1)}`).join(' ');

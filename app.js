@@ -2818,7 +2818,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   // Gráfica de líneas con varias series (null = sin dato) y línea de objetivo opcional
   function multiChart(labels, series, { min, max, goal, unit = '', label = 'Gráfica', daily = false } = {}) {
-    const W = 520, H = 270, P = 50, n = labels.length;
+    const W = jmChartW(520), H = 270, P = 50, n = labels.length;
     const all = series.flatMap(s => s.vals).filter(v => v != null).concat(goal != null ? [goal] : []);
     if (!all.length) return '';
     let lo = min != null ? min : Math.min(...all), hi = max != null ? max : Math.max(...all);
@@ -5955,6 +5955,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // WhatsApp: al abrir el enlace desde la web los emojis se pierden o salen como «�», así que el texto va sin emojis
   const waText = t => String(t || '').replace(/([1-9])\uFE0F?\u20E3\s*/g, '$1. ').replace(/\s*\p{Extended_Pictographic}\uFE0F?(\u200D\p{Extended_Pictographic}\uFE0F?)*/gu, '').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
   const waHref = (phone, text) => { const ph = String(phone || '').replace(/\D/g, ''); return `https://wa.me/${ph}${text ? '?text=' + encodeURIComponent(waText(text)) : ''}`; };
+  // Progreso del cliente visto por el entrenador en el ordenador: las gráficas usan todo el ancho (más anchas, mismo tamaño de letra)
+  function jmChartW(base) {
+    if (window.innerWidth < 900 || !document.querySelector('.client-head')) return base;
+    const c = document.querySelector('.content'), w = (c ? c.clientWidth : window.innerWidth) - 90;
+    return Math.max(base, Math.min(1500, Math.round(w)));
+  }
+  window.jmChartW = jmChartW;
   window.JMUI = { esc, nl2br, fmtKg, ic, toast, safe, modal, closeModal, confirmBox, loading, ago, today, waHref };
 
   // ------------------------------------------------------------ PWA
