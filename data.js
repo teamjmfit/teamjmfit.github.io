@@ -15,7 +15,11 @@
   function liveBackend() {
     // «Recordar este dispositivo» (migración 040): la clave de este ordenador va en cada petición
     let devTok = ''; try { devTok = localStorage.getItem('jmfit-mfa-dev') || ''; } catch (e) { devTok = ''; }
-    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, devTok ? { global: { headers: { 'x-jm-device': devTok } } } : undefined);
+    // Dos cuentas en el mismo dispositivo (entrenador + su cuenta de cliente): cada una guarda su sesión aparte
+    let slot = 'a'; try { slot = localStorage.getItem('jmfit-slot') === 'b' ? 'b' : 'a'; } catch (e) { slot = 'a'; }
+    window.JM_SLOT = slot;
+    const opts = {}; if (devTok) opts.global = { headers: { 'x-jm-device': devTok } }; if (slot === 'b') opts.auth = { storageKey: 'jmfit-auth-b' };
+    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, Object.keys(opts).length ? opts : undefined);
     const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
     const applyFilters = (q, opts = {}) => {
       Object.entries(opts.eq || {}).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
@@ -56,7 +60,7 @@
       },
       async resetPassword(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname })); },
       async updatePassword(password) { ok(await sb.auth.updateUser({ password })); },
-      async signOut() { drop(); try { ['jmfit-boot', 'jmfit-sheet', 'jmfit-rolled'].forEach(k => localStorage.removeItem(k)); } catch (e) {} await sb.auth.signOut(); },
+      async signOut() { drop(); try { [slot === 'b' ? 'jmfit-boot-b' : 'jmfit-boot', 'jmfit-sheet', 'jmfit-rolled'].forEach(k => localStorage.removeItem(k)); } catch (e) {} await sb.auth.signOut({ scope: 'local' }); },
       async profile() {
         const s = await this.session(); if (!s) return null;
         const rows = ok(await sb.from('profiles').select('*').eq('id', s.user.id));
