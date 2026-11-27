@@ -1209,7 +1209,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     actions.querySelector('[data-edit]').onclick = () => clientForm(c);
     const content = $app.querySelector('.content');
     content.innerHTML = `
-      <div class="client-head"><span class="av lg">${initials(c.name)}</span><div><b>${esc(c.name)}</b><small>${esc(c.email)}${c.service ? ' · ' + esc(c.service) : ''}</small>${c.goal ? `<p>🎯 ${esc(c.goal)}</p>` : ''}${c.notes ? `<p class="note">📝 ${esc(c.notes)}</p>` : ''}</div></div>
+      <div class="client-head"><span class="av lg">${initials(c.name)}</span><div><b>${esc(c.name)}</b><small>${esc(c.email)}${c.service ? ' · ' + esc(c.service) : ''}</small><small class="bs-line" data-bsline>${basicsLine(c, null)}</small>${c.goal ? `<p>🎯 ${esc(c.goal)}</p>` : ''}${c.notes ? `<p class="note">📝 ${esc(c.notes)}</p>` : ''}</div></div>
       <div class="tabs">${CLIENT_TABS.map(([k, l]) => `<a href="#/cliente/${id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</div>
       <div data-tab>${loading()}</div>`;
     const box = content.querySelector('[data-tab]');
@@ -1220,6 +1220,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const p = document.createElement('p'); p.className = 'hs-coach';
       p.innerHTML = `⌚ <b>Salud conectada</b> · ${h.last_used ? `último envío ${esc(ago(h.last_used))}${h.last_steps != null ? ` · 👟 ${Number(h.last_steps).toLocaleString('es-ES')} pasos` : ''}${h.last_sleep != null ? ` · 😴 ${fmtKg(h.last_sleep)} h` : ''}${h.last_weight != null ? ` · ⚖️ ${fmtKg(h.last_weight)} kg` : ''}` : 'aún sin envíos'}`;
       hd.appendChild(p); }).catch(() => {});
+    lastWeight(c.id).then(lw => { const el = content.querySelector('[data-bsline]'); if (el) el.innerHTML = basicsLine(c, lw); }).catch(() => {});
     if (tab === 'rutinas') return tabRoutines(c, box);
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
@@ -4806,6 +4807,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       btn.disabled = false; btn.textContent = 'Actualizar';
     };
     wireInstall(box); wirePushCard(box, false);
+    askBasics(c);
     homeWins(c, home.querySelector('[data-logros]'), { allRoutines, sessions: done, weeks, programs, ckins }).catch(er => console.warn('logros', er));
     if (!S.viewAs && HEALTH_ON) homeHealthNotice(home).catch(er => console.warn('salud', er));
     home.insertAdjacentHTML('beforeend', '<div data-po="novedades" data-posts></div><div data-po="ventajas" data-perks></div>');
@@ -5046,6 +5048,61 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       try { S.healthTok = await DB.rpc('health_token', {}); healthCard(host); } catch (e) { toast('No se pudo activar: ' + (e.message || e), 'err'); } };
     const off = host.querySelector('[data-hsoff]'); if (off) off.onclick = async () => { if (!(await confirmBox('Tu móvil dejará de mandar los pasos a la app.', 'Desactivar'))) return; await safe(() => DB.rpc('health_off', {}), 'Desactivado'); S.healthTok = null; healthCard(host); };
   }
+  // ---------- Datos básicos del cliente (045): fecha de nacimiento, sexo, altura y peso actual
+  const SEXES = [['female', 'Mujer'], ['male', 'Hombre'], ['other', 'Otro']];
+  const basicsMissing = c => !!c && (!c.birth_date || !c.sex || !c.height_cm);
+  async function lastWeight(cid) {
+    const [dm, ck] = await Promise.all([DB.list('daily_metrics', { eq: { client_id: cid }, order: ['date', 'desc'], limit: 30 }).catch(() => []), DB.list('checkins', { eq: { client_id: cid }, order: ['date', 'desc'], limit: 5 }).catch(() => [])]);
+    const a = dm.find(x => x.weight != null), b = ck.find(x => x.weight != null);
+    const pick = a && (!b || String(a.date) >= String(b.date)) ? a : b;
+    return pick ? { w: Number(pick.weight), date: String(pick.date).slice(0, 10) } : null;
+  }
+  async function basicsForm(c, { first = false, onDone } = {}) {
+    const lw = await lastWeight(c.id);
+    modal(first ? 'Completa tus datos' : 'Mis datos básicos', `${first ? '<p class="muted small">Tu entrenador los necesita para calcular tus calorías y seguir tu progreso. Solo los ve él.</p>' : ''}
+      <div class="form-grid">
+        <label>Fecha de nacimiento<input name="birth" type="date" max="${today()}" value="${esc(c.birth_date || '')}"><small class="muted" data-age></small></label>
+        <label>Sexo<select name="sex"><option value="">—</option>${SEXES.map(([v, l]) => `<option value="${v}" ${c.sex === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>Altura (cm)<input name="height" type="number" inputmode="decimal" min="100" max="250" step="0.5" value="${esc(c.height_cm || '')}" placeholder="Ej: 172"></label>
+        <label>Peso actual (kg)<input name="weight" type="number" inputmode="decimal" min="25" max="350" step="0.05" value="${lw ? esc(lw.w) : ''}" placeholder="Ej: 70,5"><small class="muted">${lw ? `Último: ${fmtKg(lw.w)} kg (${esc(fmtDate(lw.date))})` : 'En ayunas, nada más levantarte'}</small></label>
+      </div>`, {
+      submitLabel: 'Guardar', onSubmit: async (f, fd) => {
+        const n = k => { const x = String(fd.get(k) || '').replace(',', '.').trim(); return x === '' ? null : Number(x); };
+        const birth = fd.get('birth') || null, sex = fd.get('sex') || null, height = n('height'), weight = n('weight');
+        if (height != null && (height < 100 || height > 250)) { toast('La altura va en centímetros (ej: 172)', 'err'); return false; }
+        if (weight != null && (weight < 25 || weight > 350)) { toast('Revisa el peso', 'err'); return false; }
+        try {
+          if (birth || sex || height != null) await DB.rpc('set_my_basics', { p_birth: birth, p_sex: sex, p_height: height });
+          if (weight != null && (!lw || lw.w !== weight || lw.date !== today())) await DB.upsert('daily_metrics', { client_id: c.id, date: today(), weight }, 'client_id,date');
+        } catch (e) { toast(/set_my_basics|function|schema cache/i.test(e.message || '') ? 'Aún no se puede guardar: tu entrenador está actualizando la app' : 'No se pudo guardar: ' + (e.message || e), 'err'); return false; }
+        Object.assign(c, birth ? { birth_date: birth } : {}, sex ? { sex } : {}, height != null ? { height_cm: height } : {});
+        await refreshClient(); toast('Datos guardados ✓', 'ok'); if (onDone) onDone();
+      }
+    });
+    const bi = document.querySelector('.modal [name=birth]'), ag = document.querySelector('.modal [data-age]');
+    const showAge = () => { const a = ageOf(bi.value); ag.textContent = a != null && a >= 0 ? `${a} años` : ''; }; bi.oninput = showAge; showAge();
+  }
+  // Al entrar: si le faltan datos, se los pide (una vez al día, puede dejarlo para luego)
+  function askBasics(c) {
+    if (S.viewAs || !basicsMissing(c) || document.querySelector('.modal-back')) return;
+    const k = 'jmfit-basics-ask'; let last = null; try { last = localStorage.getItem(k); } catch (e) { /* nada */ }
+    if (last === today()) return;
+    try { localStorage.setItem(k, today()); } catch (e) { /* nada */ }
+    setTimeout(() => { if (!document.querySelector('.modal-back')) basicsForm(c, { first: true }); }, 700);
+  }
+  function basicsCard(c, lw) {
+    const age = ageOf(c.birth_date), sx = (SEXES.find(([v]) => v === c.sex) || [])[1];
+    const it = (l, v) => `<div><small>${l}</small><b>${v || '<span class="muted">—</span>'}</b></div>`;
+    return `<section class="card bs-card"><header class="row gap"><h3 class="grow">Mis datos</h3><button type="button" class="btn small" data-basics>${ic('edit')} ${basicsMissing(c) ? 'Completar' : 'Editar'}</button></header>
+      <div class="bs-grid">${it('Edad', age != null ? age + ' años' : '')}${it('Sexo', sx)}${it('Altura', c.height_cm ? fmtKg(c.height_cm) + ' cm' : '')}${it('Peso actual', lw ? fmtKg(lw.w) + ' kg' : '')}</div>
+      ${basicsMissing(c) ? '<p class="muted small">Complétalos para que tu entrenador ajuste tu plan.</p>' : ''}</section>`;
+  }
+
+  function basicsLine(c, lw) {
+    const age = ageOf(c.birth_date), sx = (SEXES.find(([v]) => v === c.sex) || [])[1];
+    const parts = [age != null ? age + ' años' : '', sx || '', c.height_cm ? fmtKg(c.height_cm) + ' cm' : '', lw ? fmtKg(lw.w) + ' kg' : ''].filter(Boolean);
+    return parts.length ? parts.map(esc).join(' · ') : '<span class="muted">Sin edad, sexo ni altura</span>';
+  }
   async function clientProfile() {
     const c = S.client;
     shell(clientNav(), 'perfil', loading(), { title: 'Mi perfil' });
@@ -5055,6 +5112,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <section class="card prof-top" data-po="yo"><div class="prof-avw"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
         ${hasAva ? `<label class="prof-ph" title="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}" aria-label="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}">${ic('camera')}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</div>
         <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.viewAs ? (c.email || '') : (S.profile.email || ''))}</small></div></section>
+      <div data-po="datos" data-bsbox>${basicsCard(c, null)}</div>
       <div data-po="coach">${coachCard(links)}</div>
       <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
       ${HEALTH_ON ? '<section class="card hs-card" data-po="salud" data-salud></section>' : ''}
@@ -5072,6 +5130,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     wireInstall(box);
     box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     box.querySelector('[data-priv]').onclick = () => privacyModal();
+    { const bb = box.querySelector('[data-bsbox]'), wireB = lw => { bb.innerHTML = basicsCard(S.client, lw); bb.querySelector('[data-basics]').onclick = () => basicsForm(S.client, { onDone: () => lastWeight(S.client.id).then(wireB) }); };
+      wireB(null); lastWeight(c.id).then(wireB).catch(() => {}); }
     box.querySelector('[data-ob]').onclick = () => onboarding(true);
     box.querySelector('[data-logout2]').onclick = async () => { if (S.viewAs) return toast('En la vista como cliente no se cierra sesión', 'err'); if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; location.reload(); } };
     const sw2 = box.querySelector('[data-swacct2]'); if (sw2) sw2.onclick = () => switchAcct();

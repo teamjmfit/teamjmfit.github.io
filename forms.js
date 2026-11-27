@@ -26,6 +26,48 @@
       goal: find(/objetivo|meta|qu[eé] (quieres|buscas) conseguir/i).slice(0, 200), notes: health.join('\n').slice(0, 1500), ids: mine.map(x => x.id).concat(mine.includes(r) ? [] : [r.id]) };
   }
 
+  // Datos básicos sacados de las respuestas (Datos Base y Salud: fecha de nacimiento, peso, altura; Plan 1:1: sexo)
+  function basicsFrom(rows) {
+    const ans = rows.slice().sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at))).flatMap(x => x.answers || []);
+    const find = re => { const a = ans.find(([q, v]) => re.test(String(q)) && String(v ?? '').trim()); return a ? String(a[1]).trim() : ''; };
+    const out = {};
+    const fb = find(/fecha de nacimiento|nacimiento/i);
+    if (fb) {
+      let m = fb.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/), d = null;
+      if (m) d = [m[1], m[2], m[3]];
+      else if ((m = fb.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/))) d = [m[3].length === 2 ? (Number(m[3]) > 30 ? '19' : '20') + m[3] : m[3], m[2], m[1]];
+      else { const x = new Date(fb.replace(/\s*\(.*\)\s*$/, '')); if (!isNaN(x)) d = [x.getFullYear(), x.getMonth() + 1, x.getDate()]; }
+      if (d) { const iso = `${d[0]}-${String(d[1]).padStart(2, '0')}-${String(d[2]).padStart(2, '0')}`; if (/^(19[2-9]\d|20[0-2]\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(iso)) out.birth_date = iso; }
+    }
+    const nums = t => { const m = String(t).replace(',', '.').match(/\d+(\.\d+)?/); return m ? Number(m[0]) : null; };
+    const h = nums(find(/^altura|estatura|cu[aá]nto mides/i));
+    if (h != null) { const cm = h < 3 ? h * 100 : h; if (cm >= 100 && cm <= 250) out.height_cm = Math.round(cm * 2) / 2; }
+    const w = nums(find(/peso( actual)?$|^peso/i));
+    if (w != null && w >= 25 && w <= 350) out.weight = w;
+    const sx = find(/^sexo|g[eé]nero/i).toLowerCase();
+    if (sx) out.sex = /^(h|m(asc|ale)|var[oó]n|chico|hombre)/.test(sx) && !/^muj/.test(sx) ? 'male' : /^(muj|fem|chica|f)/.test(sx) ? 'female' : 'other';
+    const sub = rows.map(x => String(x.submitted_at || '').slice(0, 10)).filter(Boolean).sort().pop();
+    out.day = sub || null;
+    return out;
+  }
+  // Al aceptar o asignar un formulario: se rellenan solos los datos que falten en su ficha (no pisa lo que ya tenga)
+  async function applyBasics(clientId, rows) {
+    const DB = window.DB;
+    try {
+      const c = await DB.get('clients', clientId); if (!c) return;
+      const b = basicsFrom(rows), patch = {};
+      ['birth_date', 'sex', 'height_cm'].forEach(k => { if (b[k] != null && (c[k] == null || c[k] === '')) patch[k] = b[k]; });
+      if (Object.keys(patch).length) await DB.update('clients', clientId, patch);
+      if (b.weight != null) {
+        const dm = await DB.list('daily_metrics', { eq: { client_id: clientId }, limit: 1 }).catch(() => []);
+        const ck = await DB.list('checkins', { eq: { client_id: clientId }, limit: 1 }).catch(() => []);
+        if (!dm.length && !ck.length) await DB.upsert('daily_metrics', { client_id: clientId, date: b.day || new Date().toISOString().slice(0, 10), weight: b.weight }, 'client_id,date');
+      }
+      const n = Object.keys(patch).length + (b.weight != null ? 1 : 0);
+      if (n) U().toast('Datos del formulario pasados a su ficha ✓', 'ok');
+    } catch (e) { console.warn('datos del formulario', e); }
+  }
+
   async function homeCard(host) {
     if (!host) return;
     try {
@@ -67,12 +109,13 @@
           const pf = prefill(r, rows), ids = pf.ids; delete pf.ids;
           window.JMClientForm(null, { data: pf, onCreated: async c => {
             for (const id of ids) await DB.update('form_responses', id, { client_id: c.id, seen: true }).catch(() => {});
+            await applyBasics(c.id, rows.filter(x => ids.includes(x.id)));
             rows.forEach(x => { if (ids.includes(x.id)) { x.client_id = c.id; x.seen = true; } }); clients.push(c); draw();
           } });
         };
         d.querySelector('[data-cl]').onchange = async e => {
           const v = e.target.value || null;
-          try { await safe(() => DB.update('form_responses', r.id, { client_id: v }), v ? 'Asignado a ' + name(v) : 'Sin asignar'); r.client_id = v; draw(); } catch (err) { /* avisado */ }
+          try { await safe(() => DB.update('form_responses', r.id, { client_id: v }), v ? 'Asignado a ' + name(v) : 'Sin asignar'); r.client_id = v; if (v) await applyBasics(v, rows.filter(x => x.client_id === v)); draw(); } catch (err) { /* avisado */ }
         };
       });
     };
@@ -90,5 +133,5 @@
     } catch (e) { /* opcional */ }
   }
 
-  window.JMForms = { homeCard, page, clientBlock };
+  window.JMForms = { homeCard, page, clientBlock, basicsFrom, applyBasics };
 })();
