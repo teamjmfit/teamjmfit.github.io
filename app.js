@@ -1187,7 +1187,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <textarea class="mono" rows="13" readonly>${esc(msg)}</textarea>
       <div class="row gap">
         <button type="button" class="btn" data-copy>${ic('copy')} Copiar</button>
-        ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}?text=${encodeURIComponent(waMsg)}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
+        ${c.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="${esc(waHref(c.phone, waMsg))}">${ic('wa')} Enviar por WhatsApp</a>` : ''}
         <a class="btn ghost" href="#/cliente/${c.id}" data-close>Ir a su ficha</a>
       </div>`);
     document.querySelector('[data-copy]').onclick = () => navigator.clipboard.writeText(msg).then(() => toast('Copiado', 'ok'));
@@ -3472,7 +3472,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const venc = act.filter(c => dd(c) < 0), prox = act.filter(c => dd(c) >= 0 && dd(c) <= 7);
     const ym = today().slice(0, 7);
     const mes = data.pagos.filter(p => String(p.fecha).slice(0, 7) === ym).reduce((s, p) => s + (Number(p.importe) || 0), 0);
-    const waLink = c => { const cl = S.clients.find(x => (x.sheet_name || x.name).toLowerCase() === String(c.nombre).toLowerCase()); return cl && cl.phone ? `https://wa.me/${String(cl.phone).replace(/\D/g, '')}?text=${encodeURIComponent(`¡Hola ${String(c.nombre).split(' ')[0]}! Te recuerdo que tu plan ${c.plan} de ${BRAND} ${dd(c) < 0 ? 'venció' : 'vence'} el ${fmtDate(c.vence, { day: 'numeric', month: 'long' })} (${eur(c.cuota)}). ¡Gracias! 💪`)}` : ''; };
+    const waLink = c => { const cl = S.clients.find(x => (x.sheet_name || x.name).toLowerCase() === String(c.nombre).toLowerCase()); return cl && cl.phone ? waHref(cl.phone, `¡Hola ${String(c.nombre).split(' ')[0]}! Te recuerdo que tu plan ${c.plan} de ${BRAND} ${dd(c) < 0 ? 'venció' : 'vence'} el ${fmtDate(c.vence, { day: 'numeric', month: 'long' })} (${eur(c.cuota)}). ¡Gracias! 💪`) : ''; };
     if (!S.clients.length) await loadClients().catch(() => {});
     box.innerHTML = `${data.demo ? demoSheetNote() : ''}
       <div class="kpis">
@@ -5882,7 +5882,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     });
   }
 
-  window.JMUI = { esc, nl2br, fmtKg, ic, toast, safe, modal, closeModal, confirmBox, loading, ago, today };
+  // WhatsApp: al abrir el enlace desde la web los emojis se pierden o salen como «�», así que el texto va sin emojis
+  const waText = t => String(t || '').replace(/([1-9])\uFE0F?\u20E3\s*/g, '$1. ').replace(/\s*\p{Extended_Pictographic}\uFE0F?(\u200D\p{Extended_Pictographic}\uFE0F?)*/gu, '').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+  const waHref = (phone, text) => { const ph = String(phone || '').replace(/\D/g, ''); return `https://wa.me/${ph}${text ? '?text=' + encodeURIComponent(waText(text)) : ''}`; };
+  window.JMUI = { esc, nl2br, fmtKg, ic, toast, safe, modal, closeModal, confirmBox, loading, ago, today, waHref };
 
   // ------------------------------------------------------------ PWA
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
