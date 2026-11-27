@@ -208,7 +208,7 @@
       return true;
     }
     const clone = o => JSON.parse(JSON.stringify(o));
-    const defaults = {
+    const defaults = { meal_plans: () => ({ visible: true }),
       clients: () => ({ active: true, created_at: now() }),
       routines: () => ({ position: 0, created_at: now() }),
       sessions: () => ({ started_at: now(), coach_seen: false, volume: 0 }),
@@ -236,6 +236,7 @@
       },
       async myClient() { return clone(T('clients').find(c => c.user_id === 'demo-client') || null); },
       async list(t, opts = {}) {
+        if (t === 'meal_plans') T(t).forEach(x => { if (!('visible' in x)) x.visible = true; });   // como la migración 047
         let rows = T(t).filter(r => matches(r, opts));
         if (opts.order) {
           const [col, dir] = opts.order;
@@ -558,8 +559,8 @@
           const r1 = x => Math.round(x * 10) / 10;
           return {
             show_macros: show, targets: show ? { kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat } : null, water: p.water, notes: p.notes, legacy_meals: p.meals, updated_at: p.updated_at,
-            plans: T('meal_plans').filter(x => x.client_id === c.id).sort((x, y) => x.position - y.position).map(x => ({ id: x.id, name: x.name, notes: x.notes, targets: show && x.kcal != null ? { kcal: x.kcal, protein: x.protein, carbs: x.carbs, fat: x.fat } : null })),
-            blocks: T('meal_blocks').filter(b => b.client_id === c.id).sort((x, y) => x.position - y.position).map(b => ({
+            plans: T('meal_plans').filter(x => x.client_id === c.id && x.visible !== false).sort((x, y) => x.position - y.position).map(x => ({ id: x.id, name: x.name, notes: x.notes, targets: show && x.kcal != null ? { kcal: x.kcal, protein: x.protein, carbs: x.carbs, fat: x.fat } : null })),
+            blocks: T('meal_blocks').filter(b => b.client_id === c.id && !T('meal_plans').some(pl => pl.id === b.plan_id && pl.visible === false)).sort((x, y) => x.position - y.position).map(b => ({
               id: b.id, plan_id: b.plan_id, name: b.name, time_hint: b.time_hint, notes: b.notes,
               options: T('meal_options').filter(o => o.block_id === b.id).sort((x, y) => x.position - y.position).map(o => {
                 const its = T('option_items').filter(i => i.option_id === o.id).sort((x, y) => x.position - y.position);

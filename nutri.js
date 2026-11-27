@@ -177,7 +177,7 @@
       const p = cur();
       const ph = k => (form && form[k] && form[k].value ? form[k].value : '');
       return `<div class="np-plans">
-          ${st.plans.map(x => `<button type="button" class="chip ${p && x.id === p.id ? 'on' : ''}" data-plan="${x.id}">${esc(x.name)}</button>`).join('')}
+          ${st.plans.map(x => `<button type="button" class="chip ${p && x.id === p.id ? 'on' : ''} ${x.visible === false ? 'np-draft' : ''}" data-plan="${x.id}" title="${x.visible === false ? 'Oculto: el cliente no lo ve' : ''}">${x.visible === false ? '🙈 ' : ''}${esc(x.name)}</button>`).join('')}
           <button type="button" class="chip dashed" data-addplan>${ic('plus')} Plan</button>
           ${p ? `<button type="button" class="chip dashed" data-dupplan title="Duplicar este plan">${ic('copy')} Duplicar</button>` : ''}
         </div>
@@ -187,8 +187,11 @@
           <div class="np-pt"><small class="muted">Objetivo de este plan (vacío = el general)</small>
             <div class="np-ptr">${[['kcal', 'kcal'], ['protein', 'P'], ['carbs', 'C'], ['fat', 'G']].map(([k, l]) => `<label>${l}<input type="number" inputmode="numeric" min="0" value="${p[k] ?? ''}" placeholder="${esc(ph(k))}" data-pt="${k}"></label>`).join('')}</div></div>
           ${st.plans.length > 1 ? `<button type="button" class="icon-btn sm" data-delplan aria-label="Borrar plan">${ic('trash')}</button>` : ''}
-        </div>` : ''}`;
+        </div>
+        ${'visible' in p ? `<div class="np-vis ${p.visible === false ? 'off' : 'on'}"><span class="grow">${p.visible === false ? '🙈 <b>Oculto</b> · el cliente todavía no ve este plan. Ajústalo con calma y publícalo cuando esté listo.' : '👁 <b>Visible</b> para el cliente'}</span>
+          <button type="button" class="btn small ${p.visible === false ? 'primary' : ''}" data-pvis>${p.visible === false ? 'Publicar al cliente' : 'Ocultar (borrador)'}</button></div>` : ''}` : ''}`;
     }
+    const hasVis = () => st.plans.some(x => 'visible' in x);   // migración 047 aplicada
     async function ensurePlan() {
       if (cur()) return cur();
       const [p] = await DB().insert('meal_plans', { client_id: c.id, name: 'Plan', position: 0 });
@@ -199,12 +202,13 @@
       const name = ['Día de entreno', 'Día de descanso', 'Plan 3', 'Plan 4'].find(n => !names.has(n)) || 'Plan';
       if (st.plans.length === 1 && st.plans[0].name === 'Plan') { st.plans[0].name = 'Día de entreno'; await DB().update('meal_plans', st.plans[0].id, { name: 'Día de entreno' }); }
       const nm = st.plans.length === 1 && name === 'Día de entreno' ? 'Día de descanso' : name;
-      const [p] = await DB().insert('meal_plans', { client_id: c.id, name: nm, position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1 });
+      const [p] = await DB().insert('meal_plans', Object.assign({ client_id: c.id, name: nm, position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1 }, hasVis() ? { visible: false } : {}));
+      if (hasVis()) toast('Plan nuevo oculto: publícalo cuando esté listo', 'ok');
       st.plans.push(p); N.plan[c.id] = p.id; draw();
     }
     async function dupPlan() {
       const src = cur(); if (!src) return;
-      const [p] = await DB().insert('meal_plans', { client_id: c.id, name: src.name + ' (copia)', position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1, kcal: src.kcal, protein: src.protein, carbs: src.carbs, fat: src.fat, notes: src.notes });
+      const [p] = await DB().insert('meal_plans', Object.assign({ client_id: c.id, name: src.name + ' (copia)', position: st.plans.reduce((m, x) => Math.max(m, x.position), -1) + 1, kcal: src.kcal, protein: src.protein, carbs: src.carbs, fat: src.fat, notes: src.notes }, hasVis() ? { visible: false } : {}));
       st.plans.push(p);
       for (const b of blocksOf()) {
         const [nb] = await DB().insert('meal_blocks', { client_id: c.id, plan_id: p.id, name: b.name, position: b.position, time_hint: b.time_hint, notes: b.notes });
@@ -293,6 +297,8 @@
           const s = host.querySelector('[data-sum]'); if (s) s.innerHTML = summary();
           later('pt' + p.id + k, () => run(() => DB().update('meal_plans', p.id, { [k]: v })));
         });
+        const pv = host.querySelector('[data-pvis]');
+        if (pv) pv.onclick = () => run(async () => { const v = p.visible === false; await DB().update('meal_plans', p.id, { visible: v }); p.visible = v; draw(); }, p.visible === false ? `«${p.name}» ya lo ve el cliente` : `«${p.name}» oculto al cliente`);
         const dl = host.querySelector('[data-delplan]');
         if (dl) dl.onclick = async () => {
           if (!(await confirmBox(`¿Borrar el plan «${p.name}» con todas sus comidas?`))) return;
