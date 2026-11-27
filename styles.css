@@ -2142,3 +2142,23 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 .hs-tok { display: block; word-break: break-all; padding: 6px; background: var(--card2); border-radius: 8px; margin-top: 6px; user-select: all; }
 .hs-coach { font-size: 13px; color: var(--muted); margin: 4px 0 0; } .hs-coach b { color: var(--green); }
 .hs-build { padding-left: 18px; line-height: 1.5; } .hs-build code { word-break: break-all; font-size: 11px; }
+
+/* ---------- Visor de fotos: tamaños fijos a la pantalla (en iPhone la foto sola salía cortada a la mitad) */
+.pv { height: 100vh; height: 100dvh; }
+.pv-img { position: relative; }
+.pv-img img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+.pv-row, .pv-cmpg { height: calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 260px; }
+.pv-row figure, .pv-cmpg figure { height: 100%; min-height: 0; }
+.pv-row figure .pv-img, .pv-pair figure .pv-img { flex: 1 1 auto; min-height: 0; }
+.pv-cmp.one .pv-pair, .pv-pair { height: calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 260px; flex: none; }
+.pv-pair figure { height: 100%; min-height: 0; }
+.pv-cmp:not(.one) .pv-pair { height: 70vh; }
+@media (max-width: 700px) {
+  .pv-row:not(.one) { height: auto; }
+  .pv-row:not(.one) figure { height: auto; }
+  .pv-row:not(.one) .pv-img { height: 62vh; flex: none; }
+  .pv-cmp:not(.one) .pv-pair { height: 52vh; }
+}
+/* ---------- Dos cuentas */
+.acct-banner { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px 12px; margin-bottom: 14px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.sw-btn { font-size: 18px; font-weight: 800; }

@@ -248,7 +248,16 @@
   const MFA_DEV = () => { try { return localStorage.getItem('jmfit-mfa-dev') || ''; } catch (e) { return ''; } };
   const devLabel = () => { const u = navigator.userAgent; return (/Macintosh/.test(u) ? 'Mac' : /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : 'Dispositivo') + ' · ' + new Date().toLocaleDateString('es-ES'); };
   // ------------------------------------------------------------ arranque
-  const BOOT_KEY = 'jmfit-boot';
+  const BOOT_KEY = window.JM_SLOT === 'b' ? 'jmfit-boot-b' : 'jmfit-boot';
+  // ---------- Dos cuentas (solo para el entrenador): su cuenta de entrenador y la suya de cliente, sin cerrar sesión
+  const SLOT = window.JM_SLOT || 'a', OTHER = SLOT === 'a' ? 'b' : 'a';
+  const slotsGet = () => { try { return JSON.parse(localStorage.getItem('jmfit-slots') || '{}') || {}; } catch (e) { return {}; } };
+  const slotsSet = v => { try { localStorage.setItem('jmfit-slots', JSON.stringify(v)); } catch (e) { /* nada */ } };
+  const otherAcct = () => slotsGet()[OTHER] || null;
+  const canSwitch = () => DB.mode === 'live' && !S.viewAs && S.profile && (S.profile.role === 'coach' || (otherAcct() || {}).role === 'coach');
+  function switchAcct() { try { localStorage.setItem('jmfit-slot', OTHER); } catch (e) { return toast('No se pudo cambiar de cuenta', 'err'); } location.hash = ''; location.reload(); }
+  const swLabel = () => { const o = otherAcct(); return o ? `Cambiar a ${o.role === 'coach' ? 'entrenador' : esc(String(o.name || 'cliente').split(' ')[0])}` : 'Añadir mi cuenta de cliente'; };
+  const acctSignedOut = () => { const v = slotsGet(); delete v[SLOT]; slotsSet(v); if (SLOT === 'b') { try { localStorage.setItem('jmfit-slot', 'a'); } catch (e) { /* nada */ } location.hash = ''; location.reload(); return true; } return false; };
   const bootSig = () => JSON.stringify([S.profile && S.profile.id, S.profile && S.profile.role, S.client && S.client.id, S.client && S.client.name]);
   async function boot() {
     let shown = false;
@@ -276,6 +285,7 @@
     try {
       const [p, c] = await Promise.all([DB.profile(), DB.myClient().catch(() => null)]);
       S.profile = p; S.client = p && p.role === 'client' ? c : null;
+      if (p && DB.mode === 'live') { const v = slotsGet(); v[SLOT] = { role: p.role, name: (S.client && S.client.name) || p.full_name || p.email || '' }; slotsSet(v); }
       try { if (p) localStorage.setItem(BOOT_KEY, JSON.stringify({ profile: p, client: S.client })); else localStorage.removeItem(BOOT_KEY); } catch (e) {}
     } catch (e) { console.error(e); if (!shown) S.profile = null; }
     if (!shown || bootSig() !== before) render();
@@ -343,8 +353,10 @@
     if (needInstall()) return installGate();
     document.body.dataset.role = 'guest';
     const demo = DB.mode === 'demo';
+    const oa = DB.mode === 'live' ? otherAcct() : null;
     $app.innerHTML = `<main class="login">
       <div class="login-card">
+        ${oa ? `<div class="acct-banner">⇄ Entra con tu otra cuenta. La de ${oa.role === 'coach' ? 'entrenador' : esc(oa.name || 'cliente')} sigue abierta.<button type="button" class="btn small" data-swback>Volver a ${oa.role === 'coach' ? 'entrenador' : esc(String(oa.name || 'cliente').split(' ')[0])}</button></div>` : ''}
         <div class="brand big"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219"><small>Entrenamiento y nutrición</small></div>
         ${demo ? `
           <p class="muted">Modo demo: la app aún no está conectada a Supabase. Prueba los dos lados con datos de ejemplo (se guardan solo en este navegador).</p>
@@ -367,6 +379,7 @@
     $app.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => DB.signIn(b.dataset.demo));
     const r = $app.querySelector('[data-reset]'); if (r) r.onclick = () => { DB.resetDemo(); toast('Datos de ejemplo reiniciados', 'ok'); };
     $app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => renderLogin(b.dataset.mode));
+    const swb = $app.querySelector('[data-swback]'); if (swb) swb.onclick = () => switchAcct();
     const f = $app.querySelector('#auth');
     if (f) f.onsubmit = async e => {
       e.preventDefault();
@@ -466,6 +479,7 @@
       <aside class="side"><div class="brand"><img class="brand-logo" src="logo.webp" alt="TEAM JMFIT" width="420" height="219" data-refresh role="button" tabindex="0" title="Actualizar la app"><div><small>${S.profile.role === 'coach' ? 'Panel de entrenador' : esc(S.client ? S.client.name : '')}</small></div></div>
         <nav>${nav}</nav>
         <button class="side-out" data-refresh title="Actualizar la app (cargar lo último)">${ic('refresh')} Actualizar</button>
+        ${canSwitch() ? `<button class="side-out" data-swacct title="Cambiar de cuenta sin cerrar sesión">⇄ ${swLabel()}</button>` : ''}
         <button class="side-out" data-theme-btn>${ic('sun')} Apariencia</button>
         <button class="side-out" data-logout>${ic('out')} Salir</button>
         ${DB.mode === 'demo' ? '<div class="demo-tag">MODO DEMO</div>' : ''}
@@ -473,6 +487,7 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
+          ${canSwitch() ? `<button class="icon-btn only-mobile sw-btn" data-swacct aria-label="${swLabel()}" title="${swLabel()}">⇄</button>` : ''}
           ${(S.profile.role === 'client' || S.viewAs) && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219" data-refresh role="button" tabindex="0" title="Actualizar la app">
           <button class="icon-btn only-mobile" data-refresh aria-label="Actualizar la app" title="Actualizar la app">${ic('refresh')}</button><button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
         <div class="content">${content}</div>
@@ -480,7 +495,8 @@
       <nav class="tabbar">${nav}</nav>`;
     $app.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => themeModal());
     $app.querySelectorAll('[data-refresh]').forEach(b => { b.onclick = refreshApp; b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); refreshApp(); } }; });
-    $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; render(); } });
+    $app.querySelectorAll('[data-swacct]').forEach(b => b.onclick = () => switchAcct());
+    $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; render(); } });
     $app.querySelectorAll('[data-priv]').forEach(b => b.onclick = () => privacyModal());
   }
   const loading = () => '<div class="loading"><span></span><span></span><span></span></div>';
@@ -4877,6 +4893,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <section class="card prof-acts" data-po="acciones">
         <button type="button" class="btn ghost block" data-priv>${ic('shield')} Privacidad y mis datos</button>
         <button type="button" class="btn ghost block" data-ob>${ic('play')} Ver la bienvenida otra vez</button>
+        ${canSwitch() ? `<button type="button" class="btn block" data-swacct2>⇄ ${swLabel()}</button>` : ''}
         <button type="button" class="btn ghost block danger" data-logout2>${ic('out')} Cerrar sesión</button></section></div>`;
     fillAvatars(box); fillAvatars($app);
     await applyLayout('perfil', box.querySelector('.cprof'));
@@ -4886,7 +4903,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     box.querySelector('[data-priv]').onclick = () => privacyModal();
     box.querySelector('[data-ob]').onclick = () => onboarding(true);
-    box.querySelector('[data-logout2]').onclick = async () => { if (S.viewAs) return toast('En la vista como cliente no se cierra sesión', 'err'); if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); S.profile = null; location.hash = ''; location.reload(); } };
+    box.querySelector('[data-logout2]').onclick = async () => { if (S.viewAs) return toast('En la vista como cliente no se cierra sesión', 'err'); if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; location.reload(); } };
+    const sw2 = box.querySelector('[data-swacct2]'); if (sw2) sw2.onclick = () => switchAcct();
     const inp = box.querySelector('[data-avin]');
     if (inp) inp.onchange = async () => {
       const f = inp.files && inp.files[0]; if (!f) return;
