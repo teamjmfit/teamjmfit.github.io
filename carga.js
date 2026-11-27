@@ -174,7 +174,7 @@
     const kp = (t, v, s, cls = '') => `<div class="kpi ${cls}"><small>${t}</small><b>${v}</b><span>${s}</span></div>`;
     const hasLoad = L.weeks && L.weeks.length;
     // compact: el panel interactivo de analitica.js ya muestra aguda, crónica, ratio y bienestar
-    const body = compact ? `<section class="card"><h3>Carga semanal y bienestar <small class="muted">solo lo ves tú</small></h3>
+    const body = compact ? `<div class="carga-in"><h4>Carga semanal</h4>
       <div class="kpis small">
         ${kp('Carga última semana', lastW ? int(lastW.tot) + ' UA' : '–', lastW ? `${lastW.n} día${lastW.n === 1 ? '' : 's'} de entreno` : 'necesita entrenos con RPE')}
         ${kp('Monotonía', lastW && lastW.mono != null ? r1(lastW.mono) : '–', lastW && lastW.mono != null ? (lastW.mono > 2 ? 'muy repetitiva (>2)' : 'variada') : '—', lastW && lastW.mono > 2 ? 'warn' : '')}
@@ -184,7 +184,7 @@
       ${WB.length >= 2 ? `<h4>Bienestar respecto a su normalidad</h4>${wellChart(WB.slice(-16))}
         ${lastWb ? `<div class="wb-chips">${lastWb.items.map(t => { const [c] = zZone(t.z); return `<span class="pill ${c}">${t.name} ${t.v} <small>(suele ${r1(t.m)})</small></span>`; }).join('')}</div>` : ''}
         <p class="muted small">Cada check-in se compara con los 8 anteriores del propio cliente (fatiga y estrés cuentan al revés). 0 = como siempre; por debajo de −1, peor de lo normal.</p>` : ''}
-    </section>` : `<section class="card"><h3>Carga y estado <small class="muted">solo lo ves tú</small></h3>
+    </div>` : `<section class="card"><h3>Carga y estado <small class="muted">solo lo ves tú</small></h3>
       <div class="kpis small">
         ${kp('Carga última semana', lastW ? int(lastW.tot) + ' UA' : '–', lastW ? `${lastW.n} día${lastW.n === 1 ? '' : 's'} de entreno` : 'necesita entrenos con RPE')}
         ${kp('Ratio agudo:crónico', L.acwr != null ? r1(L.acwr) : '–', L.acwr != null ? at : L.history ? `faltan ${21 - L.history} días de historial` : 'sin datos', ac === 'red' || ac === 'amber' ? 'warn' : '')}
@@ -197,7 +197,7 @@
         ${lastWb ? `<div class="wb-chips">${lastWb.items.map(t => { const [c] = zZone(t.z); return `<span class="pill ${c}">${t.name} ${t.v} <small>(suele ${r1(t.m)})</small></span>`; }).join('')}</div>` : ''}
         <p class="muted small">Cada check-in se compara con los 8 anteriores del propio cliente (fatiga y estrés cuentan al revés). 0 = como siempre; por debajo de −1, peor de lo normal; por debajo de −2, bastante peor. Un solo punto bajo puede ser ruido: fíjate en la tendencia.</p>` : ''}
     </section>`;
-    return { html: sug + body, wire(root, onDeload) { const b = root.querySelector('[data-dl]'); if (b) b.onclick = () => onDeload(b.dataset.dl); } };
+    return { html: sug + body, sug, inner: compact ? body : '', wire(root, onDeload) { const b = root.querySelector('[data-dl]'); if (b) b.onclick = () => onDeload(b.dataset.dl); } };
   }
 
   window.JMLoad = { load, wellness, panel, weekVolume, doneVolume, plannedSets, muscleOf };

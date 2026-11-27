@@ -76,7 +76,8 @@
       const days = last ? Math.floor((Date.now() - new Date(last)) / 864e5) : null;
       if (days != null && days < 7) return;
       const el = document.createElement('section'); el.className = 'card backup-remind'; el.dataset.backupRemind = '';
-      el.innerHTML = `<h3>Copia de seguridad</h3><p class="small">${days == null ? 'Aún no has descargado ninguna copia.' : `Tu última copia es de hace ${days} días.`} Descarga un Excel con todos los datos (clientes, check-ins, planes, entrenos…) y guárdalo en tu Drive.</p><button class="btn small primary" type="button">Descargar copia</button>`;
+      el.className = 'card backup-remind bk-mini';   // en una línea: es un recordatorio, no un apartado
+      el.innerHTML = `<span class="grow">💾 <b>Copia de seguridad</b><small>${days == null ? 'Aún no has descargado ninguna' : `La última es de hace ${days} días`} · Excel con todos los datos</small></span><button class="btn small" type="button">Descargar</button>`;
       el.querySelector('button').onclick = e => run(e.currentTarget);
       host.prepend(el);
     } catch (e) { /* opcional */ }

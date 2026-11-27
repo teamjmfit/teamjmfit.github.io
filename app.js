@@ -195,6 +195,7 @@
     camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
     refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4"/>',
+    more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
     inbox: '<path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1 3h6l1-3h5"/>',
     wa: '<path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1c-1-.5-2-1.5-2.5-2.5l1-1-1-2z"/>'
   };
@@ -299,6 +300,8 @@
 
   async function render() {
     stopIntervals();
+    if (document.querySelector('.modal-back')) closeModal();   // al cambiar de pantalla no se queda una ventana abierta encima
+    { const mp = document.querySelector('.more-pop'); if (mp) mp.remove(); }
     S.route = parseRoute();
     if (location.hash.includes('type=recovery')) return renderNewPassword();
     if (!S.profile) return renderLogin();
@@ -487,9 +490,7 @@
       <div class="main">
         <header class="top">${back ? `<a class="icon-btn" href="#/${back}" aria-label="Volver">${ic('back')}</a>` : ''}
           ${sub ? `<div class="ttl"><h1>${esc(title || '')}</h1><small>${esc(sub)}</small></div>` : `<h1>${esc(title || '')}</h1>`}<span class="grow"></span>${actions}
-          ${canSwitch() ? `<button class="icon-btn only-mobile sw-btn" data-swacct aria-label="${swLabel()}" title="${swLabel()}">⇄</button>` : ''}
-          ${(S.profile.role === 'client' || S.viewAs) && S.client ? '' : `<img class="brand-logo sm only-mobile" src="logo.webp" alt="TEAM JMFIT" width="420" height="219" data-refresh role="button" tabindex="0" title="Actualizar la app">
-          <button class="icon-btn only-mobile" data-refresh aria-label="Actualizar la app" title="Actualizar la app">${ic('refresh')}</button><button class="icon-btn only-mobile" data-logout aria-label="Salir">${ic('out')}</button>`}</header>
+          ${(S.profile.role === 'client' || S.viewAs) && S.client ? (canSwitch() ? `<button class="icon-btn only-mobile sw-btn" data-swacct aria-label="${swLabel()}" title="${swLabel()}">⇄</button>` : '') : `<button class="icon-btn only-mobile" data-more aria-label="Más opciones" title="Más opciones">${ic('more')}</button>`}</header>
         <div class="content">${content}</div>
       </div>
       <nav class="tabbar">${nav}</nav>`;
@@ -498,6 +499,22 @@
     $app.querySelectorAll('[data-swacct]').forEach(b => b.onclick = () => switchAcct());
     $app.querySelectorAll('[data-logout]').forEach(b => b.onclick = async () => { if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; render(); } });
     $app.querySelectorAll('[data-priv]').forEach(b => b.onclick = () => privacyModal());
+    $app.querySelectorAll('[data-more]').forEach(b => b.onclick = e => { e.stopPropagation(); moreMenu(b); });
+  }
+  // Menú ⋯ de la cabecera en el móvil: lo que no cabe arriba (actualizar, apariencia, cambiar de cuenta, salir)
+  function moreMenu(anchor) {
+    const old = document.querySelector('.more-pop'); if (old) { old.remove(); return; }
+    const m = document.createElement('div'); m.className = 'more-pop'; m.setAttribute('role', 'menu');
+    m.innerHTML = `<button type="button" data-m="refresh">${ic('refresh')} Actualizar la app</button><button type="button" data-m="theme">${ic('sun')} Apariencia</button>
+      ${canSwitch() ? `<button type="button" data-m="sw">⇄ ${swLabel()}</button>` : ''}<button type="button" data-m="out" class="danger">${ic('out')} Cerrar sesión</button>`;
+    document.body.appendChild(m);
+    const r = anchor.getBoundingClientRect(); m.style.top = (r.bottom + 6) + 'px'; m.style.right = Math.max(8, innerWidth - r.right) + 'px';
+    const close = () => { m.remove(); document.removeEventListener('click', away, true); };
+    const away = ev => { if (!m.contains(ev.target)) close(); };
+    setTimeout(() => document.addEventListener('click', away, true), 0);
+    m.querySelectorAll('[data-m]').forEach(x => x.onclick = async () => { const k = x.dataset.m; close();
+      if (k === 'refresh') refreshApp(); else if (k === 'theme') themeModal(); else if (k === 'sw') switchAcct();
+      else if (k === 'out' && await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; render(); } });
   }
   const loading = () => '<div class="loading"><span></span><span></span><span></span></div>';
   // Actualizar: busca la última versión de la app y vuelve a cargar (como recargar la página, también instalada en el ordenador)
@@ -514,7 +531,6 @@
     { key: 'clientes', href: 'clientes', icon: 'users', label: 'Clientes' },
     { key: 'programas', href: 'programas', icon: 'dumbbell', label: 'Programas' },
     { key: 'revisiones', href: 'revisiones', icon: 'inbox', label: 'Revisiones' },
-    { key: 'notas', href: 'notas', icon: 'edit', label: 'Notas' },
     { key: 'cobros', href: 'cobros', icon: 'euro', label: 'Cobros' }
   ];
   // Aviso en la pestaña Revisiones con los check-ins sin revisar (no bloquea el render)
@@ -809,7 +825,7 @@
 
   // ---------- Inicio
   async function coachHome() {
-    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<button class="btn ghost small only-mobile" data-theme-btn title="Apariencia: claro u oscuro">${ic('sun')}</button><a class="btn ghost small" href="#/publicaciones" title="Píldoras, novedades y ventajas para tus clientes">📣<span>Publicaciones</span></a><button class="btn ghost small" data-allset title="Ajustes para todos los clientes a la vez">${ic('cog')}<span>Para todos</span></button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
+    shell(COACH_NAV, 'inicio', loading(), { title: 'Hola 👋', actions: `<a class="btn ghost small" href="#/publicaciones" title="Píldoras, novedades y ventajas para tus clientes">📣<span>Publicaciones</span></a><button class="btn ghost small" data-allset title="Ajustes para todos los clientes a la vez">${ic('cog')}<span>Para todos</span></button><button class="btn ghost small" data-sec title="Verificación en dos pasos">🔒<span>Seguridad</span></button>` });
     $app.querySelector('[data-sec]').onclick = () => securityModal();
     $app.querySelector('[data-allset]').onclick = () => allClientsSettings();
     const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
@@ -834,18 +850,16 @@
         <a class="kpi" href="#/clientes"><small>Clientes activos</small><b>${active.length}</b><span>${clients.length - active.length} en pausa</span></a>
         <div class="kpi"><small>Entrenos esta semana</small><b>${week.length}</b><span>${trainedIds.size} clientes han entrenado</span></div>
         <a class="kpi ${unseenCk.length ? 'warn' : ''}" href="#/revisiones"><small>Check-ins sin revisar</small><b>${unseenCk.length}</b><span>pendientes de respuesta</span></a>
-        <div class="kpi ${idle.length ? 'warn' : ''}"><small>Sin entrenar en 7 días</small><b>${idle.length}</b><span>clientes activos</span></div>
+        <button type="button" class="kpi ${idle.length ? 'warn' : ''}" data-idle><small>Sin entrenar en 7 días</small><b>${idle.length}</b><span>${idle.length ? 'toca para ver quiénes' : 'clientes activos'}</span></button>
       </div>
       <div class="grid2">
         <section class="card act-card" data-act><h3>Actividad reciente</h3><div data-actbody></div></section>
         <div class="stack">
           <section class="card" id="venc"><h3>Próximos cobros</h3>${loading()}</section>
-          <section class="card"><h3>Sin entrenar en 7 días</h3>
-            ${idle.length ? `<ul class="list">${idle.map(c => c.phone ? `<li><a href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}" target="_blank" rel="noopener"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>${ic('wa', 'xs')} WhatsApp</small></a></li>` : `<li><a href="#/cliente/${c.id}/progreso"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>Ver</small></a></li>`).join('')}</ul>` : '<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}
-          </section>
         </div>
       </div>`;
     $app.querySelector('.content').innerHTML = html;
+    $app.querySelector('[data-idle]').onclick = () => modal('Sin entrenar en 7 días', `${idle.length ? `<ul class="list">${idle.map(c => c.phone ? `<li><a href="https://wa.me/${esc(String(c.phone).replace(/\D/g, ''))}" target="_blank" rel="noopener"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>${ic('wa', 'xs')} WhatsApp</small></a></li>` : `<li><a href="#/cliente/${c.id}/progreso"><span class="av">${initials(c.name)}</span><span class="grow">${esc(c.name)}</span><small>Ver</small></a></li>`).join('')}</ul>` : '<p class="empty">¡Todos tus clientes activos han entrenado esta semana! 🎉</p>'}`, { submitLabel: 'Cerrar' });
     wirePushCard($app.querySelector('.content'), true);
     drawActivity($app.querySelector('[data-act]'), feed);
     {
@@ -2286,6 +2300,11 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="clegend"><span class="cev pub"><em>Planificado</em></span><span class="cev done"><em>Hecho</em></span><span class="cev moved pub"><em>Hecho otro día</em></span><span class="cev missed pub"><em>No hecho</em></span>${Object.entries(EV_KINDS).filter(([k]) => k !== 'workout').map(([k, [l, icn]]) => `<span class="cev k-${k}">${ic(icn)}<em>${l}</em></span>`).join('')}<span class="cev k-goal"><em>🎯 Hito</em></span></div>
         <p class="muted small center">Pincha un día para ver y gestionar lo que tiene; con «+» añades directamente. En el ordenador puedes arrastrar un evento a otro día.</p>
       </section><div data-dayinfo></div>`;
+    // Leyenda: solo los tipos que aparecen en estas semanas
+    { const evs = [...box.querySelectorAll('.cweeks .cev')];
+      box.querySelectorAll('.clegend > .cev').forEach(l => { const need = [...l.classList].filter(k => k !== 'cev');
+        if (!evs.some(e => need.every(k => e.classList.contains(k)))) l.remove(); });
+      const lg = box.querySelector('.clegend'); if (lg && !lg.children.length) lg.remove(); }
     box.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { S.calFrom[c.id] = addDays(from0, 28 * Number(b.dataset.mv)); tabCalendar(c, box); });
     box.querySelector('[data-today]').onclick = () => { S.calFrom[c.id] = addDays(mondayOf(t), -7); S.calSel = t; tabCalendar(c, box); };
     const fb = box.querySelector('[data-fbox]'), fbt = box.querySelector('[data-filt]');
@@ -2870,7 +2889,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // Aviso compacto del check-in semanal (cliente): se resalta si toca enviarlo
   function ckCta(lastCk, st) {
     const days = lastCk ? Math.max(0, Math.floor((Date.now() - new Date(lastCk.date + 'T12:00:00')) / 864e5)) : null, due = st ? !!st.state : (days == null || days >= 6);
-    return `<section class="ck-cta ${due ? 'due' : ''}"><span class="ck-ic">${ic('camera')}</span><span class="grow"><b>Check-in semanal</b><small>${lastCk ? (days === 0 ? 'Enviado hoy ✓' : `Último hace ${days} día${days === 1 ? '' : 's'}${due ? ' · toca enviarlo' : ''}`) : 'Aún no has enviado ninguno'}</small></span><button type="button" class="btn small ${due ? 'primary' : ''}" data-ck>${due ? 'Enviar' : 'Nuevo'}</button></section>`;
+    return `<section class="ck-cta"><span class="ck-ic">${ic('camera')}</span><span class="grow"><b>Check-in semanal</b><small>${lastCk ? (days === 0 ? 'Enviado hoy ✓' : `Último hace ${days} día${days === 1 ? '' : 's'}${due ? ' · toca enviarlo' : ''}`) : 'Aún no has enviado ninguno'}</small></span><button type="button" class="btn small ${due ? 'primary' : ''}" data-ck>${due ? 'Enviar' : 'Nuevo'}</button></section>`;
   }
   // Tarjetas plegables (vista del cliente): se ve solo la cabecera hasta tocarla; se recuerda en este dispositivo
   const FOLD_KEY = 'jmfit-folds';
@@ -3025,7 +3044,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="kpi"><small>Entrenos · check-ins</small><b>${done.length} · ${checkins.length}</b><span>${checkins[0] ? 'Último check-in ' + fmtDate(checkins[0].date) : '—'}</span></div>
       </div></section></div>
       <div data-po="goals"><div data-goals></div></div>
-      <div data-po="carga">${VZ.map(v => v.html).join('')}${LP ? LP.html : ''}</div>
+      <div data-po="carga">${(() => { // un solo apartado: «Estrés y fatiga» con la carga semanal y el bienestar dentro
+        const vz = VZ.map(v => v.html).join(''); if (!LP) return vz; if (!LP.inner || !vz) return vz + LP.html;
+        const k = vz.lastIndexOf('</section>'); return (LP.sug || '') + vz.slice(0, k) + LP.inner + vz.slice(k); })()}</div>
       <div data-po="peso">${wpts.length > 1 ? `<section class="card" data-wchart><h3>Peso diario</h3><div class="np-plans wc-rng">${WR.map(([k, l]) => `<button type="button" class="chip ${k === wr ? 'on' : ''}" data-wr="${k}">${l}</button>`).join('')}</div><div data-wc></div><p class="muted small">Cada punto es un día que se pesó (o su check-in). La media de cada semana está en «Semana a semana».</p></section>` : ''}
       </div><div data-po="bienestar">${hasFat && !asCoach && see('bienestar') ? `<section class="card"><h3>Fatiga, estrés y energía</h3>${multiChart(labels, [
         { name: 'Fatiga central', cls: 's3', vals: rows.map(r => r.fatigue) },
@@ -3310,7 +3331,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const lastCk = checkins[0];
     const refW = cur ? cur.avg : (checkins.find(k => k.weight) || {}).weight;
     const bandF = window.JMGoals && refW && c.weekly_target != null && c.weekly_target !== '' ? JMGoals.rateBand(Number(c.weekly_target), Number(refW)) : null;
-    const item = (l, v) => `<div><small>${l}</small><b>${v}</b></div>`;
+    const item = (l, v) => (v === '–' ? '' : `<div><small>${l}</small><b>${v}</b></div>`);   // solo lo que tiene dato: lo vacío ya está en el formulario de abajo
     box.innerHTML = `
       <section class="card"><h3>Resumen</h3><div class="ficha-sum">
         ${item('Edad', age != null ? age + ' años' : '–')}${item('Sexo', { male: 'Hombre', female: 'Mujer', other: 'Otro' }[c.sex] || '–')}${item('Altura', h ? fmtKg(h) + ' cm' : '–')}
@@ -3383,8 +3404,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   const demoSheetNote = () => '<p class="note small">Modo demo: estos cobros son inventados. Al conectar tu hoja real verás tus clientes y pagos.</p>';
   const sheetError = e => `<div class="hero-empty">${ic('euro', 'xl')}<h2>${e.message === 'NO_SHEET' ? 'Conecta tu hoja de cobros' : 'No se pudo leer la hoja'}</h2><p>${e.message === 'NO_SHEET' ? 'Ve a Cobros y pega la dirección de tu hoja (te explico cómo en la guía).' : esc(e.message)}</p><a class="btn primary" href="#/cobros">Ir a Cobros</a></div>`;
-  const pagosTable = pagos => pagos.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Plan</th><th class="r">Importe</th><th>Método</th><th>Cubre hasta</th></tr></thead>
-      <tbody>${pagos.map(p => `<tr><td>${fmtDate(p.fecha, { day: 'numeric', month: 'short', year: '2-digit' })}</td><td>${esc(p.cliente)}</td><td>${esc(p.plan)}</td><td class="r">${eur(p.importe)}</td><td>${esc(p.metodo)}</td><td>${fmtDate(p.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td></tr>`).join('')}</tbody></table></div>`
+  const pagosTable = pagos => pagos.length ? `<div class="table-wrap"><table class="mtab"><thead><tr><th>Fecha</th><th>Cliente</th><th>Plan</th><th class="r">Importe</th><th>Método</th><th>Cubre hasta</th></tr></thead>
+      <tbody>${pagos.map(p => `<tr><td>${fmtDate(p.fecha, { day: 'numeric', month: 'short', year: '2-digit' })}</td><td class="m-main">${esc(p.cliente)}</td><td>${esc(p.plan)}</td><td class="r m-num">${eur(p.importe)}</td><td>${esc(p.metodo)}</td><td class="m-lbl" data-l="cubre hasta">${fmtDate(p.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td></tr>`).join('')}</tbody></table></div>`
     : '<p class="empty">Sin pagos registrados.</p>';
 
   function paymentForm(data, clientName, after) {
@@ -3441,8 +3462,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <div class="kpi"><small>Vencen en 7 días</small><b>${prox.length}</b><span>${eur(prox.reduce((s, c) => s + (Number(c.cuota) || 0), 0))}</span></div>
       </div>
       <button class="btn primary" data-pay>${ic('plus')} Registrar pago</button>
-      <section class="card"><h3>Estado por cliente</h3><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Plan</th><th class="r">Cuota</th><th>Vence</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${act.sort((a, b) => dd(a) - dd(b)).map(c => `<tr><td><b>${esc(c.nombre)}</b></td><td>${esc(c.plan)}</td><td class="r">${eur(c.cuota)}</td><td>${fmtDate(c.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+      <section class="card"><h3>Estado por cliente</h3><div class="table-wrap"><table class="mtab"><thead><tr><th>Cliente</th><th>Plan</th><th class="r">Cuota</th><th>Vence</th><th>Estado</th><th></th></tr></thead><tbody>
+        ${act.sort((a, b) => dd(a) - dd(b)).map(c => `<tr><td class="m-main"><b>${esc(c.nombre)}</b></td><td>${esc(c.plan)}</td><td class="r m-num">${eur(c.cuota)}</td><td class="m-lbl" data-l="vence">${fmtDate(c.vence, { day: 'numeric', month: 'short', year: '2-digit' })}</td>
           <td><span class="pill ${dd(c) < 0 ? 'red' : dd(c) <= 7 ? 'amber' : 'green'}">${dd(c) < 0 ? 'Vencido ' + -dd(c) + ' d' : dd(c) + ' d'}</span></td>
           <td class="r nowrap">${waLink(c) ? `<a class="icon-btn" target="_blank" rel="noopener" href="${esc(waLink(c))}" title="Recordatorio por WhatsApp">${ic('wa')}</a>` : ''}<button class="btn small" data-payfor="${esc(c.nombre)}">Cobrar</button></td></tr>`).join('')}
       </tbody></table></div></section>
@@ -4525,7 +4546,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   async function clientHome() {
     const c = S.client, first = c.name.split(' ')[0];
     const t0 = today(), fr = HOME_FR[(+t0.slice(8) + c.name.length) % HOME_FR.length];
-    shell(clientNav(), 'inicio', loading(), { title: `Bienvenido/a, ${first}`, sub: fr, actions: avatarBtn() });
+    shell(clientNav(), 'inicio', loading(), { title: `${S.client.sex === 'female' ? 'Bienvenida' : S.client.sex === 'male' ? 'Bienvenido' : 'Hola'}, ${first}`, sub: fr, actions: avatarBtn() });
     fillAvatars($app);
     const progs0 = await DB.list('programs', { eq: { client_id: c.id } }).catch(() => []);
     if (await rollWeeks(progs0)) DB.clearCache && DB.clearCache();
@@ -4612,7 +4633,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <div data-po="coach">${coachCard(links)}</div>
       <div data-po="logros" data-logros></div>
       <section class="card cal-card" data-po="cal"><div data-cal>${calHtml()}</div><div class="cal-day" data-cday>${loading()}</div></section>
-      <div data-po="avisos">${installCardHtml()}<div data-pushcard></div>
+      <div data-po="avisos"><div data-pushcard></div>
       ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span></section>`).join('')}</div>
       <section class="card dm-card" data-po="registro"><h3>Registro de hoy${m.date ? ' <span class="pill green">guardado</span>' : ''}</h3>
         <form class="dm-form" data-dm><label>Peso<span class="u-in"><input name="weight" type="number" step="0.05" min="20" max="350" inputmode="decimal" value="${m.weight ?? ''}" placeholder="–"><i>kg</i></span></label>
@@ -4890,9 +4911,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const links = await coachLinks(), hasAva = 'avatar_path' in c;
     const box = $app.querySelector('.content');
     box.innerHTML = `<div class="cprof">
-      <section class="card prof-top" data-po="yo"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
-        <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.viewAs ? (c.email || '') : (S.profile.email || ''))}</small></div>
-        ${hasAva ? `<label class="btn small prof-ph">${ic('camera')} ${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</section>
+      <section class="card prof-top" data-po="yo"><div class="prof-avw"><div class="prof-ava" data-ava><span>${esc(initials(c.name))}</span></div>
+        ${hasAva ? `<label class="prof-ph" title="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}" aria-label="${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}">${ic('camera')}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</div>
+        <div class="grow"><h2>${esc(c.name)}</h2>${c.service ? `<span class="pill">${esc(c.service)}</span>` : ''}<small class="muted">${esc(S.viewAs ? (c.email || '') : (S.profile.email || ''))}</small></div></section>
       <div data-po="coach">${coachCard(links)}</div>
       <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
       ${HEALTH_ON ? '<section class="card hs-card" data-po="salud" data-salud></section>' : ''}
@@ -4986,9 +5007,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       const did = doneWeek.some(s => String(s.started_at).slice(0, 10) === ds) || events.some(e => e.date === ds && e.kind !== 'note' && evDone(e, sessions, ckins));
       return `<button type="button" data-dsel="${n}" aria-pressed="${n === sel}" aria-label="${esc(DIAS[n])} ${+ds.slice(8)}" class="${n === d ? 'today' : ''} ${n === sel ? 'sel' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${+ds.slice(8)}</b><i></i></button>`; }).join('');
     $app.querySelector('.content').innerHTML = `<div class="c-home">
-      ${notices.filter(nt => nt.k === 'ck').map(nt => `<section class="notice n-ck ck-pin ${nt.late ? 'late' : ''}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span><button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button></section>`).join('')}
       ${pending ? `<a class="resume" href="#/entreno/${esc(pending.routine_id)}">${ic('play')}<span class="grow"><b>Tienes un entreno a medias</b><small>${esc(pending.routine_name)} · empezado ${ago(pending.started_at)}</small></span><span class="btn small primary">Continuar</span></a>` : ''}
-      ${installCardHtml()}<div data-pushcard></div>
+      <div data-pushcard></div>
       ${notices.filter(nt => nt.k !== 'ck').map(nt => `<section class="notice n-${nt.k}"><span class="n-ic">${ic(nt.ic)}</span><span class="grow"><b>${esc(nt.t)}</b><small>${esc(nt.s)}</small></span>${nt.k === 'ck' ? `<button type="button" class="btn small primary" data-evck>${esc(nt.btn)}</button>` : ''}</section>`).join('')}
       <section class="card wk-card" data-po="semana"><div class="wk-head"><b>Esta semana</b>${cw ? `<small>${esc(weekLabel(cw))}</small>` : ''}<span class="grow"></span><span class="wk-n"><b>${doneWeek.length}</b>/${planned || '–'} entrenos</span></div>
         <div class="wk-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pctW}"><i style="width:${pctW}%"></i></div>

@@ -2170,3 +2170,49 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 .tri-tg.on { filter: none; opacity: 1; color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .tri-why .tri-off { background: var(--card2); color: var(--muted); }
 .tri-offrow .av { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--line) !important; }
+
+/* ---- Repaso visual (nov 2026) ---- */
+.more-pop { position: fixed; z-index: 200; min-width: 210px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 6px; display: flex; flex-direction: column; }
+.more-pop button { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 0; background: none; color: var(--text); font: inherit; font-size: 15px; text-align: left; border-radius: 10px; cursor: pointer; }
+.more-pop button:hover, .more-pop button:active { background: var(--card2); }
+.more-pop button.danger { color: var(--red, #c0392b); }
+.more-pop .ic { width: 18px; height: 18px; }
+/* Tablas de cobros en el móvil: cada fila como una tarjeta, sin columnas cortadas */
+@media (max-width: 640px) {
+  table.mtab thead { display: none; }
+  table.mtab, table.mtab tbody { display: block; width: 100%; }
+  table.mtab tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  table.mtab tr:last-child { border-bottom: 0; }
+  table.mtab td { border: 0 !important; padding: 0 !important; font-size: 14px; color: var(--muted); white-space: nowrap; }
+  table.mtab td.m-main { order: -2; flex: 1 1 60%; color: var(--text); font-weight: 600; font-size: 15px; white-space: normal; }
+  table.mtab td.m-num { order: -1; color: var(--text); font-weight: 700; margin-left: auto; }
+  table.mtab td.m-lbl::before { content: attr(data-l) ' '; }
+  table.mtab td.r.nowrap { margin-left: auto; }
+  .table-wrap:has(> table.mtab) { overflow: visible; }
+}
+/* Pestañas: en el móvil se ven todas (en dos filas) en vez de quedar escondidas a la derecha */
+@media (max-width: 700px) {
+  .tabs { flex-wrap: wrap; overflow: visible; gap: 6px; box-shadow: none; border-bottom: 0; padding-bottom: 4px; }
+  .tabs a { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; background: var(--card); }
+  .tabs a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+}
+/* Estrés y fatiga: la cabecera ya no se monta encima en el móvil */
+.vz header h3 { flex: 1 1 55%; min-width: 0; }
+.vz header h3 small { display: block; font-weight: 500; margin-top: 2px; }
+@media (max-width: 600px) { .vz header .seg { order: 9; width: 100%; } .vz header .seg button { flex: 1; } }
+.carga-in { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.carga-in h4 { margin: 0 0 10px; }
+/* Gráficos en el ordenador: no crecen tanto como para que las letras salgan enormes */
+@media (min-width: 900px) { svg.chart { max-width: 620px; margin-inline: auto; } }
+/* Perfil del cliente: la cámara va sobre la foto y el nombre tiene todo el ancho */
+.prof-avw { position: relative; flex: none; }
+.prof-avw .prof-ph { position: absolute; right: -4px; bottom: -4px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 3px var(--card); }
+.prof-avw .prof-ph .ic { width: 16px; height: 16px; }
+.prof-top h2 { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .prog-card > .row > .grow { flex-basis: 100%; } }
+@media (max-width: 700px) { .perk-ed { grid-template-columns: 1fr auto; } .perk-ed [data-pt] { grid-column: 1 / -1; grid-row: 1; } .perk-ed [data-px] { grid-column: 1 / -1; grid-row: 2; } .perk-ed [data-pc] { grid-row: 3; } .perk-ed [data-perkdel] { grid-row: 3; } }
+@media (max-width: 560px) { .ref-funnel { grid-template-columns: repeat(5, 1fr); gap: 4px; } .ref-funnel .rf { padding: 8px 2px; } .ref-funnel b { font-size: 18px; } .ref-funnel small { font-size: 10px; line-height: 1.2; } }
+/* Inicio del entrenador */
+button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
+.bk-mini { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.bk-mini small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
