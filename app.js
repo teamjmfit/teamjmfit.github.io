@@ -638,7 +638,7 @@
     if (!r0) return coachHome();
     if (r0 === 'clientes') return coachClients();
     if (r0 === 'cliente' && r1) return coachClient(r1, r2 || 'rutinas');
-    if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : r1 === 'plantillas' ? coachTemplates() : coachPrograms(); }
+    if (r0 === 'programas' || r0 === 'ejercicios') { setTimeout(refreshReviewBadge, 0); return r1 === 'ejercicios' || r0 === 'ejercicios' ? coachExercises() : r1 === 'plantillas' ? coachTemplates() : r1 === 'nutricion' ? coachNutriPrograms() : coachPrograms(); }
     if (r0 === 'revisiones') return coachReviews(r1);
     if (r0 === 'revision' && r1) return reviewCenter(r1);
     if (r0 === 'publicaciones') return coachPosts();
@@ -655,7 +655,9 @@
   }
 
   // Las plantillas de Programas son «clientes» internos (is_template) para reutilizar todos los editores de rutinas
-  async function loadClients() { const all = await DB.list('clients', { order: ['name', 'asc'] }); S.templates = all.filter(c => c.is_template); S.clients = all.filter(c => !c.is_template); return S.clients; }
+  // Planes nutricionales base: plantillas internas como las de rutinas, marcadas por su correo interno
+  const isNutriTpl = c => !!(c && c.is_template && /^nutricion-/.test(c.email || ''));
+  async function loadClients() { const all = await DB.list('clients', { order: ['name', 'asc'] }); S.templates = all.filter(c => c.is_template && !isNutriTpl(c)); S.ntemplates = all.filter(isNutriTpl); S.clients = all.filter(c => !c.is_template); return S.clients; }
   async function loadExercises() { S.exercises = await DB.list('exercises', { order: ['name', 'asc'] }); return S.exercises; }
 
   // ---------- Actividad reciente: Hoy / Ayer / Anteriores, filtrable por Entrenos · Métricas · Formularios
@@ -1550,6 +1552,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // Una plantilla se edita con la misma pestaña Rutinas que un cliente
   function templateClient(c) {
+    if (isNutriTpl(c)) return nutriTemplateClient(c);
     shell(COACH_NAV, 'programas', loading(), { title: '', back: 'programas/plantillas' });
     $app.querySelector('.top h1').textContent = c.name;
     const actions = document.createElement('div'); actions.className = 'row gap';
@@ -3666,7 +3669,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- Programas (por ahora: rutinas de cada cliente + catálogo)
-  const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/plantillas" class="${on === 'plantillas' ? 'on' : ''}">Plantillas</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
+  const PROGRAM_TABS = on => `<div class="tabs"><a href="#/programas" class="${on === 'rutinas' ? 'on' : ''}">Rutinas por cliente</a><a href="#/programas/plantillas" class="${on === 'plantillas' ? 'on' : ''}">Plantillas</a><a href="#/programas/nutricion" class="${on === 'nutricion' ? 'on' : ''}">Nutricionales</a><a href="#/programas/ejercicios" class="${on === 'ejercicios' ? 'on' : ''}">Ejercicios</a></div>`;
 
   // ---------- Plantillas: semanas base (PPL, torso/pierna, anterior/posterior…) para copiar a un cliente y adaptarlas
   const TPL = (name, sets, reps, rest, rir) => ({ exercise_name: name, sets, reps, rest_sec: rest, target_rir: rir });
@@ -3803,6 +3806,127 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     box.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => { const t = byT(b.dataset.dup);
       await safe(async () => { const [c] = await DB.insert('clients', { name: t.name + ' (copia)', email: tplEmail(), notes: t.notes, active: false, is_template: true }); await copyTemplateTo(t, c, false); }, 'Plantilla duplicada'); coachTemplates(); });
     box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const t = byT(b.dataset.del); if (!(await confirmBox(`Se borrará la plantilla «${t.name}». Los clientes a los que ya la copiaste no cambian.`))) return; await safe(() => DB.remove('clients', t.id), 'Plantilla borrada'); coachTemplates(); });
+  }
+  const NUTRI_PRESETS = [
+    { name: "Hombre · Pérdida de grasa", notes: "≈ 2.250 kcal · Hombre de ~75–85 kg que quiere bajar grasa sin perder músculo.", kcal: 2250, protein: 167, carbs: 266, fat: 55, blocks: [
+      ["Desayuno","08:00",[["Tostadas con jamón y tomate",[["Pan de Pueblo - Mercadona", 110], ["Jamón Cocido 92% - Hacendado", 90], ["Tomate", 60], ["Aceite de oliva virgen extra", 15]]],["Tostadas con huevo y aguacate",[["Pan integral", 90], ["Huevo M", 120], ["Claras de huevo", 100], ["Aguacate", 40]]],["Avena con leche y proteína",[["Avena", 70], ["Leche Desnatada +Proteínas - Hacendado", 250], ["Whey Protein", 20], ["Plátano", 100]]]]],
+      ["Media mañana","11:00",[["Queso batido con proteína y arándanos",[["Queso fresco batido 0%", 250], ["Whey Protein", 15], ["Arándanos", 80], ["Nueces", 15]]],["Yogur griego con almendras y kiwi",[["Yogur Griego Ligero - Hacendado", 250], ["Almendras", 15], ["Kiwi", 100]]],["Tortitas con pavo y manzana",[["Tortitas de maíz", 30], ["Pechuga Pavo Finas Lonchas - Hacendado", 90], ["Manzana", 150]]]]],
+      ["Comida","14:30",[["Pollo al horno con patatas",[["Pechuga de Pollo Cruda", 170], ["Patata cruda", 300], ["Verdura", 150], ["Aceite de oliva virgen extra", 15]]],["Arroz con ternera y verduras",[["Arroz Blanco Crudo", 80], ["Ternera Magra", 150], ["Salteado de verduras", 150], ["Aceite de oliva virgen extra", 10]]],["Pasta con atún y tomate",[["Pasta Cruda", 90], ["Atún Natural - Mercadona", 120], ["Tomate frito", 60], ["Aceite de oliva virgen extra", 10]]]]],
+      ["Merienda / pre entreno","17:30",[["Crema de arroz con proteína y arándanos",[["Crema de Arroz", 50], ["Whey Protein", 25], ["Arándanos", 60], ["Crema de cacahuete", 10]]],["Bocadillo de pavo y fruta",[["Pan de Pueblo - Mercadona", 70], ["Pechuga de Pavo 92% - Hacendado", 80], ["Plátano", 100]]],["Queso batido con cereales y fresas",[["Queso fresco batido 0%", 250], ["Cereales 0% Azúcares Añadidos - Hacendado", 45], ["Fresas", 100]]]]],
+      ["Cena","21:30",[["Cereales con leche, proteína y fruta",[["Cereales 0% Azúcares Añadidos - Hacendado", 50], ["Leche Desnatada +Proteínas - Hacendado", 300], ["Whey Protein", 15], ["Plátano", 100], ["Chocolate 85%", 10]]],["Salmón con boniato y verdura",[["Salmón", 170], ["Boniato", 220], ["Verdura", 150]]],["Tortilla francesa con pan y ensalada",[["Huevo M", 120], ["Claras de huevo", 150], ["Pan de Pueblo - Mercadona", 70], ["Mezcla de lechugas", 100], ["Aceite de oliva virgen extra", 5]]]]]] },
+    { name: "Hombre · Ganar músculo", notes: "≈ 2.960 kcal · Hombre de ~70–80 kg en volumen limpio: más hidratos para rendir y crecer.", kcal: 2960, protein: 193, carbs: 374, fat: 74, blocks: [
+      ["Desayuno","08:00",[["Tostadas con jamón y tomate",[["Pan de Pueblo - Mercadona", 165], ["Jamón Cocido 92% - Hacendado", 95], ["Tomate", 60], ["Aceite de oliva virgen extra", 20]]],["Tostadas con huevo y aguacate",[["Pan integral", 135], ["Huevo M", 180], ["Claras de huevo", 105], ["Aguacate", 50]]],["Avena con leche y proteína",[["Avena", 105], ["Leche Desnatada +Proteínas - Hacendado", 260], ["Whey Protein", 20], ["Plátano", 150]]]]],
+      ["Media mañana","11:00",[["Queso batido con proteína y arándanos",[["Queso fresco batido 0%", 260], ["Whey Protein", 15], ["Arándanos", 80], ["Nueces", 20]]],["Yogur griego con almendras y kiwi",[["Yogur Griego Ligero - Hacendado", 260], ["Almendras", 20], ["Kiwi", 100]]],["Tortitas con pavo y manzana",[["Tortitas de maíz", 45], ["Pechuga Pavo Finas Lonchas - Hacendado", 95], ["Manzana", 150]]]]],
+      ["Comida","14:30",[["Pollo al horno con patatas",[["Pechuga de Pollo Cruda", 180], ["Patata cruda", 450], ["Verdura", 150], ["Aceite de oliva virgen extra", 20]]],["Arroz con ternera y verduras",[["Arroz Blanco Crudo", 120], ["Ternera Magra", 160], ["Salteado de verduras", 150], ["Aceite de oliva virgen extra", 15]]],["Pasta con atún y tomate",[["Pasta Cruda", 135], ["Atún Natural - Mercadona", 125], ["Tomate frito", 60], ["Aceite de oliva virgen extra", 15]]]]],
+      ["Merienda / pre entreno","17:30",[["Crema de arroz con proteína y arándanos",[["Crema de Arroz", 75], ["Whey Protein", 25], ["Arándanos", 60], ["Crema de cacahuete", 15]]],["Bocadillo de pavo y fruta",[["Pan de Pueblo - Mercadona", 105], ["Pechuga de Pavo 92% - Hacendado", 85], ["Plátano", 150]]],["Queso batido con cereales y fresas",[["Queso fresco batido 0%", 260], ["Cereales 0% Azúcares Añadidos - Hacendado", 70], ["Fresas", 100]]]]],
+      ["Cena","21:30",[["Cereales con leche, proteína y fruta",[["Cereales 0% Azúcares Añadidos - Hacendado", 75], ["Leche Desnatada +Proteínas - Hacendado", 315], ["Whey Protein", 15], ["Plátano", 150], ["Chocolate 85%", 15]]],["Salmón con boniato y verdura",[["Salmón", 180], ["Boniato", 330], ["Verdura", 150]]],["Tortilla francesa con pan y ensalada",[["Huevo M", 180], ["Claras de huevo", 160], ["Pan de Pueblo - Mercadona", 105], ["Mezcla de lechugas", 100], ["Aceite de oliva virgen extra", 5]]]]]] },
+    { name: "Mujer · Pérdida de grasa", notes: "≈ 1.640 kcal · Mujer de ~55–65 kg que quiere bajar grasa con proteína alta.", kcal: 1640, protein: 126, carbs: 181, fat: 45, blocks: [
+      ["Desayuno","08:00",[["Tostadas con jamón y tomate",[["Pan de Pueblo - Mercadona", 70], ["Jamón Cocido 92% - Hacendado", 70], ["Tomate", 60], ["Aceite de oliva virgen extra", 10]]],["Tostadas con huevo y aguacate",[["Pan integral", 55], ["Huevo M", 120], ["Claras de huevo", 75], ["Aguacate", 30]]],["Avena con leche y proteína",[["Avena", 45], ["Leche Desnatada +Proteínas - Hacendado", 190], ["Whey Protein", 15], ["Plátano", 60]]]]],
+      ["Media mañana","11:00",[["Queso batido con proteína y arándanos",[["Queso fresco batido 0%", 190], ["Whey Protein", 10], ["Arándanos", 80], ["Nueces", 10]]],["Yogur griego con almendras y kiwi",[["Yogur Griego Ligero - Hacendado", 190], ["Almendras", 10], ["Kiwi", 100]]],["Tortitas con pavo y manzana",[["Tortitas de maíz", 20], ["Pechuga Pavo Finas Lonchas - Hacendado", 70], ["Manzana", 150]]]]],
+      ["Comida","14:30",[["Pollo al horno con patatas",[["Pechuga de Pollo Cruda", 130], ["Patata cruda", 185], ["Verdura", 150], ["Aceite de oliva virgen extra", 10]]],["Arroz con ternera y verduras",[["Arroz Blanco Crudo", 50], ["Ternera Magra", 110], ["Salteado de verduras", 150], ["Aceite de oliva virgen extra", 10]]],["Pasta con atún y tomate",[["Pasta Cruda", 55], ["Atún Natural - Mercadona", 90], ["Tomate frito", 60], ["Aceite de oliva virgen extra", 10]]]]],
+      ["Merienda / pre entreno","17:30",[["Crema de arroz con proteína y arándanos",[["Crema de Arroz", 30], ["Whey Protein", 20], ["Arándanos", 60], ["Crema de cacahuete", 10]]],["Bocadillo de pavo y fruta",[["Pan de Pueblo - Mercadona", 45], ["Pechuga de Pavo 92% - Hacendado", 60], ["Plátano", 60]]],["Queso batido con cereales y fresas",[["Queso fresco batido 0%", 190], ["Cereales 0% Azúcares Añadidos - Hacendado", 30], ["Fresas", 100]]]]],
+      ["Cena","21:30",[["Cereales con leche, proteína y fruta",[["Cereales 0% Azúcares Añadidos - Hacendado", 30], ["Leche Desnatada +Proteínas - Hacendado", 225], ["Whey Protein", 10], ["Plátano", 60], ["Chocolate 85%", 10]]],["Salmón con boniato y verdura",[["Salmón", 130], ["Boniato", 135], ["Verdura", 150]]],["Tortilla francesa con pan y ensalada",[["Huevo M", 120], ["Claras de huevo", 110], ["Pan de Pueblo - Mercadona", 45], ["Mezcla de lechugas", 100], ["Aceite de oliva virgen extra", 5]]]]]] },
+    { name: "Mujer · Tonificar", notes: "≈ 1.980 kcal · Mujer de ~55–65 kg en mantenimiento o recomposición (tonificar).", kcal: 1980, protein: 138, carbs: 237, fat: 52, blocks: [
+      ["Desayuno","08:00",[["Tostadas con jamón y tomate",[["Pan de Pueblo - Mercadona", 95], ["Jamón Cocido 92% - Hacendado", 70], ["Tomate", 60], ["Aceite de oliva virgen extra", 15]]],["Tostadas con huevo y aguacate",[["Pan integral", 80], ["Huevo M", 120], ["Claras de huevo", 80], ["Aguacate", 35]]],["Avena con leche y proteína",[["Avena", 60], ["Leche Desnatada +Proteínas - Hacendado", 200], ["Whey Protein", 15], ["Plátano", 90]]]]],
+      ["Media mañana","11:00",[["Queso batido con proteína y arándanos",[["Queso fresco batido 0%", 200], ["Whey Protein", 10], ["Arándanos", 80], ["Nueces", 15]]],["Yogur griego con almendras y kiwi",[["Yogur Griego Ligero - Hacendado", 200], ["Almendras", 15], ["Kiwi", 100]]],["Tortitas con pavo y manzana",[["Tortitas de maíz", 25], ["Pechuga Pavo Finas Lonchas - Hacendado", 70], ["Manzana", 150]]]]],
+      ["Comida","14:30",[["Pollo al horno con patatas",[["Pechuga de Pollo Cruda", 135], ["Patata cruda", 265], ["Verdura", 150], ["Aceite de oliva virgen extra", 15]]],["Arroz con ternera y verduras",[["Arroz Blanco Crudo", 70], ["Ternera Magra", 120], ["Salteado de verduras", 150], ["Aceite de oliva virgen extra", 10]]],["Pasta con atún y tomate",[["Pasta Cruda", 80], ["Atún Natural - Mercadona", 95], ["Tomate frito", 60], ["Aceite de oliva virgen extra", 10]]]]],
+      ["Merienda / pre entreno","17:30",[["Crema de arroz con proteína y arándanos",[["Crema de Arroz", 45], ["Whey Protein", 20], ["Arándanos", 60], ["Crema de cacahuete", 10]]],["Bocadillo de pavo y fruta",[["Pan de Pueblo - Mercadona", 60], ["Pechuga de Pavo 92% - Hacendado", 65], ["Plátano", 90]]],["Queso batido con cereales y fresas",[["Queso fresco batido 0%", 200], ["Cereales 0% Azúcares Añadidos - Hacendado", 40], ["Fresas", 100]]]]],
+      ["Cena","21:30",[["Cereales con leche, proteína y fruta",[["Cereales 0% Azúcares Añadidos - Hacendado", 45], ["Leche Desnatada +Proteínas - Hacendado", 240], ["Whey Protein", 10], ["Plátano", 90], ["Chocolate 85%", 10]]],["Salmón con boniato y verdura",[["Salmón", 135], ["Boniato", 195], ["Verdura", 150]]],["Tortilla francesa con pan y ensalada",[["Huevo M", 120], ["Claras de huevo", 120], ["Pan de Pueblo - Mercadona", 60], ["Mezcla de lechugas", 100], ["Aceite de oliva virgen extra", 5]]]]]] }
+  ];
+
+  const nutriEmail = () => `nutricion-${crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : Date.now()}@plantillas.invalid`;
+  const NUTRI_TIP = 'Agua 2,5–3 L al día. Verdura libre en comida y cena. Elige cada día la opción que prefieras de cada comida: todas aportan parecido.';
+  async function createNutriTemplate(p) {
+    const foods = await DB.list('foods', {}).catch(() => []), fid = n => { const f = foods.find(x => String(x.name).toLowerCase() === String(n).toLowerCase()); return f ? f.id : null; };
+    const [c] = await DB.insert('clients', { name: p.name, email: nutriEmail(), notes: p.notes || null, active: false, is_template: true });
+    if (p.kcal) await DB.upsert('nutrition_plans', { client_id: c.id, kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat, water: '2,5–3 L', notes: NUTRI_TIP, updated_at: new Date().toISOString() }, 'client_id').catch(() => {});
+    if (!p.blocks) return c;
+    const [pl] = await DB.insert('meal_plans', { client_id: c.id, name: 'Plan', position: 0, kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat });
+    for (const [bi, [bn, th, opts]] of p.blocks.entries()) {
+      const [b] = await DB.insert('meal_blocks', { client_id: c.id, plan_id: pl.id, name: bn, position: bi, time_hint: th });
+      for (const [oi, [on, items]] of opts.entries()) {
+        const [o] = await DB.insert('meal_options', { block_id: b.id, client_id: c.id, label: 'ABC'[oi] || String(oi + 1), name: on, position: oi });
+        await DB.insert('option_items', items.map(([fn, g], k) => ({ option_id: o.id, client_id: c.id, food_id: fid(fn), food_name: fn, grams: g, position: k })));
+      }
+    }
+    return c;
+  }
+  // Copia el plan por comidas (y si se quiere, calorías y macros) de una ficha a otra
+  async function copyNutrition(from, to, withTargets) {
+    const n = await DB.rpc('copy_meal_plan', { p_from: from.id, p_to: to.id });
+    if (withTargets) { const np = await DB.get('nutrition_plans', from.id, 'client_id').catch(() => null);
+      if (np) await DB.upsert('nutrition_plans', { client_id: to.id, kcal: np.kcal, protein: np.protein, carbs: np.carbs, fat: np.fat, water: np.water, notes: np.notes, updated_at: new Date().toISOString() }, 'client_id'); }
+    return n;
+  }
+  function copyNutriForm(tpl) {
+    const cl = S.clients.filter(c => c.active !== false);
+    if (!cl.length) return toast('No tienes clientes activos', 'err');
+    modal('Copiar «' + tpl.name + '» a un cliente', `<label>Cliente<select name="to">${cl.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" name="tg" checked> Copiar también calorías, macros, agua y recomendaciones</label>
+      <p class="muted small">Sustituye su plan por comidas actual. Después ajusta las cantidades a su peso en su ficha → Nutrición (botón de ajustar a sus macros).</p>`, {
+      submitLabel: 'Copiar', onSubmit: async (f, fd) => {
+        const to = S.clients.find(c => c.id === fd.get('to'));
+        if (!(await confirmBox(`Se sustituirá el plan por comidas actual de ${to.name}.`, 'Copiar'))) return false;
+        const n = await safe(() => copyNutrition(tpl, to, !!fd.get('tg')), `Plan copiado a ${to.name}`);
+        if (n != null) go('#/cliente/' + to.id + '/nutricion');
+      }
+    });
+  }
+  function saveNutriAsTemplate(c) {
+    modal('Guardar como plan base', `<label>Nombre<input name="name" required maxlength="80" value="${esc('Plan de ' + c.name.split(' ')[0])}"></label><label>Descripción <small class="muted">opcional</small><input name="notes" maxlength="200" placeholder="Ej: ≈ 2.000 kcal · mujer, recomposición"></label>
+      <p class="muted small">Se guarda su plan por comidas con sus opciones y cantidades, y sus calorías y macros.</p>`, {
+      submitLabel: 'Guardar', onSubmit: async (f, fd) => {
+        await safe(async () => { const t = await createNutriTemplate({ name: String(fd.get('name')).trim() || 'Plan base', notes: String(fd.get('notes') || '').trim() }); await copyNutrition(c, t, true); }, 'Guardado en Programas → Nutricionales');
+        coachNutriPrograms();
+      }
+    });
+  }
+  function nutriTemplateClient(c) {
+    shell(COACH_NAV, 'programas', loading(), { title: '', back: 'programas/nutricion' });
+    $app.querySelector('.top h1').textContent = c.name;
+    const actions = document.createElement('div'); actions.className = 'row gap';
+    actions.innerHTML = `<button class="btn small" data-copyto>${ic('copy')}<span>Copiar a cliente</span></button><button class="btn small ghost" data-ren>${ic('edit')}<span>Renombrar</span></button>`;
+    $app.querySelector('.top .grow').after(actions);
+    actions.querySelector('[data-copyto]').onclick = async () => { if (!S.clients.length) await loadClients(); copyNutriForm(c); };
+    actions.querySelector('[data-ren]').onclick = () => modal('Renombrar plan base', `<label>Nombre<input name="name" required maxlength="80" value="${esc(c.name)}"></label><label>Descripción<input name="notes" maxlength="200" value="${esc(c.notes || '')}"></label>`, {
+      submitLabel: 'Guardar', onSubmit: async (f, fd) => { await safe(() => DB.update('clients', c.id, { name: String(fd.get('name')).trim() || c.name, notes: String(fd.get('notes') || '').trim() || null }), 'Guardado'); render(); } });
+    const content = $app.querySelector('.content');
+    content.innerHTML = `<p class="note small">🥗 Plan nutricional base${c.notes ? ' · ' + esc(String(c.notes).replace(/\.\s*$/, '')) : ''}. Edítalo aquí; al copiarlo a un cliente se sustituye su plan por comidas y luego lo ajustas a sus macros.</p><div data-tab>${loading()}</div>`;
+    return tabNutrition(c, content.querySelector('[data-tab]'));
+  }
+  async function coachNutriPrograms() {
+    shell(COACH_NAV, 'programas', loading(), { title: 'Programas', actions: `<button class="btn primary" data-new>${ic('plus')}<span>Nuevo plan base</span></button>` });
+    await loadClients();
+    const tpls = S.ntemplates || [], act = S.clients.filter(c => c.active !== false);
+    const ids = tpls.concat(act).map(c => c.id);
+    const [plans, blocks, nps] = ids.length ? await Promise.all([DB.list('meal_plans', { in: { client_id: ids } }).catch(() => []), DB.list('meal_blocks', { in: { client_id: ids } }).catch(() => []), DB.list('nutrition_plans', { in: { client_id: ids } }).catch(() => [])]) : [[], [], []];
+    const np = id => nps.find(x => x.client_id === id) || {};
+    const plansOf = id => plans.filter(p => p.client_id === id).sort((a, b) => a.position - b.position);
+    const nb = (id, pid) => blocks.filter(b => b.client_id === id && (!pid || b.plan_id === pid)).length;
+    const mac = (x, fb) => { const k = x.kcal || fb.kcal; return k ? `${Number(k).toLocaleString('es-ES')} kcal${(x.protein || fb.protein) ? ` · P ${x.protein || fb.protein} · H ${x.carbs || fb.carbs} · G ${x.fat || fb.fat}` : ''}` : 'sin macros'; };
+    const missing = NUTRI_PRESETS.filter(p => !tpls.some(t => t.name === p.name));
+    const withPlan = act.filter(c => plansOf(c.id).length || np(c.id).kcal), sinPlan = act.filter(c => !withPlan.includes(c));
+    const box = $app.querySelector('.content');
+    box.innerHTML = `${PROGRAM_TABS('nutricion')}
+      <p class="muted small">Planes base para no empezar de cero: ábrelos para ajustarlos y cópialos a un cliente (luego adaptas cantidades a sus macros). Abajo tienes los planes guardados de cada cliente.</p>
+      ${missing.length ? `<section class="card"><div class="row gap wrap"><span class="grow"><b>Planes base de TEAM JMFIT</b><small class="muted">${missing.map(p => esc(p.name)).join(' · ')}</small></span><button class="btn small primary" data-seed>${ic('plus')} Añadir</button></div></section>` : ''}
+      <h3 class="sec-t">Planes base</h3>
+      <div class="tpl-grid">${tpls.map(t => { const ps = plansOf(t.id);
+        return `<section class="card tpl"><header><b>${esc(t.name)}</b><small class="muted">${t.notes ? esc(t.notes) : ''}</small></header>
+          <ul class="tpl-days">${ps.map(p => `<li><span>🥗</span><b>${esc(p.name === 'Plan' ? 'Plan diario' : p.name)}</b><small>${mac(p, np(t.id))} · ${nb(t.id, p.id)} comidas</small></li>`).join('') || `<li class="muted">${np(t.id).kcal ? mac({}, np(t.id)) : 'Sin comidas todavía'}</li>`}</ul>
+          <div class="row gap wrap"><button class="btn small primary" data-copy="${t.id}">${ic('copy')} Copiar a cliente</button><a class="btn small" href="#/cliente/${t.id}/nutricion">${ic('edit')} Editar</a><button class="btn small ghost" data-del="${t.id}" aria-label="Borrar plan base" title="Borrar">${ic('trash')}</button></div></section>`; }).join('') || '<p class="empty">Aún no tienes planes base.</p>'}</div>
+      <h3 class="sec-t">Planes de cada cliente</h3>
+      <section class="card flush"><ul class="list">${withPlan.map(c => { const ps = plansOf(c.id);
+        return `<li><a class="lrow" href="#/cliente/${c.id}/nutricion"><span class="grow"><b>${esc(c.name)}</b><small>${ps.length ? ps.map(p => `${esc(p.name === 'Plan' ? 'Plan' : p.name)} (${nb(c.id, p.id)} comidas${p.kcal ? ' · ' + Number(p.kcal).toLocaleString('es-ES') + ' kcal' : ''})`).join(' · ') : 'Solo macros'}${np(c.id).kcal ? ` · objetivo ${mac({}, np(c.id))}` : ''}</small></span></a>
+          ${ps.length ? `<button class="btn small ghost" data-save="${c.id}" title="Guardar como plan base">${ic('copy')}<span class="hide-m"> Guardar como base</span></button>` : ''}</li>`; }).join('') || '<li class="muted pad">Ningún cliente tiene plan todavía.</li>'}</ul></section>
+      ${sinPlan.length ? `<details class="card"><summary><b>Sin plan nutricional (${sinPlan.length})</b></summary><ul class="list">${sinPlan.map(c => `<li><a class="lrow" href="#/cliente/${c.id}/nutricion"><span class="grow">${esc(c.name)}</span><small>Crear ›</small></a></li>`).join('')}</ul></details>` : ''}`;
+    const byT = id => tpls.find(t => t.id === id);
+    $app.querySelector('[data-new]').onclick = () => modal('Nuevo plan base', '<label>Nombre<input name="name" required maxlength="80" placeholder="Ej: Mujer · Volumen"></label><label>Descripción <small class="muted">opcional</small><input name="notes" maxlength="200" placeholder="≈ kcal · para quién es"></label>', {
+      submitLabel: 'Crear y editar', onSubmit: async (f, fd) => { const t = await safe(() => createNutriTemplate({ name: String(fd.get('name')).trim() || 'Plan base', notes: String(fd.get('notes') || '').trim() }), 'Plan base creado'); if (t) go('#/cliente/' + t.id + '/nutricion'); } });
+    const sd = box.querySelector('[data-seed]'); if (sd) sd.onclick = async () => { sd.disabled = true; sd.textContent = 'Creando…'; await safe(async () => { for (const p of missing) await createNutriTemplate(p); }, 'Planes base añadidos'); coachNutriPrograms(); };
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyNutriForm(byT(b.dataset.copy)));
+    box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => saveNutriAsTemplate(S.clients.find(c => c.id === b.dataset.save)));
+    box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const t = byT(b.dataset.del); if (!(await confirmBox(`Se borrará el plan base «${t.name}». Los clientes a los que ya lo copiaste no cambian.`))) return; await safe(() => DB.remove('clients', t.id), 'Plan base borrado'); coachNutriPrograms(); });
   }
   async function coachPrograms() {
     shell(COACH_NAV, 'programas', loading(), { title: 'Programas' });
