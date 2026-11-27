@@ -956,7 +956,7 @@
     const tri = await triage(act, sessions).catch(e => { console.warn('triaje', e); return null; });
     const late = await ckLateMap(clients).catch(() => ({}));
     const tv = c => (tri && tri[c.id]) || null;
-    const row = (c, why) => { const t = tv(c), off = !!(c.ui_prefs && c.ui_prefs.tri_off); return `<li data-tri="${t ? t.lv : ''}" class="${off ? 'tri-offrow' : ''}">${why && c.user_id ? `<button type="button" class="tri-tg ${off ? '' : 'on'}" data-trioff="${c.id}" title="${off ? 'No cuenta en el semáforo: tócalo para que vuelva a contar' : 'Cuenta en el semáforo: tócalo para quitarlo'}" aria-pressed="${!off}">🚦<small>${off ? 'No cuenta' : 'Cuenta'}</small></button>` : ''}<a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
+    const row = (c, why) => { const t = tv(c), off = !!(c.ui_prefs && c.ui_prefs.tri_off); return `<li data-tri="${t ? t.lv : ''}" class="${off ? 'tri-offrow' : ''}">${why && c.user_id ? `<button type="button" class="tri-tg ${off ? '' : 'on'}" data-trioff="${c.id}" title="${off ? 'No cuenta en el semáforo: tócalo para que vuelva a contar' : 'Cuenta en el semáforo: tócalo para quitarlo'}" aria-pressed="${!off}">🚦<small>${off ? 'No cuenta' : 'Cuenta'}</small></button>` : ''}<a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}" data-cava="${c.id}">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
         <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : nutriOnly(c) ? 'Solo nutrición' : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${late[c.id] ? '<span class="pill amber">check-in atrasado</span>' : ''}${privPill(c)}</span></a></li>`; };
     const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
@@ -991,6 +991,7 @@
         try { await safe(() => DB.update('clients', c.id, { ui_prefs: prefs }), prefs.tri_off ? `${c.name.split(' ')[0]} ya no cuenta en el semáforo` : `${c.name.split(' ')[0]} vuelve a contar en el semáforo`); } catch (er) { b.disabled = false; return; }
         S.triCache = null; coachClients(); });
       $app.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const h = $app.querySelector('#tri-' + b.dataset.jump); if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      fillClientAvas($app.querySelector('.content'));
       const q = $app.querySelector('[data-q]');
       q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('.list.big li').forEach(li => { li.hidden = !li.textContent.toLowerCase().includes(v); }); };
     };
@@ -1209,7 +1210,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     actions.querySelector('[data-edit]').onclick = () => clientForm(c);
     const content = $app.querySelector('.content');
     content.innerHTML = `
-      <div class="client-head"><span class="av lg">${initials(c.name)}</span><div><b>${esc(c.name)}</b><small>${esc(c.email)}${c.service ? ' · ' + esc(c.service) : ''}</small><small class="bs-line" data-bsline>${basicsLine(c, null)}</small>${c.goal ? `<p>🎯 ${esc(c.goal)}</p>` : ''}${c.notes ? `<p class="note">📝 ${esc(c.notes)}</p>` : ''}</div></div>
+      <div class="client-head"><span class="av lg" data-cava="${c.id}">${initials(c.name)}</span><div><b>${esc(c.name)}</b><small>${esc(c.email)}${c.service ? ' · ' + esc(c.service) : ''}</small><small class="bs-line" data-bsline>${basicsLine(c, null)}</small>${c.goal ? `<p>🎯 ${esc(c.goal)}</p>` : ''}${c.notes ? `<p class="note">📝 ${esc(c.notes)}</p>` : ''}</div></div>
       <div class="tabs">${CLIENT_TABS.map(([k, l]) => `<a href="#/cliente/${id}/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</div>
       <div data-tab>${loading()}</div>`;
     const box = content.querySelector('[data-tab]');
@@ -1221,6 +1222,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       p.innerHTML = `⌚ <b>Salud conectada</b> · ${h.last_used ? `último envío ${esc(ago(h.last_used))}${h.last_steps != null ? ` · 👟 ${Number(h.last_steps).toLocaleString('es-ES')} pasos` : ''}${h.last_sleep != null ? ` · 😴 ${fmtKg(h.last_sleep)} h` : ''}${h.last_weight != null ? ` · ⚖️ ${fmtKg(h.last_weight)} kg` : ''}` : 'aún sin envíos'}`;
       hd.appendChild(p); }).catch(() => {});
     lastWeight(c.id).then(lw => { const el = content.querySelector('[data-bsline]'); if (el) el.innerHTML = basicsLine(c, lw); }).catch(() => {});
+    if (c.avatar_path) phUrl(c.avatar_path).then(u => { const el = content.querySelector('[data-cava]'); if (u && el) setAvaImg(el, u, c); });
     if (tab === 'rutinas') return tabRoutines(c, box);
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
@@ -4669,8 +4671,57 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
   function avatarBtn() { const c = S.client; return c ? `<a class="h-ava" href="#/perfil" aria-label="Mi perfil" data-ava><span>${esc(initials(c.name))}</span></a>` : ''; }
   async function fillAvatars(root) {
-    const u = await avatarUrl(S.client); if (!u) return;
-    (root || document).querySelectorAll('[data-ava]').forEach(a => { a.innerHTML = `<img src="${esc(u)}" alt="">`; });
+    const c = S.client; if (!c || !c.avatar_path) return;
+    const u = await avatarUrl(c); if (!u) { console.warn('foto de perfil: sin enlace'); return; }
+    (root || document).querySelectorAll('[data-ava]').forEach(a => setAvaImg(a, u, c));
+  }
+  // Pone la foto; si el enlace falla (caducado…), pide uno nuevo una vez y si no, deja las iniciales
+  function setAvaImg(el, u, c, retried) {
+    const img = new Image(); img.alt = ''; img.decoding = 'async';
+    img.onload = () => { el.innerHTML = ''; el.appendChild(img); el.classList.add('has-img'); };
+    img.onerror = async () => {
+      if (retried) { console.warn('foto de perfil: no carga', c && c.avatar_path); return; }
+      S.ava = null; delete PH_URL[c.avatar_path];
+      try { const u2 = await DB.photoUrl(c.avatar_path); setAvaImg(el, u2, c, true); } catch (e) { console.warn('foto de perfil', e); }
+    };
+    img.src = u;
+  }
+  // Fotos de los clientes en tu lista y en su ficha
+  async function fillClientAvas(root) {
+    for (const el of (root || document).querySelectorAll('[data-cava]')) {
+      const c = (S.clients || []).find(x => x.id === el.dataset.cava) || (S.viewAs && S.viewAs.id === el.dataset.cava ? S.viewAs : null);
+      if (!c || !c.avatar_path) continue;
+      phUrl(c.avatar_path).then(u => { if (u) setAvaImg(el, u, c); });
+    }
+  }
+  // Editor para encuadrar la foto (arrastrar y acercar) → JPEG cuadrado de 512 px
+  function cropPhoto(src) {
+    return new Promise(resolve => {
+      let done = false;
+      const f = modal('Ajusta tu foto', `<div class="crop-box"><canvas width="600" height="600" data-cv></canvas><span class="crop-ring"></span></div>
+        <label class="crop-zoom">🔍<input type="range" min="1" max="4" step="0.01" value="1" data-z aria-label="Acercar"></label>
+        <p class="muted small" style="text-align:center">Arrastra la foto para encuadrarla y usa la barra para acercar.</p>`, {
+        submitLabel: 'Guardar foto', onSubmit: async () => {
+          const out = document.createElement('canvas'); out.width = out.height = 512; draw(out.getContext('2d'), 512 / 600);
+          const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.88)); done = true; resolve(blob);
+        }
+      });
+      const cv = f.querySelector('[data-cv]'), g = cv.getContext('2d'), z = f.querySelector('[data-z]');
+      const img = new Image(); img.crossOrigin = 'anonymous';
+      let s0 = 1, zoom = 1, ox = 0, oy = 0;
+      const clamp = () => { const w = img.width * s0 * zoom, h = img.height * s0 * zoom; ox = Math.min(0, Math.max(600 - w, ox)); oy = Math.min(0, Math.max(600 - h, oy)); };
+      function draw(ctx, k = 1) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 600 * k, 600 * k); ctx.drawImage(img, ox * k, oy * k, img.width * s0 * zoom * k, img.height * s0 * zoom * k); }
+      img.onload = () => { s0 = Math.max(600 / img.width, 600 / img.height); ox = (600 - img.width * s0) / 2; oy = (600 - img.height * s0) / 2; draw(g); };
+      img.onerror = () => { toast('No se pudo abrir la foto', 'err'); closeModal(); };
+      img.src = src;
+      z.oninput = () => { const cx = 300, cy = 300, old = zoom; zoom = Number(z.value); ox = cx - (cx - ox) * zoom / old; oy = cy - (cy - oy) * zoom / old; clamp(); draw(g); };
+      let drag = null;
+      cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, ox, oy, k: 600 / cv.getBoundingClientRect().width }; cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener('pointermove', e => { if (!drag) return; ox = drag.ox + (e.clientX - drag.x) * drag.k; oy = drag.oy + (e.clientY - drag.y) * drag.k; clamp(); draw(g); });
+      const up = () => { drag = null; }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      cv.addEventListener('wheel', e => { e.preventDefault(); z.value = Math.min(4, Math.max(1, zoom - e.deltaY / 400)); z.oninput(); }, { passive: false });
+      const back = f.closest('.modal-back'); const obs = new MutationObserver(() => { if (!document.body.contains(back)) { obs.disconnect(); if (!done) resolve(null); } }); obs.observe(document.body, { childList: true });
+    });
   }
   // Redes del entrenador (public_texts.coach_links; las edita el entrenador en Ajustes)
   const LINKS = [['whatsapp', 'WhatsApp', 'wa', v => 'https://wa.me/' + String(v).replace(/\D/g, '')], ['instagram', 'Instagram', 'insta', v => /^https?:/.test(v) ? v : 'https://instagram.com/' + String(v).replace(/^@/, '')],
@@ -5126,6 +5177,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <button type="button" class="btn ghost block danger" data-logout2>${ic('out')} Cerrar sesión</button></section></div>`;
     fillAvatars(box); fillAvatars($app);
     await applyLayout('perfil', box.querySelector('.cprof'));
+    fillAvatars(box);
     pushSettings(box.querySelector('[data-pushset]'));
     if (HEALTH_ON) healthCard(box.querySelector('[data-salud]')).catch(er => console.warn('salud', er));
     wireInstall(box);
@@ -5137,16 +5189,34 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     box.querySelector('[data-logout2]').onclick = async () => { if (S.viewAs) return toast('En la vista como cliente no se cierra sesión', 'err'); if (await confirmBox('¿Cerrar sesión?', 'Salir')) { await DB.signOut(); if (acctSignedOut()) return; S.profile = null; location.hash = ''; location.reload(); } };
     const sw2 = box.querySelector('[data-swacct2]'); if (sw2) sw2.onclick = () => switchAcct();
     const inp = box.querySelector('[data-avin]');
-    if (inp) inp.onchange = async () => {
-      const f = inp.files && inp.files[0]; if (!f) return;
-      if (!/^image\//.test(f.type)) return toast('Elige una foto', 'err');
-      const lab = inp.closest('label'); lab.classList.add('busy');
+    const saveAva = async blob => {
+      const old = S.client.avatar_path, lab = box.querySelector('.prof-ph'); if (lab) lab.classList.add('busy');
       try {
-        const path = await DB.uploadPhoto(c.id, await shrink(f, 512));
+        const path = await DB.uploadPhoto(c.id, blob);
         await DB.rpc('set_my_avatar', { p_path: path });
+        if (old && old !== path) DB.removePhotos([old]).catch(() => {});
         await refreshClient(); S.ava = null; toast('Foto actualizada ✓', 'ok'); clientProfile();
-      } catch (e) { toast('No se pudo subir la foto: ' + (e.message || e), 'err'); lab.classList.remove('busy'); }
+      } catch (e) { toast('No se pudo subir la foto: ' + (e.message || e), 'err'); if (lab) lab.classList.remove('busy'); }
     };
+    if (inp) inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
+      if (f.type && !/^image\//.test(f.type)) return toast('Elige una foto', 'err');
+      const url = URL.createObjectURL(f);
+      try { const blob = await cropPhoto(url); if (blob) await saveAva(blob); } finally { URL.revokeObjectURL(url); }
+    };
+    const avaEl = box.querySelector('.prof-ava');
+    if (avaEl && hasAva && !S.viewAs) { avaEl.setAttribute('role', 'button'); avaEl.tabIndex = 0; avaEl.title = 'Tu foto';
+      avaEl.onclick = () => {
+        if (!S.client.avatar_path) { inp && inp.click(); return; }
+        const m = modal('Tu foto de perfil', `<div class="row gap wrap"><button type="button" class="btn primary grow" data-a="new">${ic('camera')} Cambiar foto</button>
+          <button type="button" class="btn grow" data-a="fit">${ic('edit')} Ajustar encuadre</button><button type="button" class="btn ghost danger grow" data-a="del">${ic('trash')} Quitar foto</button></div>`, {});
+        m.querySelector('[data-a=new]').onclick = () => { closeModal(); inp && inp.click(); };
+        m.querySelector('[data-a=fit]').onclick = async () => { closeModal(); const u = await avatarUrl(S.client); if (!u) return toast('No se pudo abrir tu foto', 'err'); setTimeout(async () => { const blob = await cropPhoto(u); if (blob) await saveAva(blob); }, 120); };
+        m.querySelector('[data-a=del]').onclick = async () => { closeModal(); if (!(await confirmBox('Se quitará tu foto de perfil.', 'Quitar'))) return;
+          const old = S.client.avatar_path;
+          try { await DB.rpc('set_my_avatar', { p_path: null }); if (old) DB.removePhotos([old]).catch(() => {}); S.ava = null; await refreshClient(); toast('Foto quitada', 'ok'); clientProfile(); }
+          catch (e) { toast('No se pudo quitar: ' + (e.message || e), 'err'); } };
+      }; }
   }
 
   async function clientToday() {

@@ -2273,3 +2273,14 @@ button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; w
 @media (max-width: 520px) { .bs-grid { grid-template-columns: repeat(2, 1fr); } }
 .client-head .bs-line { display: block; margin-top: 2px; }
 .cb-list small.cb-av { color: var(--accent); }
+/* Foto de perfil: encuadre y fotos en la lista del entrenador */
+.av { overflow: hidden; }
+.av img, .client-head .av img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+.prof-ava[role=button] { cursor: pointer; }
+.crop-box { position: relative; width: min(300px, 78vw); aspect-ratio: 1; margin: 0 auto 12px; border-radius: 18px; overflow: hidden; background: #000; touch-action: none; }
+.crop-box canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.crop-box canvas:active { cursor: grabbing; }
+.crop-ring { position: absolute; inset: 0; pointer-events: none; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0, 0, 0, .45), inset 0 0 0 2px rgba(255, 255, 255, .85); }
+.crop-zoom { display: flex; align-items: center; gap: 10px; max-width: 300px; margin: 0 auto; }
+.crop-zoom input { flex: 1; }
+label.crop-zoom { display: flex !important; flex-direction: row !important; align-items: center; }
