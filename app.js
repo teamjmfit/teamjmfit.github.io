@@ -935,7 +935,7 @@
     const tri = await triage(act, sessions).catch(e => { console.warn('triaje', e); return null; });
     const late = await ckLateMap(clients).catch(() => ({}));
     const tv = c => (tri && tri[c.id]) || null;
-    const row = (c, why) => { const t = tv(c); return `<li data-tri="${t ? t.lv : ''}"><a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
+    const row = (c, why) => { const t = tv(c), off = !!(c.ui_prefs && c.ui_prefs.tri_off); return `<li data-tri="${t ? t.lv : ''}" class="${off ? 'tri-offrow' : ''}">${why && c.user_id ? `<button type="button" class="tri-tg ${off ? '' : 'on'}" data-trioff="${c.id}" title="${off ? 'No cuenta en el semáforo: tócalo para que vuelva a contar' : 'Cuenta en el semáforo: tócalo para quitarlo'}" aria-pressed="${!off}">🚦<small>${off ? 'No cuenta' : 'Cuenta'}</small></button>` : ''}<a href="#/cliente/${c.id}"><span class="av ${t && c.active ? 'tri-' + t.lv : ''}">${initials(c.name)}</span>
         <span class="grow"><b>${esc(c.name)}</b><small>${esc(c.service || 'Sin servicio')}${c.goal ? ' · ' + esc(c.goal) : ''}</small>${why && t && t.why.length ? `<span class="tri-why">${t.why.map(w => `<i class="tri-${w[0]}">${esc(w[1])}</i>`).join('')}</span>` : ''}</span>
         <span class="right"><small>${last[c.id] ? 'Entrenó ' + ago(last[c.id]) : nutriOnly(c) ? 'Solo nutrición' : 'Sin entrenos recientes'}</small>${c.user_id ? '' : '<span class="pill amber">invitación pendiente</span>'}${late[c.id] ? '<span class="pill amber">check-in atrasado</span>' : ''}${privPill(c)}</span></a></li>`; };
     const list = (cs, why) => `<section class="card flush"><ul class="list big" data-list>${cs.map(c => row(c, why)).join('')}</ul></section>`;
@@ -952,7 +952,7 @@
         ${pend.length ? `<h3 class="sub">Invitación pendiente <small class="muted">· aún no han creado su cuenta</small></h3>${list(pend, false)}` : ''}`;
       if (tab === 'inactivos') return off.length ? `<p class="muted small cli-sub">Clientes en pausa o de baja. Para reactivar uno: entra en su ficha → Editar cliente → Activo.</p>${list(off, false)}` : '<p class="empty">No tienes clientes inactivos.</p>';
       if (!tri) return '<p class="empty">No se pudo calcular el semáforo ahora mismo.</p>';
-      const n = inApp.length || 1, cats = CAT.map(([re, l]) => [l, inApp.filter(c => (tv(c) || { why: [] }).why.some(w => w[0] !== 'green' && re.test(w[1]))).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]), mx = Math.max(1, ...cats.map(x => x[1]));
+      const n = inApp.length || 1, cats = CAT.map(([re, l]) => [l, inApp.filter(c => (tv(c) || { why: [] }).why.some(w => w[0] !== 'green' && w[0] !== 'off' && re.test(w[1]))).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]), mx = Math.max(1, ...cats.map(x => x[1]));
       return `<section class="card tri-chart"><h3>Semáforo de ${inApp.length} cliente${inApp.length === 1 ? '' : 's'} con la app</h3>
           <div class="tri-bar">${LV.map(([lv]) => cnt(lv) ? `<i class="tri-${lv}" style="flex:${cnt(lv)}" title="${cnt(lv)}">${cnt(lv)}</i>` : '').join('')}</div>
           <div class="tri-kpis">${LV.map(([lv, h, sub]) => `<button type="button" class="tri-k tri-${lv}" data-jump="${lv}"><b>${cnt(lv)}</b><span>${h.replace(/^\S+\s/, '')}</span><small>${Math.round(cnt(lv) / n * 100)} %</small></button>`).join('')}</div>
@@ -964,6 +964,11 @@
       $app.querySelector('.content').innerHTML = `<div class="seg cli-tabs" role="tablist">${TABS.map(([k, l, n]) => `<button type="button" role="tab" class="${k === tab ? 'on' : ''}" data-ctab="${k}">${l}${n != null ? ` <span class="${k === 'semaforo' && n ? 'cnt red' : 'cnt'}">${n}</span>` : ''}</button>`).join('')}</div>
         <input class="search" placeholder="Buscar cliente…" data-q>${body()}`;
       $app.querySelectorAll('[data-ctab]').forEach(b => b.onclick = () => { tab = S.cliTab = b.dataset.ctab; try { localStorage.setItem('jmfit-cli-tab', tab); } catch (e) {} draw(); });
+      $app.querySelectorAll('[data-trioff]').forEach(b => b.onclick = async e => {
+        e.preventDefault(); e.stopPropagation(); const c = byId(clients, b.dataset.trioff); if (!c) return; b.disabled = true;
+        const prefs = Object.assign({}, c.ui_prefs || {}, { tri_off: !(c.ui_prefs && c.ui_prefs.tri_off) });
+        try { await safe(() => DB.update('clients', c.id, { ui_prefs: prefs }), prefs.tri_off ? `${c.name.split(' ')[0]} ya no cuenta en el semáforo` : `${c.name.split(' ')[0]} vuelve a contar en el semáforo`); } catch (er) { b.disabled = false; return; }
+        S.triCache = null; coachClients(); });
       $app.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const h = $app.querySelector('#tri-' + b.dataset.jump); if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       const q = $app.querySelector('[data-q]');
       q.oninput = () => { const v = q.value.toLowerCase(); $app.querySelectorAll('.list.big li').forEach(li => { li.hidden = !li.textContent.toLowerCase().includes(v); }); };
@@ -1028,6 +1033,8 @@
       // 6) estancado
       const st = (stag || []).filter(x => x.client_id === c.id);
       if (!nOnly && st.length) add('amber', `estancado en ${st[0].exercise_name}${st.length > 1 ? ` y ${st.length - 1} más` : ''}`);
+      // fuera del semáforo (lo decide el entrenador): se ven los motivos, pero sin color y cuenta como «bien»
+      if (c.ui_prefs && c.ui_prefs.tri_off) { out[c.id] = { lv: 'green', off: true, why: (why.length ? why : [['green', 'al día']]).map(w => ['off', w[1]]), score: 0 }; return; }
       const lv = why.some(w => w[0] === 'red') ? 'red' : why.length ? 'amber' : 'green';
       if (lv === 'green' && nOnly) why.push(['green', ck[0] ? `revisión ${ck[0].diet_adh != null ? 'dieta ' + ck[0].diet_adh + '/10' : 'al día'}` : 'al día']);
       else if (lv === 'green' && ss.length) why.push(['green', doneW ? `${doneW} entreno${doneW > 1 ? 's' : ''} esta semana` : 'al día']);

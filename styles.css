@@ -2162,3 +2162,11 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 /* ---------- Dos cuentas */
 .acct-banner { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px 12px; margin-bottom: 14px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .sw-btn { font-size: 18px; font-weight: 800; }
+/* ---------- Semáforo: quién cuenta */
+.list.big li:has(.tri-tg) { display: flex; align-items: center; }
+.list.big li:has(.tri-tg) > a { flex: 1; min-width: 0; }
+.tri-tg { flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; margin-left: 8px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--card2); color: var(--muted); font: inherit; font-size: 15px; cursor: pointer; filter: grayscale(1); opacity: .7; }
+.tri-tg small { font-size: 9.5px; font-weight: 700; }
+.tri-tg.on { filter: none; opacity: 1; color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.tri-why .tri-off { background: var(--card2); color: var(--muted); }
+.tri-offrow .av { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--line) !important; }
