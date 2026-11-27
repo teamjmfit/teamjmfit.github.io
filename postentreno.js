@@ -51,7 +51,7 @@
 
   function show(w, { onClose, sex, name } = {}) {
     const { esc, ic, toast, fmtKg } = window.JMUI;
-    const st = summary(w), noFoto = ls.get(LS) === '1', msg = cheer(sex, name);
+    const st = summary(w), noFoto = false, msg = cheer(sex, name);   // la opción de foto sale siempre
     const back = document.createElement('div'); back.className = 'post-back';
     back.innerHTML = `<section class="post" role="dialog" aria-label="Entreno terminado">
       <button type="button" class="icon-btn post-x" data-close aria-label="Cerrar">✕</button>
@@ -69,15 +69,12 @@
       </div>`}
       </div>
       <button type="button" class="btn primary block" data-close>Continuar</button>
-      ${noFoto ? '<button type="button" class="link small" data-fotoon>Volver a mostrar la opción de foto</button>' : '<button type="button" class="link small" data-fotooff>No volver a mostrar la foto</button>'}
     </section>`;
     document.body.appendChild(back);
     let url = null;
     const close = () => { if (url) URL.revokeObjectURL(url); back.remove(); if (onClose) onClose(); };
     back.querySelectorAll('[data-close]').forEach(b => b.onclick = close);
     back.querySelectorAll('[data-ptab]').forEach(b => b.onclick = () => { back.querySelectorAll('[data-ptab]').forEach(x => x.classList.toggle('on', x === b)); back.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.ptab; }); });
-    const off = back.querySelector('[data-fotooff]'); if (off) off.onclick = () => { ls.set(LS, '1'); const p = back.querySelector('[data-ph]'); if (p) p.remove(); off.remove(); toast('Vale, ya no te lo propongo', 'ok'); };
-    const on = back.querySelector('[data-fotoon]'); if (on) on.onclick = () => { ls.set(LS, '0'); toast('La próxima vez tendrás la opción de foto', 'ok'); on.remove(); };
     const cam = back.querySelector('[data-cam]');
     if (cam) cam.onchange = () => {
       const f = cam.files && cam.files[0]; if (!f) return;
