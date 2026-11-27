@@ -2265,3 +2265,10 @@ button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; w
 .cb-pays li { flex-wrap: nowrap !important; }
 .sec-t { margin: 18px 2px 8px; font-size: 15px; }
 @media (max-width: 600px) { .hide-m { display: none; } }
+/* Datos básicos del cliente */
+.bs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.bs-grid > div { background: var(--card2); border-radius: 12px; padding: 10px 12px; }
+.bs-grid small { display: block; color: var(--muted); font-size: 12px; }
+.bs-grid b { font-size: 17px; }
+@media (max-width: 520px) { .bs-grid { grid-template-columns: repeat(2, 1fr); } }
+.client-head .bs-line { display: block; margin-top: 2px; }
