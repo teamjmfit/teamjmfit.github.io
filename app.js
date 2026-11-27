@@ -1192,7 +1192,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (window.JMGoals) loadGoals(c.id).then(gs => { const g = primaryGoal(gs), hd = content.querySelector('.client-head > div'); if (!g || !hd) return;
       const fo = JMGoals.FOCUS[g.focus]; const p = document.createElement('p'); p.className = 'gl-head';
       p.innerHTML = `🎯 <b>${esc(g.title)}</b>${fo ? ` <span class="pill">${esc(fo.tag)}</span>` : ''}`; hd.appendChild(p); });
-    DB.rpc('health_status_coach', {}).then(rows => { const h = (rows || []).find(x => x.client_id === c.id), hd = content.querySelector('.client-head > div'); if (!h || !hd) return;
+    if (HEALTH_ON) DB.rpc('health_status_coach', {}).then(rows => { const h = (rows || []).find(x => x.client_id === c.id), hd = content.querySelector('.client-head > div'); if (!h || !hd) return;
       const p = document.createElement('p'); p.className = 'hs-coach';
       p.innerHTML = `⌚ <b>Salud conectada</b> · ${h.last_used ? `último envío ${esc(ago(h.last_used))}${h.last_steps != null ? ` · 👟 ${Number(h.last_steps).toLocaleString('es-ES')} pasos` : ''}${h.last_sleep != null ? ` · 😴 ${fmtKg(h.last_sleep)} h` : ''}${h.last_weight != null ? ` · ⚖️ ${fmtKg(h.last_weight)} kg` : ''}` : 'aún sin envíos'}`;
       hd.appendChild(p); }).catch(() => {});
@@ -4645,7 +4645,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     };
     wireInstall(box); wirePushCard(box, false);
     homeWins(c, home.querySelector('[data-logros]'), { allRoutines, sessions: done, weeks, programs, ckins }).catch(er => console.warn('logros', er));
-    if (!S.viewAs) homeHealthNotice(home).catch(er => console.warn('salud', er));
+    if (!S.viewAs && HEALTH_ON) homeHealthNotice(home).catch(er => console.warn('salud', er));
     home.insertAdjacentHTML('beforeend', '<div data-po="novedades" data-posts></div><div data-po="ventajas" data-perks></div>');
     await homePosts(home).catch(er => console.warn('píldoras', er));
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
@@ -4762,7 +4762,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         <p class="muted small">Salen en el Inicio de cada cliente como premio por usar la app, con un botón para copiar el código.</p>
         <div data-perks>${perks.map((x, i) => `<div class="perk-ed" data-i="${i}"><input data-pt value="${esc(x.title || '')}" placeholder="Ej: 10 % en LifePro Güímar" maxlength="80"><input data-px value="${esc(x.text || '')}" placeholder="Texto (opcional)" maxlength="200"><input data-pc value="${esc(x.code || '')}" placeholder="Código" maxlength="40"><button type="button" class="icon-btn sm" data-perkdel aria-label="Quitar">${ic('trash')}</button></div>`).join('')}</div>
         <button type="button" class="btn small primary" data-perksave>Guardar ventajas</button></section>
-      <section class="card"><h3>⌚ Atajo de Salud para iPhone</h3>
+      ${HEALTH_ON ? `<section class="card"><h3>⌚ Atajo de Salud para iPhone</h3>
         <p class="muted small">Créalo una vez en tu iPhone y pega aquí su enlace de iCloud: tus clientes se conectan con «Conectar» en 3 toques (pasos y sueño cada noche). Sin enlace, les salen los pasos para hacerlo a mano en su Perfil.</p>
         <details><summary>Cómo crear el atajo (una sola vez)</summary><ol class="small hs-build">
           <li>Atajos → <b>+</b> → nombre <b>«TEAM JMFIT Salud»</b>.</li>
@@ -4771,9 +4771,9 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
           <li><b>Buscar muestras de salud</b>: Análisis del sueño · Fecha de inicio en las últimas 24 horas · Valor es Dormido → <b>Obtener detalles</b>: Duración → <b>Calcular estadísticas</b>: Suma (la app acepta horas, minutos o segundos).</li>
           <li><b>Obtener contenido de URL</b>: <code>${esc((window.JMFIT_CONFIG || {}).SUPABASE_URL + '/rest/v1/rpc/health_steps')}</code> · POST · cabecera <b>apikey</b> = <code>${esc((window.JMFIT_CONFIG || {}).SUPABASE_ANON_KEY || '')}</code> · JSON: <b>t</b> = Texto, <b>steps</b> = suma de pasos, <b>sleep_h</b> = suma del sueño.</li>
           <li>Compartir → <b>Copiar enlace de iCloud</b> y pégalo abajo.</li></ol></details>
-        <div class="row gap"><input data-hslink placeholder="https://www.icloud.com/shortcuts/…" class="grow"><button type="button" class="btn small primary" data-hssave>Guardar</button></div></section>`;
-    healthShortcut().then(v => { const i = box.querySelector('[data-hslink]'); if (i) i.value = v; });
-    box.querySelector('[data-hssave]').onclick = () => { const v = box.querySelector('[data-hslink]').value.trim();
+        <div class="row gap"><input data-hslink placeholder="https://www.icloud.com/shortcuts/…" class="grow"><button type="button" class="btn small primary" data-hssave>Guardar</button></div></section>` : ''}`;
+    if (HEALTH_ON) healthShortcut().then(v => { const i = box.querySelector('[data-hslink]'); if (i) i.value = v; });
+    if (HEALTH_ON) box.querySelector('[data-hssave]').onclick = () => { const v = box.querySelector('[data-hslink]').value.trim();
       if (v && !/^https:\/\/(www\.)?icloud\.com\/shortcuts\//.test(v)) return toast('Pega el enlace de iCloud del atajo (empieza por https://www.icloud.com/shortcuts/)', 'err');
       safe(() => DB.upsert('public_texts', { key: 'health_shortcut', value: v, updated_at: new Date().toISOString() }, 'key'), 'Atajo guardado ✓'); };
     $app.querySelector('[data-pnew]').onclick = () => postForm(null, coachPosts);
@@ -4820,6 +4820,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   // ================================================================ CLIENTE · PERFIL (foto, datos, notificaciones, apariencia, privacidad)
   // ---------- Conectar el móvil con Salud en pocos toques (migración 043): clave personal + atajo de iPhone que prepara el entrenador
   const IS_IOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const HEALTH_ON = false; // Conexión con Salud del móvil desactivada (se puede reactivar poniendo true)
   async function healthShortcut() { try { const r = await DB.get('public_texts', 'health_shortcut', 'key'); return r && r.value && /^https:\/\/(www\.)?icloud\.com\/shortcuts\//.test(r.value) ? r.value : ''; } catch (e) { return ''; } }
   async function healthConnect() {
     if (DB.mode === 'demo' || S.viewAs) return toast('En esta vista no se puede conectar', 'err');
@@ -4894,7 +4895,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         ${hasAva ? `<label class="btn small prof-ph">${ic('camera')} ${c.avatar_path ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" data-avin hidden></label>` : ''}</section>
       <div data-po="coach">${coachCard(links)}</div>
       <section class="card" data-po="notif"><div class="push-box" data-pushset></div></section>
-      <section class="card hs-card" data-po="salud" data-salud></section>
+      ${HEALTH_ON ? '<section class="card hs-card" data-po="salud" data-salud></section>' : ''}
       <section class="card" data-po="tema"><h3>Apariencia</h3><div class="theme-set">${THEMES.map(([k, l]) => `<button type="button" class="btn ${getTheme() === k ? 'on' : ''}" data-th="${k}">${l}</button>`).join('')}</div></section>
       <div data-po="instalar">${installCardHtml()}</div>
       <section class="card prof-acts" data-po="acciones">
@@ -4905,7 +4906,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     fillAvatars(box); fillAvatars($app);
     await applyLayout('perfil', box.querySelector('.cprof'));
     pushSettings(box.querySelector('[data-pushset]'));
-    healthCard(box.querySelector('[data-salud]')).catch(er => console.warn('salud', er));
+    if (HEALTH_ON) healthCard(box.querySelector('[data-salud]')).catch(er => console.warn('salud', er));
     wireInstall(box);
     box.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { setTheme(b.dataset.th); box.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
     box.querySelector('[data-priv]').onclick = () => privacyModal();
