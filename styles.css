@@ -2134,3 +2134,11 @@ body.refreshing img[data-refresh] { animation: jm-pulse .8s ease-in-out infinite
 .hs-copy small { flex: none; width: 52px; color: var(--muted); font-weight: 700; }
 .hs-copy code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .hs-steps ol { padding-left: 18px; line-height: 1.5; } .hs-steps ol li { margin-bottom: 6px; } .hs-steps details { margin: 8px 0; }
+
+/* ---------- Salud: aviso de conectar, pasos fáciles y lo que ve el entrenador */
+.notice.n-hs { align-items: center; gap: 10px; border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--card)), var(--card)); }
+.notice.n-hs .n-ic { font-size: 22px; }
+.hs-easy { padding-left: 20px; line-height: 1.5; } .hs-easy li { margin-bottom: 14px; } .hs-easy .btn { margin-top: 6px; }
+.hs-tok { display: block; word-break: break-all; padding: 6px; background: var(--card2); border-radius: 8px; margin-top: 6px; user-select: all; }
+.hs-coach { font-size: 13px; color: var(--muted); margin: 4px 0 0; } .hs-coach b { color: var(--green); }
+.hs-build { padding-left: 18px; line-height: 1.5; } .hs-build code { word-break: break-all; font-size: 11px; }

@@ -1169,6 +1169,10 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     if (window.JMGoals) loadGoals(c.id).then(gs => { const g = primaryGoal(gs), hd = content.querySelector('.client-head > div'); if (!g || !hd) return;
       const fo = JMGoals.FOCUS[g.focus]; const p = document.createElement('p'); p.className = 'gl-head';
       p.innerHTML = `🎯 <b>${esc(g.title)}</b>${fo ? ` <span class="pill">${esc(fo.tag)}</span>` : ''}`; hd.appendChild(p); });
+    DB.rpc('health_status_coach', {}).then(rows => { const h = (rows || []).find(x => x.client_id === c.id), hd = content.querySelector('.client-head > div'); if (!h || !hd) return;
+      const p = document.createElement('p'); p.className = 'hs-coach';
+      p.innerHTML = `⌚ <b>Salud conectada</b> · ${h.last_used ? `último envío ${esc(ago(h.last_used))}${h.last_steps != null ? ` · 👟 ${Number(h.last_steps).toLocaleString('es-ES')} pasos` : ''}${h.last_sleep != null ? ` · 😴 ${fmtKg(h.last_sleep)} h` : ''}${h.last_weight != null ? ` · ⚖️ ${fmtKg(h.last_weight)} kg` : ''}` : 'aún sin envíos'}`;
+      hd.appendChild(p); }).catch(() => {});
     if (tab === 'rutinas') return tabRoutines(c, box);
     if (tab === 'calendario') return tabCalendar(c, box);
     if (tab === 'nutricion') return tabNutrition(c, box);
@@ -4402,7 +4406,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ---------- «Vista como cliente»: el entrenador ve la app de un cliente tal cual (solo lectura) y edita la maqueta
-  const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage|health_status)$/;
+  const VA_RPC_OK = /^(get_client_nutrition|shopping_list|weekly_adherence|stagnation_alerts|storage_usage|health_status|health_status_coach)$/;
   function enterViewAs(c, general = false) {
     S.viewAs = c; S.vaGeneral = general; S.lyEdit = true;
     if (!S.dbReal) {
@@ -4618,6 +4622,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     };
     wireInstall(box); wirePushCard(box, false);
     homeWins(c, home.querySelector('[data-logros]'), { allRoutines, sessions: done, weeks, programs, ckins }).catch(er => console.warn('logros', er));
+    if (!S.viewAs) homeHealthNotice(home).catch(er => console.warn('salud', er));
     home.insertAdjacentHTML('beforeend', '<div data-po="novedades" data-posts></div><div data-po="ventajas" data-perks></div>');
     await homePosts(home).catch(er => console.warn('píldoras', er));
     if (window.JMRefer && 'referred_by' in c && canSee(c, 'referidos')) {   // migración 027
@@ -4733,7 +4738,21 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
       <section class="card"><header class="row gap"><h3 class="grow">🎁 Ventajas para clientes</h3><button type="button" class="btn small" data-perkadd>${ic('plus')} Añadir</button></header>
         <p class="muted small">Salen en el Inicio de cada cliente como premio por usar la app, con un botón para copiar el código.</p>
         <div data-perks>${perks.map((x, i) => `<div class="perk-ed" data-i="${i}"><input data-pt value="${esc(x.title || '')}" placeholder="Ej: 10 % en LifePro Güímar" maxlength="80"><input data-px value="${esc(x.text || '')}" placeholder="Texto (opcional)" maxlength="200"><input data-pc value="${esc(x.code || '')}" placeholder="Código" maxlength="40"><button type="button" class="icon-btn sm" data-perkdel aria-label="Quitar">${ic('trash')}</button></div>`).join('')}</div>
-        <button type="button" class="btn small primary" data-perksave>Guardar ventajas</button></section>`;
+        <button type="button" class="btn small primary" data-perksave>Guardar ventajas</button></section>
+      <section class="card"><h3>⌚ Atajo de Salud para iPhone</h3>
+        <p class="muted small">Créalo una vez en tu iPhone y pega aquí su enlace de iCloud: tus clientes se conectan con «Conectar» en 3 toques (pasos y sueño cada noche). Sin enlace, les salen los pasos para hacerlo a mano en su Perfil.</p>
+        <details><summary>Cómo crear el atajo (una sola vez)</summary><ol class="small hs-build">
+          <li>Atajos → <b>+</b> → nombre <b>«TEAM JMFIT Salud»</b>.</li>
+          <li>Acción <b>Texto</b> con «CLAVE». Pulsa ⓘ del atajo → <b>Configurar este atajo</b> / «Preguntas al importar» → añade una pregunta para ese texto: «Pega tu clave de la app TEAM JMFIT».</li>
+          <li><b>Buscar muestras de salud</b>: Pasos · Fecha de inicio es hoy → <b>Calcular estadísticas</b>: Suma.</li>
+          <li><b>Buscar muestras de salud</b>: Análisis del sueño · Fecha de inicio en las últimas 24 horas · Valor es Dormido → <b>Obtener detalles</b>: Duración → <b>Calcular estadísticas</b>: Suma (la app acepta horas, minutos o segundos).</li>
+          <li><b>Obtener contenido de URL</b>: <code>${esc((window.JMFIT_CONFIG || {}).SUPABASE_URL + '/rest/v1/rpc/health_steps')}</code> · POST · cabecera <b>apikey</b> = <code>${esc((window.JMFIT_CONFIG || {}).SUPABASE_ANON_KEY || '')}</code> · JSON: <b>t</b> = Texto, <b>steps</b> = suma de pasos, <b>sleep_h</b> = suma del sueño.</li>
+          <li>Compartir → <b>Copiar enlace de iCloud</b> y pégalo abajo.</li></ol></details>
+        <div class="row gap"><input data-hslink placeholder="https://www.icloud.com/shortcuts/…" class="grow"><button type="button" class="btn small primary" data-hssave>Guardar</button></div></section>`;
+    healthShortcut().then(v => { const i = box.querySelector('[data-hslink]'); if (i) i.value = v; });
+    box.querySelector('[data-hssave]').onclick = () => { const v = box.querySelector('[data-hslink]').value.trim();
+      if (v && !/^https:\/\/(www\.)?icloud\.com\/shortcuts\//.test(v)) return toast('Pega el enlace de iCloud del atajo (empieza por https://www.icloud.com/shortcuts/)', 'err');
+      safe(() => DB.upsert('public_texts', { key: 'health_shortcut', value: v, updated_at: new Date().toISOString() }, 'key'), 'Atajo guardado ✓'); };
     $app.querySelector('[data-pnew]').onclick = () => postForm(null, coachPosts);
     box.querySelectorAll('[data-pedit]').forEach(b => b.onclick = () => postForm(posts.find(p => p.id === b.dataset.pedit), coachPosts));
     wirePosts(box, posts);
@@ -4776,6 +4795,37 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
   }
 
   // ================================================================ CLIENTE · PERFIL (foto, datos, notificaciones, apariencia, privacidad)
+  // ---------- Conectar el móvil con Salud en pocos toques (migración 043): clave personal + atajo de iPhone que prepara el entrenador
+  const IS_IOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  async function healthShortcut() { try { const r = await DB.get('public_texts', 'health_shortcut', 'key'); return r && r.value && /^https:\/\/(www\.)?icloud\.com\/shortcuts\//.test(r.value) ? r.value : ''; } catch (e) { return ''; } }
+  async function healthConnect() {
+    if (DB.mode === 'demo' || S.viewAs) return toast('En esta vista no se puede conectar', 'err');
+    let tok; try { tok = await DB.rpc('health_token', {}); S.healthTok = tok; } catch (e) { return toast('No se pudo preparar la conexión: ' + (e.message || e), 'err'); }
+    const link = IS_IOS() ? await healthShortcut() : '';
+    if (!link) { location.hash = '#/perfil'; setTimeout(() => { const h = document.querySelector('[data-salud]'); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 600); return; }
+    const m = modal('📲 Conectar con Salud', `<ol class="hs-easy">
+        <li><b>Copia tu clave</b><button type="button" class="btn primary block" data-hc1>📋 Copiar mi clave</button></li>
+        <li><b>Añade el atajo</b> y, cuando te la pida, pega la clave.<a class="btn block" href="${esc(link)}" target="_blank" rel="noopener" data-hc2>➕ Añadir el atajo «TEAM JMFIT Salud»</a></li>
+        <li><b>Que se haga solo cada noche:</b> en Atajos → <b>Automatización</b> → <b>+</b> → <b>Hora del día</b> 23:00 · Diariamente · <b>Ejecutar inmediatamente</b> → elige el atajo «TEAM JMFIT Salud».</li>
+      </ol><p class="muted small">La primera vez el iPhone te pedirá permiso para leer pasos y sueño: acepta. Tu entrenador verá lo que llegue.</p>`, { submitLabel: 'Hecho' , onSubmit: () => { healthCardRefresh(); } });
+    const b1 = (m.querySelector ? m : document).querySelector('[data-hc1]');
+    if (b1) b1.onclick = async () => { try { await navigator.clipboard.writeText(tok); b1.textContent = '✓ Clave copiada'; } catch (e) { b1.outerHTML = `<code class="hs-tok">${esc(tok)}</code><small class="muted">Mantén pulsado para copiarla</small>`; } };
+  }
+  const healthCardRefresh = () => { const h = document.querySelector('[data-salud]'); if (h) healthCard(h); };
+  // Aviso en el Inicio del cliente hasta que conecte (o lo posponga 14 días)
+  async function homeHealthNotice(home) {
+    if (!home || DB.mode === 'demo') return;
+    let st = null; try { st = ((await DB.rpc('health_status', {})) || [])[0] || null; } catch (e) { return; }   // sin la migración: nada
+    if (st) return;
+    try { const d = localStorage.getItem('jmfit-hs-later'); if (d && Date.now() - +d < 14 * 864e5) return; } catch (e) { /* sin almacenamiento */ }
+    const el = document.createElement('section'); el.className = 'notice n-hs'; el.setAttribute('data-po', 'salud');
+    el.innerHTML = `<span class="n-ic">⌚</span><span class="grow"><b>Conecta tu móvil con Salud</b><small>Tus pasos y tu sueño se apuntarán solos cada noche.</small></span>
+      <button type="button" class="btn small primary" data-hsgo>Conectar</button><button type="button" class="icon-btn sm" data-hslater aria-label="Ahora no" title="Ahora no">✕</button>`;
+    const cal = home.querySelector('[data-po="logros"]') || home.firstElementChild; home.insertBefore(el, cal);
+    el.querySelector('[data-hsgo]').onclick = () => healthConnect();
+    el.querySelector('[data-hslater]').onclick = () => { try { localStorage.setItem('jmfit-hs-later', String(Date.now())); } catch (e) { /* nada */ } el.remove(); };
+  }
+
   // ---------- Pasos automáticos desde Salud (migración 042): el móvil manda los pasos del día a las 23:00
   // iPhone: app Atajos (automatización a una hora); Android: app de automatización que lea Health Connect.
   async function healthCard(host) {
@@ -4784,23 +4834,26 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     let st = null; try { st = live ? ((await DB.rpc('health_status', {})) || [])[0] || null : null; } catch (e) { st = undefined; }
     const tok = S.healthTok || null;
     const copy = (lab, v) => `<div class="hs-copy"><small>${lab}</small><code>${esc(v)}</code><button type="button" class="btn small" data-cp="${esc(v)}">Copiar</button></div>`;
-    host.innerHTML = `<h3>👟 Pasos automáticos desde Salud</h3>
-      <p class="muted small">Tu móvil puede mandar a la app tus pasos de cada día (por ejemplo a las 23:00) sin que tengas que apuntarlos.</p>
+    const link = IS_IOS() ? await healthShortcut() : '';
+    host.innerHTML = `<h3>⌚ Pasos y sueño desde Salud</h3>
+      <p class="muted small">Tu móvil puede mandar a la app tus pasos y tu sueño de cada día (a las 23:00) sin que tengas que apuntarlos. Tu entrenador también los verá.</p>
       ${st === undefined ? '<p class="note small">Tu entrenador aún tiene que activar esta función.</p>'
-        : st ? `<p><span class="pill green">Activado</span> ${st.last_used ? `Último envío: <b>${Number(st.last_steps || 0).toLocaleString('es-ES')} pasos</b> · ${esc(ago(st.last_used))}` : 'Aún no ha llegado ningún envío.'}</p>` : ''}
+        : st ? `<p><span class="pill green">Activado</span> ${st.last_used ? `Último envío ${esc(ago(st.last_used))}: ${st.last_steps != null ? `<b>${Number(st.last_steps).toLocaleString('es-ES')} pasos</b>` : ''}${st.last_sleep != null ? ` · <b>${fmtKg(st.last_sleep)} h de sueño</b>` : ''}` : 'Aún no ha llegado ningún envío.'}</p>` : ''}
+      ${link && !tok ? `<button type="button" class="btn primary small" data-hsquick>📲 ${st ? 'Volver a conectar (atajo)' : 'Conectar en 3 pasos'}</button>` : ''}
       ${tok ? `<div class="hs-steps">
           <p><b>Tu clave personal</b> (no la compartas):</p>${copy('Clave', tok)}
           <details open><summary><b>📱 iPhone</b> (app «Atajos»)</summary><ol class="small">
             <li>Abre <b>Atajos</b> → pestaña <b>Automatización</b> → <b>+</b> → <b>Hora del día</b> → 23:00, <b>Diariamente</b> → <b>Ejecutar inmediatamente</b> → Siguiente → <b>Nuevo atajo en blanco</b>.</li>
             <li>Añade <b>«Buscar muestras de salud»</b>: Tipo <b>Pasos</b>, Fecha de inicio <b>es hoy</b>.</li>
             <li>Añade <b>«Calcular estadísticas»</b>: <b>Suma</b> de las muestras de salud.</li>
-            <li>Añade <b>«Obtener contenido de URL»</b> con esta URL:${copy('URL', url)}Pulsa la flecha → Método <b>POST</b> → Cabeceras: añade <b>apikey</b> con:${copy('apikey', key)}Cuerpo de la solicitud <b>JSON</b>: campo <b>t</b> (Texto) = tu clave, campo <b>steps</b> (Número) = el resultado de «Estadísticas».</li>
+            <li>Añade <b>«Obtener contenido de URL»</b> con esta URL:${copy('URL', url)}Pulsa la flecha → Método <b>POST</b> → Cabeceras: añade <b>apikey</b> con:${copy('apikey', key)}Cuerpo de la solicitud <b>JSON</b>: campo <b>t</b> (Texto) = tu clave, campo <b>steps</b> (Número) = el resultado de «Estadísticas». Opcional: campo <b>sleep_h</b> (Número) = horas de sueño de anoche.</li>
             <li>Listo. La primera vez el iPhone te pedirá permiso para leer tus pasos: acepta. Puedes probarlo pulsando ▶︎ en el atajo.</li></ol></details>
           <details><summary><b>🤖 Android</b></summary><p class="small">Android no deja a las páginas web leer los pasos. Con una app de automatización que lea <b>Health Connect</b> (p. ej. MacroDroid o Tasker) crea una tarea diaria a las 23:00 que haga una petición <b>POST</b> a la URL de arriba, con la cabecera <b>apikey</b> y el cuerpo JSON <code>{"t": "tu clave", "steps": PASOS}</code>. Si no te aclaras, sigue apuntándolos en «Registro de hoy».</p></details>
         </div>` : ''}
       ${live && st !== undefined ? `<div class="row gap wrap"><button type="button" class="btn ${st ? 'ghost' : 'primary'} small" data-hson>${st ? '🔑 Crear clave nueva' : '⚡ Activar'}</button>${st ? '<button type="button" class="btn ghost small" data-hsoff>Desactivar</button>' : ''}</div>`
         : !live ? '<p class="muted small">En el modo demo no se puede activar.</p>' : ''}
       ${st && !tok ? '<p class="muted small">Por seguridad la clave solo se ve al crearla. Si cambias de móvil, crea una nueva (la anterior deja de valer).</p>' : ''}`;
+    const hq = host.querySelector('[data-hsquick]'); if (hq) hq.onclick = () => healthConnect();
     host.querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.cp); toast('Copiado ✓'); } catch (e) { toast('Mantén pulsado el texto para copiarlo'); } });
     const on = host.querySelector('[data-hson]'); if (on) on.onclick = async () => {
       if (st && !(await confirmBox('La clave anterior dejará de funcionar y tendrás que poner la nueva en tu atajo.', 'Crear nueva'))) return;
