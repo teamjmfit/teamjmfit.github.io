@@ -4497,8 +4497,15 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     await billingState(true);
   }
   // Aviso diario desde el día del vencimiento hasta que la hoja de cobros tenga la nueva fecha
+  // El entrenador ve en Cobros que le ha salido el aviso de renovación (046). Una vez al día.
+  function logPaySeen(kind) {
+    if (S.viewAs || !S.client) return;
+    const k = 'jmfit-paylog-' + today(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch (e) { /* nada */ }
+    DB.rpc('log_pay_notice', { p_kind: kind }).catch(() => {});
+  }
   function billingPopup(b) {
     const c = S.client, key = 'jmfit-venc-' + today();
+    logPaySeen('vencido');
     try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { /* se mostrará otra vez */ }
     if (document.querySelector('.modal-back') || b.claim_pending) return;
     const when = fmtDate(c.pay_due, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -4705,6 +4712,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     const routines = allRoutines.filter(r => (cw ? r.program_week_id === cw.id : !r.program_week_id));
     const d = isoDay(), wkS = addDays(t0, 1 - d), wkE = addDays(wkS, 6);
     const notices = clientNotices(c, ckins, wkS, d, t0, ckSt);
+    if (notices.some(nt => nt.k === 'pay')) logPaySeen('aviso');
     const pending = getActiveWorkout();
     const done = sessions.filter(s => s.finished_at), doneOn = ds => done.filter(s => String(s.started_at).slice(0, 10) === ds);
     let dm = await DB.list('daily_metrics', { eq: { client_id: c.id, date: t0 } }).catch(() => null);
@@ -5197,6 +5205,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
     let sel = S.daySel && S.daySel.wk === wkS ? S.daySel.n : d;
     let dm = await DB.list('daily_metrics', { eq: { client_id: c.id }, gte: { date: wkS }, order: ['date', 'asc'] }).catch(() => null);
     const notices = clientNotices(c, ckins, wkS, d, t0, ckSt);
+    if (notices.some(nt => nt.k === 'pay')) logPaySeen('aviso');
     const stripHtml = () => [1, 2, 3, 4, 5, 6, 7].map(n => { const ds = dateOf(n), has = routines.some(r => r.day === n), hasEv = events.some(e => e.date === ds && e.kind !== 'note');
       const did = doneWeek.some(s => String(s.started_at).slice(0, 10) === ds) || events.some(e => e.date === ds && e.kind !== 'note' && evDone(e, sessions, ckins));
       return `<button type="button" data-dsel="${n}" aria-pressed="${n === sel}" aria-label="${esc(DIAS[n])} ${+ds.slice(8)}" class="${n === d ? 'today' : ''} ${n === sel ? 'sel' : ''} ${has || hasEv ? 'has' : ''} ${did ? 'did' : ''}"><small>${DIAS_C[n]}</small><b>${+ds.slice(8)}</b><i></i></button>`; }).join('');

@@ -2272,3 +2272,4 @@ button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; w
 .bs-grid b { font-size: 17px; }
 @media (max-width: 520px) { .bs-grid { grid-template-columns: repeat(2, 1fr); } }
 .client-head .bs-line { display: block; margin-top: 2px; }
+.cb-list small.cb-av { color: var(--accent); }

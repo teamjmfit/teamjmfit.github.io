@@ -4,6 +4,7 @@
 //              solo si hoy le toca entrenar o enviar la revisión, sus tareas de hoy y una frase de motivación.
 //  · checkin — lo lanza la base de datos al guardar una revisión en fin de semana: aviso al entrenador.
 //  · reviewed — lo lanza la base de datos cuando el entrenador marca un check-in como revisado o le responde: aviso al cliente.
+//              También (046) el aviso de renovación del plan: 2 días antes, el día antes, el mismo día y, si vence, a diario (30 días).
 //  · key     — devuelve la clave pública para dar de alta un móvil.
 //  · test    — con la sesión del usuario (Authorization: Bearer …): le manda a él un aviso de prueba.
 // Todos son seguros aunque alguien los llame a mano: solo se manda lo que toca y nunca dos veces (push_log).
@@ -176,6 +177,43 @@ async function loadDay(db: any, c: Row, t: string) {
   return Object.assign(k, { needW: m.weight == null, needS: m.sleep_h == null });
 }
 
+// ---------- renovación del plan (046): mismo calendario que los avisos dentro de la app
+const eurTxt = (v: unknown) => (v == null || v === "" || isNaN(Number(v)) ? "" : Number(v).toLocaleString("es-ES", { style: "currency", currency: "EUR" }));
+const dayTxt = (s: string) => D(s).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+export function payMessage(c: Row, t: string) {
+  if (!c.pay_due || c.billing_off || c.remind_payment === false) return null;
+  const dd = diff(c.pay_due, t);
+  if (dd > 2 || dd < -30) return null;
+  const first = String(c.name || "").split(" ")[0];
+  const info = [c.pay_plan, eurTxt(c.pay_amount)].filter(Boolean).join(" · ");
+  const kind = dd > 0 ? `antes-${dd}` : dd === 0 ? "hoy" : "vencido";
+  const title = dd === 2 ? "💳 Tu plan se renueva en 2 días" : dd === 1 ? "💳 Mañana toca renovar tu plan" : dd === 0 ? "💳 Hoy toca renovar tu plan" : `💳 Tu plan venció hace ${-dd} día${dd === -1 ? "" : "s"}`;
+  const body = dd >= 0
+    ? `${first ? first + ", " : ""}${info ? info + " · " : ""}${dayTxt(c.pay_due)}. Si ya lo has pagado, ignora este aviso.`
+    : `${first ? first + ", r" : "R"}enuévalo para seguir con tus entrenos, tu nutrición y tus revisiones${info ? " (" + info + ")" : ""}. Si ya lo has pagado, avísame en la app.`;
+  return { kind, msg: { title, body, url: APP + "#/", tag: "pago" } };
+}
+// deno-lint-ignore no-explicit-any
+async function payReminders(db: any, t: string, uids: string[]) {
+  const { data: clients } = await db.from("clients").select("*").eq("active", true).not("pay_due", "is", null).in("user_id", uids);
+  let sent = 0;
+  for (const c of clients || []) {
+    try {
+      const pm = payMessage(c, t); if (!pm) continue;
+      const { data: cl } = await db.from("payment_claims").select("id").eq("client_id", c.id).eq("status", "pendiente").gte("created_at", new Date(Date.now() - 48 * 36e5).toISOString()).limit(1);
+      if (cl && cl.length) continue;   // dice que ya ha pagado: no se le insiste mientras lo confirmas
+      if (!(await once(db, `pago:${c.id}:${t}`))) continue;
+      const n = await sendTo(db, [c.user_id], pm.msg);
+      sent += n;
+      if (n) {
+        const { data: bc } = await db.from("billing_clients").select("id").eq("client_id", c.id).limit(1);
+        if (bc && bc[0]) await db.from("pay_notices").upsert({ billing_client_id: bc[0].id, day: t, channel: "push", kind: pm.kind }, { onConflict: "billing_client_id,day,channel" });
+      }
+    } catch (_) { /* sigue con el resto */ }
+  }
+  return sent;
+}
+
 export const worth = (k: ReturnType<typeof dayTasks>) => !!(k.train.length || k.ck || k.active);
 // deno-lint-ignore no-explicit-any
 async function daily(db: any, force = false) {
@@ -184,6 +222,7 @@ async function daily(db: any, force = false) {
   const { data: subs } = await db.from("push_subs").select("user_id");
   const uids = [...new Set((subs || []).map((s: Row) => s.user_id))];
   if (!uids.length) return { sent: 0 };
+  const pagos = await payReminders(db, t, uids as string[]).catch(() => 0);
   const { data: clients } = await db.from("clients").select("*").eq("active", true).in("user_id", uids);
   let sent = 0;
   for (const c of clients || []) {
@@ -195,7 +234,7 @@ async function daily(db: any, force = false) {
       sent += await sendTo(db, [c.user_id], dailyMessage(c, k, t));
     } catch (_) { /* sigue con el resto */ }
   }
-  return { sent };
+  return { sent, pagos };
 }
 
 // deno-lint-ignore no-explicit-any
