@@ -1878,7 +1878,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 @media (max-width: 600px) { .ck-ed-row { flex-wrap: wrap; } .ck-ed-side { flex-direction: row; align-items: center; min-width: 0; width: 100%; justify-content: space-between; padding-left: 38px; } }
 .ck-extra { margin-top: 4px; }
 .kpi-fold .kpis { margin-bottom: 0; }
-.pg2 { max-width: 860px; margin-inline: auto; }   /* una columna: sin estirar las gráficas a todo el ancho */
+.pg2 { max-width: none; }   /* progreso visto por el entrenador: todo el ancho (las gráficas se dibujan a ese ancho) */
+.pg2 svg.chart { max-width: none; }
 
 /* ---------- Resumen para Instagram (tarjeta para captura) */
 .ig-opts .np-plans { align-items: center; margin-bottom: 8px; }
@@ -2284,3 +2285,4 @@ button.kpi { font: inherit; color: inherit; text-align: left; cursor: pointer; w
 .crop-zoom { display: flex; align-items: center; gap: 10px; max-width: 300px; margin: 0 auto; }
 .crop-zoom input { flex: 1; }
 label.crop-zoom { display: flex !important; flex-direction: row !important; align-items: center; }
+@media (min-width: 900px) { .pg2 .kpis, .pg2 .kpis.small { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); } }
