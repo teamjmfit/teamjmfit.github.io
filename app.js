@@ -882,7 +882,7 @@
     }
   }
 
-  function dropSheet() { S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) {} }
+  function dropSheet() { S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) {} if (window.JMCobros) JMCobros.drop(); }
   // La hoja puede mandar fechas como texto largo («Fri Nov 06 2026 08:00:00 GMT…»): se pasan a AAAA-MM-DD
   const sheetDay = v => {
     if (v == null || v === '') return '';
@@ -899,7 +899,12 @@
     (d.clientes || []).forEach(c => { ['alta', 'ultimoPago', 'vence'].forEach(k => { c[k] = sheetDay(c[k]); }); });
     d._norm = true; return d;
   };
-  async function getSheet(force) { const d = normSheet(await getSheetRaw(force)); syncPayDue(d); return d; }
+  // Cobros en la app (044): si están, todo sale de la app y el Excel solo es una copia
+  const cobrosApp = async () => !!(window.JMCobros && S.profile && S.profile.role === 'coach' && await JMCobros.available());
+  async function getSheet(force) {
+    if (await cobrosApp()) { if (force) JMCobros.drop(); return JMCobros.asSheet(await JMCobros.load(force)); }
+    const d = normSheet(await getSheetRaw(force)); syncPayDue(d); return d;
+  }
   // Copia en cada cliente su próxima renovación (fecha, plan y cuota) para que su app le avise. Solo el entrenador.
   let paySyncAt = 0;
   async function syncPayDue(d) {
@@ -1083,18 +1088,19 @@
   async function clientForm(c, pre = null) {
     const isNew = !c; c = c || Object.assign({ active: true }, pre && pre.data);
     // Hoja de cobros: si está conectada, el cliente nuevo se puede dar de alta en ella desde aquí
+    const appMode = await cobrosApp().catch(() => false);
     const sh = await getSheet().catch(() => null), shC = (sh && sh.clientes) || [], shT = ((sh && sh.tarifas) || []).filter(t => t.plan && !/inactivo/i.test(t.plan));
     const inSheet = n => shC.some(x => String(x.nombre).trim().toLowerCase() === String(n || '').trim().toLowerCase());
     const canAdd = !!(sh && shT.length), showAdd = canAdd && (isNew || !inSheet(c.sheet_name || c.name));
     const metodos = [...new Set(['Bizum', 'Transferencia', 'Efectivo', 'Tarjeta'].concat(shC.map(x => x.metodo).filter(Boolean)))];
-    const shSet = showAdd ? `<fieldset class="full rem-set sh-set"><legend>Hoja de cobros</legend>
-        <label class="check"><input type="checkbox" name="sh_add" ${isNew ? 'checked' : ''}> ${isNew ? 'Darle de alta en la hoja de cobros' : 'No está en la hoja: darle de alta ahora'}</label>
+    const shSet = showAdd ? `<fieldset class="full rem-set sh-set"><legend>${appMode ? 'Cobros' : 'Hoja de cobros'}</legend>
+        <label class="check"><input type="checkbox" name="sh_add" ${isNew ? 'checked' : ''}> ${appMode ? (isNew ? 'Crear su ficha de cobro' : 'No tiene ficha de cobro: crearla ahora') : isNew ? 'Darle de alta en la hoja de cobros' : 'No está en la hoja: darle de alta ahora'}</label>
         <div class="form-grid" data-shf ${isNew ? '' : 'hidden'}>
           <label>Plan<select name="sh_plan">${shT.map(t => `<option value="${esc(t.plan)}">${esc(t.plan)}${t.precio ? ' · ' + esc(eur(t.precio)) : ''}</option>`).join('')}</select></label>
           <label>Precio pactado <small class="muted">(opcional)</small><input name="sh_precio" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Si no, el de la tarifa"></label>
           <label>Método de pago<select name="sh_metodo">${metodos.map(m => `<option>${esc(m)}</option>`).join('')}</select></label>
           <label>Fecha de alta<input name="sh_alta" type="date" value="${today()}"></label>
-        </div><small class="muted">Se añade una fila en «Base de Clientes» con su nombre y estas opciones; las fórmulas se copian solas. Los pagos se registran en Cobros.</small></fieldset>` : '';
+        </div><small class="muted">${appMode ? 'Su vencimiento y el estado se calculan solos con los pagos que registres en Cobros.' : 'Se añade una fila en «Base de Clientes» con su nombre y estas opciones; las fórmulas se copian solas. Los pagos se registran en Cobros.'}</small></fieldset>` : '';
     const dl = shC.length ? `<datalist id="sheet-names">${shC.map(x => `<option value="${esc(x.nombre)}">`).join('')}</datalist>` : '';
     const mf = modal(isNew ? 'Nuevo cliente' : 'Editar cliente', `
       <div class="form-grid">
@@ -1102,7 +1108,7 @@
         <label>Correo (con el que entrará)<input name="email" type="email" required value="${esc(c.email)}"></label>
         <label>Teléfono (con 34)<input name="phone" inputmode="tel" value="${esc(c.phone)}" placeholder="346…"></label>
         <label>Servicio<select name="service">${['', 'Entreno', 'Nutrición', 'Mixto'].map(s => `<option ${c.service === s ? 'selected' : ''} value="${s}">${s || '—'}</option>`).join('')}</select></label>
-        <label>Nombre en la hoja de cobros<input name="sheet_name" list="sheet-names" value="${esc(c.sheet_name || c.name || '')}" placeholder="Igual que en tu hoja"><small class="muted" data-shhint></small></label>${dl}
+        <label>${appMode ? 'Nombre en Cobros' : 'Nombre en la hoja de cobros'}<input name="sheet_name" list="sheet-names" value="${esc(c.sheet_name || c.name || '')}" placeholder="Igual que en tu hoja"><small class="muted" data-shhint></small></label>${dl}
         ${shSet}
         <label class="full">Objetivo<input name="goal" value="${esc(c.goal)}" placeholder="Ej: ganar masa muscular, preparar competición…"></label>
         <label class="full">Notas privadas (lesiones, preferencias…)<textarea name="notes" rows="3">${esc(c.notes)}</textarea></label>
@@ -1117,9 +1123,9 @@
         ${!isNew && 'remind_checkin' in c ? `<fieldset class="full rem-set"><legend>Avisos en su app</legend>
           <label class="check"><input type="checkbox" name="remind_checkin" ${c.remind_checkin !== false ? 'checked' : ''}> Ventana de aviso del check-in al abrir la app (el día clave y si va atrasado)</label>
           <label class="check"><input type="checkbox" name="remind_payment" ${c.remind_payment !== false ? 'checked' : ''}> Avisarle de la renovación del plan (2 días antes, el día antes y el mismo día)</label>
-          <small class="muted">La fecha de renovación sale de tu hoja de cobros.</small></fieldset>` : ''}
+          <small class="muted">La fecha de renovación sale de Cobros.</small></fieldset>` : ''}
         ${!isNew && 'grace_days' in c ? `<fieldset class="full rem-set"><legend>Pago y acceso</legend>
-          <p class="small muted">${c.pay_due ? `Vence el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))}.` : 'Sin fecha de vencimiento en la hoja de cobros.'} Desde ese día ve un aviso diario hasta que la hoja tenga la nueva fecha.</p>
+          <p class="small muted">${c.pay_due ? `Vence el ${esc(fmtDate(c.pay_due, { day: 'numeric', month: 'long' }))}.` : 'Sin fecha de vencimiento en Cobros.'} Desde ese día ve un aviso diario hasta que registres el pago.</p>
           ${'access_blocked' in c ? `<label class="check"><input type="checkbox" name="access_blocked" ${c.access_blocked ? 'checked' : ''}> <b>Acceso desactivado</b>: al abrir la app le sale que no tiene acceso</label>` : ''}
           <label class="check"><input type="checkbox" name="billing_off" ${c.billing_off ? 'checked' : ''}> Sin avisos de pago (familia, colaboradores…)</label></fieldset>` : ''}
       </div>`, {
@@ -1129,8 +1135,10 @@
         const d = Object.fromEntries(fd); d.active = !!fd.get('active'); d.email = d.email.trim().toLowerCase();
         const shAdd = !!fd.get('sh_add') && canAdd, shRow = shAdd ? { nombre: String(d.sheet_name || d.name).trim(), plan: d.sh_plan, precio: d.sh_precio, metodo: d.sh_metodo, alta: d.sh_alta } : null;
         Object.keys(d).filter(k => k.startsWith('sh_')).forEach(k => delete d[k]);
-        if (shAdd && inSheet(shRow.nombre)) { toast('Ya hay un cliente con ese nombre en la hoja: elígelo en «Nombre en la hoja» y desmarca el alta', 'err'); return false; }
-        const toSheet = async () => { if (!shRow) return; try { await DB.sheets('altaCliente', { cliente: shRow }); S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) { /* nada */ } toast(`${shRow.nombre} añadido a la hoja de cobros`, 'ok'); }
+        if (shAdd && !appMode && inSheet(shRow.nombre)) { toast('Ya hay un cliente con ese nombre en la hoja: elígelo en «Nombre en la hoja» y desmarca el alta', 'err'); return false; }
+        const toSheet = async cl => {
+          if (appMode) { try { await JMCobros.linkClient(cl, shRow ? { plan: shRow.plan, price: shRow.precio, method: shRow.metodo, start: shRow.alta } : {}); if (shRow) toast(`${shRow.nombre} añadido a Cobros`, 'ok'); } catch (e) { toast('No se pudo crear su ficha de cobro: ' + e.message, 'err'); } return; }
+          if (!shRow) return; try { await DB.sheets('altaCliente', { cliente: shRow }); S.sheet = null; try { localStorage.removeItem('jmfit-sheet'); } catch (e) { /* nada */ } toast(`${shRow.nombre} añadido a la hoja de cobros`, 'ok'); }
           catch (e) { toast('No se pudo añadir a la hoja de cobros: ' + e.message + '. Añádelo a mano o actualiza el script de la hoja.', 'err'); } };
         if (!isNew && 'remind_checkin' in c) { d.remind_checkin = !!fd.get('remind_checkin'); d.remind_payment = !!fd.get('remind_payment'); }
         Object.keys(d).filter(k => k.startsWith('ui_') && k !== 'ui_prefs').forEach(k => delete d[k]);
@@ -1143,8 +1151,8 @@
         } else { delete d.ck_freq; delete d.ck_anchor; }
         if (!isNew && 'grace_days' in c) { d.billing_off = !!fd.get('billing_off'); if ('access_blocked' in c) d.access_blocked = !!fd.get('access_blocked'); }
         if (!d.name.trim() || !d.email) { toast('Nombre y correo son obligatorios', 'err'); return false; }
-        if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); await toSheet(); if (pre && pre.onCreated) await pre.onCreated(r[0]); invite(r[0]); return false; }
-        await safe(() => DB.update('clients', c.id, d), 'Guardado'); await toSheet(); render();
+        if (isNew) { const r = await safe(() => DB.insert('clients', d), 'Cliente creado'); await toSheet(r[0]); if (pre && pre.onCreated) await pre.onCreated(r[0]); invite(r[0]); return false; }
+        await safe(() => DB.update('clients', c.id, d), 'Guardado'); await toSheet(Object.assign({}, c, d)); render();
       }
     });
     const sha = mf && mf.querySelector('[name=sh_add]'), shn = mf && mf.querySelector('[name=sheet_name]'), nm = mf && mf.querySelector('[name=name]');
@@ -3386,6 +3394,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // ----- Cobros del cliente
   async function tabClientPayments(c, box) {
+    if (await cobrosApp()) return JMCobros.clientTab(c, box).catch(e => { box.innerHTML = `<p class="empty">No se pudieron cargar los cobros: ${esc(e.message || e)}</p>`; });
     try {
       const data = await getSheet();
       const key = (c.sheet_name || c.name).trim().toLowerCase();
@@ -3441,6 +3450,13 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   // ---------- Cobros (vista general)
   async function coachPayments() {
+    if (await cobrosApp()) {
+      shell(COACH_NAV, 'cobros', loading(), { title: 'Cobros', actions: `<button class="btn small ghost" data-conf title="Copia automática en tu Excel">${ic('cog')}<span>Excel</span></button>` });
+      $app.querySelector('[data-conf]').onclick = sheetSettings;
+      if (!S.clients.length) await loadClients().catch(() => {});
+      const cb = $app.querySelector('.content');
+      return JMCobros.page(cb, { clients: S.clients, rerender: () => JMCobros.page(cb, { clients: S.clients }) }).catch(e => { cb.innerHTML = `<p class="empty">No se pudieron cargar los cobros: ${esc(e.message || e)}</p>`; });
+    }
     shell(COACH_NAV, 'cobros', loading(), { title: 'Cobros', actions: `<button class="icon-btn" data-refresh title="Actualizar">${ic('refresh')}</button><button class="btn small ghost" data-conf>${ic('cog')}<span>Conectar hoja</span></button>` });
     $app.querySelector('[data-conf]').onclick = sheetSettings;
     $app.querySelector('[data-refresh]').onclick = () => { dropSheet(); render(); };
@@ -3475,7 +3491,8 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
 
   async function sheetSettings() {
     const [url, token] = await Promise.all([DB.getSetting('sheets_url'), DB.getSetting('sheets_token')]);
-    modal('Conectar hoja de cobros', `
+    const appMode = await cobrosApp();
+    modal(appMode ? 'Copia en tu Excel' : 'Conectar hoja de cobros', `${appMode ? '<p class="note small">Tus cobros ya viven en la app. Si dejas tu Excel conectado, cada cambio se copia solo en él (clientes, pagos y tarifas) y sus gráficos siguen funcionando. Para la copia completa, pega en tu hoja la última versión de <code>apps-script/Codigo.gs</code>.</p>' : ''}
       <ol class="steps small">
         <li>Abre tu hoja → <b>Extensiones → Apps Script</b>.</li>
         <li>Pega el código del archivo <code>apps-script/Codigo.gs</code> y cambia <code>TOKEN</code> por una clave inventada.</li>
@@ -3489,7 +3506,7 @@ Cualquier duda, me escribes por aquí. ¡A por ello! 🔥`;
         await DB.setSetting('sheets_url', fd.get('url').trim());
         await DB.setSetting('sheets_token', fd.get('token').trim());
         dropSheet();
-        if (fd.get('url').trim()) { await safe(() => getSheet(true), 'Hoja conectada ✔'); }
+        if (fd.get('url').trim()) { await safe(() => DB.sheets('resumen'), 'Hoja conectada ✔'); if (appMode) JMCobros.mirror(); }
         render();
       }
     });
